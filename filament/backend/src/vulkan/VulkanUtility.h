@@ -19,6 +19,8 @@
 
 #include <backend/DriverEnums.h>
 
+#include <utils/FixedCapacityVector.h>
+
 #include <bluevk/BlueVK.h>
 
 namespace filament::backend {
@@ -65,6 +67,41 @@ bool equivalent(const VkRect2D& a, const VkRect2D& b);
 bool equivalent(const VkExtent2D& a, const VkExtent2D& b);
 bool isDepthFormat(VkFormat format);
 uint8_t reduceSampleCount(uint8_t sampleCount, VkSampleCountFlags mask);
+
+template <typename OutType>
+utils::FixedCapacityVector<OutType> enumerate(VkResult (*func)(uint32_t*, OutType*)) {
+    uint32_t size = 0;
+    VkResult result = func(&size, nullptr);
+    ASSERT_POSTCONDITION(result == VK_SUCCESS && size > 0, "enumerate-0 size error");
+    utils::FixedCapacityVector<OutType> ret(size);
+    result = func(&size, ret.data());
+    ASSERT_POSTCONDITION(result == VK_SUCCESS, "enumerate-0 error");
+    return move(ret);
+}
+
+template <typename InType, typename OutType>
+utils::FixedCapacityVector<OutType> enumerate(VkResult (*func)(InType, uint32_t*, OutType*), InType inData) {
+    uint32_t size = 0;
+    VkResult result = func(inData, &size, nullptr);
+    ASSERT_POSTCONDITION(result == VK_SUCCESS && size > 0, "enumerate-1 size error");
+    utils::FixedCapacityVector<OutType> ret(size);
+    result = func(inData, &size, ret.data());
+    ASSERT_POSTCONDITION(result == VK_SUCCESS, "enumerate-1 error");
+    return move(ret);
+}
+
+template <typename InTypeA, typename InTypeB, typename OutType>
+utils::FixedCapacityVector<OutType> enumerate(
+        VkResult (*func)(InTypeA, InTypeB, uint32_t*, OutType*), InTypeA inDataA, InTypeB inDataB) {
+    uint32_t size = 0;
+    VkResult result = func(inDataA, inDataB, &size, nullptr);
+    ASSERT_POSTCONDITION(result == VK_SUCCESS && size > 0, "enumerate-2 size error");
+    utils::FixedCapacityVector<OutType> ret(size);
+    result = func(inDataA, inDataB, &size, ret.data());
+    ASSERT_POSTCONDITION(result == VK_SUCCESS, "enumerate-2 error");
+    return move(ret);
+}
+
 
 } // namespace filament::backend
 
