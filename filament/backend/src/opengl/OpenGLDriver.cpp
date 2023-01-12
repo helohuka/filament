@@ -1814,10 +1814,16 @@ void OpenGLDriver::updateBufferObjectUnsynchronized(
             auto& gl = mContext;
             gl.bindBuffer(bo->gl.binding, bo->gl.id);
 retry:
-            void* const vaddr = glMapBufferRange(bo->gl.binding, byteOffset, (GLsizeiptr)bd.size,
-                    GL_MAP_WRITE_BIT |
-                    GL_MAP_INVALIDATE_RANGE_BIT |
-                    GL_MAP_UNSYNCHRONIZED_BIT);
+#ifdef __ANDROID__
+            // fix KHR_debug PERFORMANCE: EsxBufferObject::Map - Ignoring EsxBufferMapUnsyncedBit
+            // on android cannt use GL_MAP_UNSYNCHRONIZED_BIT and I dont known all device driver has this error ?
+            // its only in GL_KHR_debug enabled and DEBUG enabled see OpenGLContext.cpp line 271
+            GLbitfield access = GL_MAP_WRITE_BIT |GL_MAP_INVALIDATE_RANGE_BIT;
+#else
+            GLbitfield access = GL_MAP_WRITE_BIT |GL_MAP_INVALIDATE_RANGE_BIT |GL_MAP_UNSYNCHRONIZED_BIT;
+#endif
+
+            void* const vaddr = glMapBufferRange(bo->gl.binding, byteOffset, (GLsizeiptr)bd.size, access);
             if (UTILS_LIKELY(vaddr)) {
                 memcpy(vaddr, bd.buffer, bd.size);
                 if (UTILS_UNLIKELY(glUnmapBuffer(bo->gl.binding) == GL_FALSE)) {
