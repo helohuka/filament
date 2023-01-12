@@ -19,9 +19,9 @@ buildscript {
             .gradleProperty("com.google.android.filament.exclude-vulkan")
             .isPresent()
 
-    def matdbg = providers
+    def matdbg = true/*providers
             .gradleProperty("com.google.android.filament.matdbg")
-            .isPresent()
+            .isPresent()*/
 
     def abis = ["arm64-v8a" ]//, "armeabi-v7a", "x86_64", "x86"]
     def newAbis = providers
@@ -67,6 +67,7 @@ buildscript {
             "-DANDROID_PIE=ON",
             "-DEGL=ON",
             "-DANDROID_PLATFORM=21",
+            "-DFILAMENT_SINGLE_THREADED=1",
             "-DANDROID_STL=c++_static",
             "-DFILAMENT_DIST_DIR=${filamentPath}".toString(),
             "-DFILAMENT_SUPPORTS_VULKAN=${excludeVulkan ? 'OFF' : 'ON'}".toString(),
@@ -80,7 +81,7 @@ buildscript {
             //"-fno-exceptions",
             "-fno-unwind-tables",
             "-fno-asynchronous-unwind-tables",
-            "-fno-rtti",
+
             "-ffast-math",
             "-ffp-contract=fast",
             "-fvisibility-inlines-hidden",

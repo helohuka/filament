@@ -83,109 +83,117 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
     std::unique_ptr<FilamentApp::Window> window(
             new FilamentApp::Window(this, config, config.title, width, height));
 
-    mDepthMaterial = Material::Builder()
-            .package(FILAMENTAPP_DEPTHVISUALIZER_DATA, FILAMENTAPP_DEPTHVISUALIZER_SIZE)
-            .build(*mEngine);
+//    mDepthMaterial = Material::Builder()
+//            .package(FILAMENTAPP_DEPTHVISUALIZER_DATA, FILAMENTAPP_DEPTHVISUALIZER_SIZE)
+//            .build(*mEngine);
+//
+//    mDepthMI = mDepthMaterial->createInstance();
+//
+//    mDefaultMaterial = Material::Builder()
+//            .package(FILAMENTAPP_AIDEFAULTMAT_DATA, FILAMENTAPP_AIDEFAULTMAT_SIZE)
+//            .build(*mEngine);
+//
+//    mTransparentMaterial = Material::Builder()
+//            .package(FILAMENTAPP_TRANSPARENTCOLOR_DATA, FILAMENTAPP_TRANSPARENTCOLOR_SIZE)
+//            .build(*mEngine);
 
-    mDepthMI = mDepthMaterial->createInstance();
-
-    mDefaultMaterial = Material::Builder()
-            .package(FILAMENTAPP_AIDEFAULTMAT_DATA, FILAMENTAPP_AIDEFAULTMAT_SIZE)
-            .build(*mEngine);
-
-    mTransparentMaterial = Material::Builder()
-            .package(FILAMENTAPP_TRANSPARENTCOLOR_DATA, FILAMENTAPP_TRANSPARENTCOLOR_SIZE)
-            .build(*mEngine);
-
-    std::unique_ptr<Cube> cameraCube(new Cube(*mEngine, mTransparentMaterial, {1,0,0}));
+    //std::unique_ptr<Cube> cameraCube(new Cube(*mEngine, mTransparentMaterial, {1,0,0}));
     // we can't cull the light-frustum because it's not applied a rigid transform
     // and currently, filament assumes that for culling
-    std::unique_ptr<Cube> lightmapCube(new Cube(*mEngine, mTransparentMaterial, {0,1,0}, false));
+    //std::unique_ptr<Cube> lightmapCube(new Cube(*mEngine, mTransparentMaterial, {0,1,0}, false));
     mScene = mEngine->createScene();
 
     window->mMainView->getView()->setVisibleLayers(0x4, 0x4);
 
-    if (config.splitView) {
-        auto& rcm = mEngine->getRenderableManager();
+//    if (config.splitView) {
+//        auto& rcm = mEngine->getRenderableManager();
+//
+//        rcm.setLayerMask(rcm.getInstance(cameraCube->getSolidRenderable()), 0x3, 0x2);
+//        rcm.setLayerMask(rcm.getInstance(cameraCube->getWireFrameRenderable()), 0x3, 0x2);
+//
+//        rcm.setLayerMask(rcm.getInstance(lightmapCube->getSolidRenderable()), 0x3, 0x2);
+//        rcm.setLayerMask(rcm.getInstance(lightmapCube->getWireFrameRenderable()), 0x3, 0x2);
+//
+//        // Create the camera mesh
+//        mScene->addEntity(cameraCube->getWireFrameRenderable());
+//        mScene->addEntity(cameraCube->getSolidRenderable());
+//
+//        mScene->addEntity(lightmapCube->getWireFrameRenderable());
+//        mScene->addEntity(lightmapCube->getSolidRenderable());
+//
+//        window->mDepthView->getView()->setVisibleLayers(0x4, 0x4);
+//        window->mGodView->getView()->setVisibleLayers(0x6, 0x6);
+//        window->mOrthoView->getView()->setVisibleLayers(0x6, 0x6);
+//
+//        // only preserve the color buffer for additional views; depth and stencil can be discarded.
+//        window->mDepthView->getView()->setShadowingEnabled(false);
+//        window->mGodView->getView()->setShadowingEnabled(false);
+//        window->mOrthoView->getView()->setShadowingEnabled(false);
+//    }
 
-        rcm.setLayerMask(rcm.getInstance(cameraCube->getSolidRenderable()), 0x3, 0x2);
-        rcm.setLayerMask(rcm.getInstance(cameraCube->getWireFrameRenderable()), 0x3, 0x2);
+    //loadDirt(config);
+    //loadIBL(config);
+//    if (mIBL != nullptr) {
+//        mIBL->getSkybox()->setLayerMask(0x7, 0x4);
+//        mScene->setSkybox(mIBL->getSkybox());
+//        mScene->setIndirectLight(mIBL->getIndirectLight());
+//    }
+//
+//    for (auto& view : window->mViews) {
+//        if (view.get() != window->mUiView) {
+//            view->getView()->setScene(mScene);
+//        }
+//
+//        auto options = view->getView()->getDynamicResolutionOptions();
+//        options.enabled = false;
+//        view->getView()->setDynamicResolutionOptions(options);
+//        view->getView()->setPostProcessingEnabled(false);
+//        //view->getView()->setScreenSpaceRefractionEnabled(false);
+//    }
 
-        rcm.setLayerMask(rcm.getInstance(lightmapCube->getSolidRenderable()), 0x3, 0x2);
-        rcm.setLayerMask(rcm.getInstance(lightmapCube->getWireFrameRenderable()), 0x3, 0x2);
-
-        // Create the camera mesh
-        mScene->addEntity(cameraCube->getWireFrameRenderable());
-        mScene->addEntity(cameraCube->getSolidRenderable());
-
-        mScene->addEntity(lightmapCube->getWireFrameRenderable());
-        mScene->addEntity(lightmapCube->getSolidRenderable());
-
-        window->mDepthView->getView()->setVisibleLayers(0x4, 0x4);
-        window->mGodView->getView()->setVisibleLayers(0x6, 0x6);
-        window->mOrthoView->getView()->setVisibleLayers(0x6, 0x6);
-
-        // only preserve the color buffer for additional views; depth and stencil can be discarded.
-        window->mDepthView->getView()->setShadowingEnabled(false);
-        window->mGodView->getView()->setShadowingEnabled(false);
-        window->mOrthoView->getView()->setShadowingEnabled(false);
-    }
-
-    loadDirt(config);
-    loadIBL(config);
-    if (mIBL != nullptr) {
-        mIBL->getSkybox()->setLayerMask(0x7, 0x4);
-        mScene->setSkybox(mIBL->getSkybox());
-        mScene->setIndirectLight(mIBL->getIndirectLight());
-    }
-
-    for (auto& view : window->mViews) {
-        if (view.get() != window->mUiView) {
-            view->getView()->setScene(mScene);
-        }
-    }
+    window->mMainView->getView()->setScene(mScene);
 
     setupCallback(mEngine, window->mMainView->getView(), mScene);
 
-    if (imguiCallback) {
-        mImGuiHelper = std::make_unique<ImGuiHelper>(mEngine, window->mUiView->getView(),
-            getRootAssetsPath() + "assets/fonts/Roboto-Medium.ttf");
-        ImGuiIO& io = ImGui::GetIO();
-        #ifdef WIN32
-            SDL_SysWMinfo wmInfo;
-            SDL_VERSION(&wmInfo.version);
-            SDL_GetWindowWMInfo(window->getSDLWindow(), &wmInfo);
-            io.ImeWindowHandle = wmInfo.info.win.window;
-        #endif
-        io.KeyMap[ImGuiKey_Tab] = SDL_SCANCODE_TAB;
-        io.KeyMap[ImGuiKey_LeftArrow] = SDL_SCANCODE_LEFT;
-        io.KeyMap[ImGuiKey_RightArrow] = SDL_SCANCODE_RIGHT;
-        io.KeyMap[ImGuiKey_UpArrow] = SDL_SCANCODE_UP;
-        io.KeyMap[ImGuiKey_DownArrow] = SDL_SCANCODE_DOWN;
-        io.KeyMap[ImGuiKey_PageUp] = SDL_SCANCODE_PAGEUP;
-        io.KeyMap[ImGuiKey_PageDown] = SDL_SCANCODE_PAGEDOWN;
-        io.KeyMap[ImGuiKey_Home] = SDL_SCANCODE_HOME;
-        io.KeyMap[ImGuiKey_End] = SDL_SCANCODE_END;
-        io.KeyMap[ImGuiKey_Insert] = SDL_SCANCODE_INSERT;
-        io.KeyMap[ImGuiKey_Delete] = SDL_SCANCODE_DELETE;
-        io.KeyMap[ImGuiKey_Backspace] = SDL_SCANCODE_BACKSPACE;
-        io.KeyMap[ImGuiKey_Space] = SDL_SCANCODE_SPACE;
-        io.KeyMap[ImGuiKey_Enter] = SDL_SCANCODE_RETURN;
-        io.KeyMap[ImGuiKey_Escape] = SDL_SCANCODE_ESCAPE;
-        io.KeyMap[ImGuiKey_A] = SDL_SCANCODE_A;
-        io.KeyMap[ImGuiKey_C] = SDL_SCANCODE_C;
-        io.KeyMap[ImGuiKey_V] = SDL_SCANCODE_V;
-        io.KeyMap[ImGuiKey_X] = SDL_SCANCODE_X;
-        io.KeyMap[ImGuiKey_Y] = SDL_SCANCODE_Y;
-        io.KeyMap[ImGuiKey_Z] = SDL_SCANCODE_Z;
-        io.SetClipboardTextFn = [](void*, const char* text) {
-            SDL_SetClipboardText(text);
-        };
-        io.GetClipboardTextFn = [](void*) -> const char* {
-            return SDL_GetClipboardText();
-        };
-        io.ClipboardUserData = nullptr;
-    }
+//    if (imguiCallback) {
+//        mImGuiHelper = std::make_unique<ImGuiHelper>(mEngine, window->mUiView->getView(),
+//            getRootAssetsPath() + "assets/fonts/Roboto-Medium.ttf");
+//        ImGuiIO& io = ImGui::GetIO();
+//        #ifdef WIN32
+//            SDL_SysWMinfo wmInfo;
+//            SDL_VERSION(&wmInfo.version);
+//            SDL_GetWindowWMInfo(window->getSDLWindow(), &wmInfo);
+//            io.ImeWindowHandle = wmInfo.info.win.window;
+//        #endif
+//        io.KeyMap[ImGuiKey_Tab] = SDL_SCANCODE_TAB;
+//        io.KeyMap[ImGuiKey_LeftArrow] = SDL_SCANCODE_LEFT;
+//        io.KeyMap[ImGuiKey_RightArrow] = SDL_SCANCODE_RIGHT;
+//        io.KeyMap[ImGuiKey_UpArrow] = SDL_SCANCODE_UP;
+//        io.KeyMap[ImGuiKey_DownArrow] = SDL_SCANCODE_DOWN;
+//        io.KeyMap[ImGuiKey_PageUp] = SDL_SCANCODE_PAGEUP;
+//        io.KeyMap[ImGuiKey_PageDown] = SDL_SCANCODE_PAGEDOWN;
+//        io.KeyMap[ImGuiKey_Home] = SDL_SCANCODE_HOME;
+//        io.KeyMap[ImGuiKey_End] = SDL_SCANCODE_END;
+//        io.KeyMap[ImGuiKey_Insert] = SDL_SCANCODE_INSERT;
+//        io.KeyMap[ImGuiKey_Delete] = SDL_SCANCODE_DELETE;
+//        io.KeyMap[ImGuiKey_Backspace] = SDL_SCANCODE_BACKSPACE;
+//        io.KeyMap[ImGuiKey_Space] = SDL_SCANCODE_SPACE;
+//        io.KeyMap[ImGuiKey_Enter] = SDL_SCANCODE_RETURN;
+//        io.KeyMap[ImGuiKey_Escape] = SDL_SCANCODE_ESCAPE;
+//        io.KeyMap[ImGuiKey_A] = SDL_SCANCODE_A;
+//        io.KeyMap[ImGuiKey_C] = SDL_SCANCODE_C;
+//        io.KeyMap[ImGuiKey_V] = SDL_SCANCODE_V;
+//        io.KeyMap[ImGuiKey_X] = SDL_SCANCODE_X;
+//        io.KeyMap[ImGuiKey_Y] = SDL_SCANCODE_Y;
+//        io.KeyMap[ImGuiKey_Z] = SDL_SCANCODE_Z;
+//        io.SetClipboardTextFn = [](void*, const char* text) {
+//            SDL_SetClipboardText(text);
+//        };
+//        io.GetClipboardTextFn = [](void*) -> const char* {
+//            return SDL_GetClipboardText();
+//        };
+//        io.ClipboardUserData = nullptr;
+//    }
 
     bool mousePressed[3] = { false };
 
@@ -383,13 +391,13 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
 
         // Update the cube distortion matrix used for frustum visualization.
         const Camera* lightmapCamera = window->mMainView->getView()->getDirectionalLightCamera();
-        lightmapCube->mapFrustum(*mEngine, lightmapCamera);
-        cameraCube->mapFrustum(*mEngine, window->mMainCamera);
+        //lightmapCube->mapFrustum(*mEngine, lightmapCamera);
+        //cameraCube->mapFrustum(*mEngine, window->mMainCamera);
 
         // Delay rendering for roughly one monitor refresh interval
         // TODO: Use SDL_GL_SetSwapInterval for proper vsync
         SDL_DisplayMode Mode;
-        int refreshIntervalMS = (SDL_GetDesktopDisplayMode(
+        int refreshIntervalMS = (SDL_GetCurrentDisplayMode(
             SDL_GetWindowDisplayIndex(window->mWindow), &Mode) == 0 && 
             Mode.refresh_rate != 0) ? round(1000.0 / Mode.refresh_rate) : 16;
         SDL_Delay(refreshIntervalMS);
@@ -401,16 +409,18 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
         }
 
         if (renderer->beginFrame(window->getSwapChain())) {
-            for (filament::View* offscreenView : mOffscreenViews) {
-                renderer->render(offscreenView);
-            }
-            for (auto const& view : window->mViews) {
-                renderer->render(view->getView());
-            }
-            if (postRender) {
-                postRender(mEngine, window->mViews[0]->getView(), mScene, renderer);
-            }
+//            for (filament::View* offscreenView : mOffscreenViews) {
+//                renderer->render(offscreenView);
+//            }
+//            for (auto const& view : window->mViews) {
+//                renderer->render(view->getView());
+//            }
+//            if (postRender) {
+//                postRender(mEngine, window->mViews[0]->getView(), mScene, renderer);
+//            }
+            renderer->render(window->mMainView->getView());
             renderer->endFrame();
+
 
         } else {
             ++mSkippedFrames;
@@ -423,8 +433,8 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
 
     cleanupCallback(mEngine, window->mMainView->getView(), mScene);
 
-    cameraCube.reset();
-    lightmapCube.reset();
+    //cameraCube.reset();
+    //lightmapCube.reset();
     window.reset();
 
     mIBL.reset();
@@ -507,7 +517,7 @@ void FilamentApp::loadDirt(const Config& config) {
 }
 
 void FilamentApp::initSDL() {
-    ASSERT_POSTCONDITION(SDL_Init(SDL_INIT_EVENTS) == 0, "SDL_Init Failure");
+    ASSERT_POSTCONDITION(SDL_Init(SDL_INIT_EVERYTHING) == 0, "SDL_Init Failure");
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -517,7 +527,7 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
         : mFilamentApp(filamentApp), mIsHeadless(config.headless) {
     const int x = SDL_WINDOWPOS_CENTERED;
     const int y = SDL_WINDOWPOS_CENTERED;
-    uint32_t windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
+    uint32_t windowFlags = SDL_WINDOW_SHOWN /*| SDL_WINDOW_ALLOW_HIGHDPI*/;
     if (config.resizeable) {
         windowFlags |= SDL_WINDOW_RESIZABLE;
     }
@@ -528,10 +538,10 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
 
     // Even if we're in headless mode, we still need to create a window, otherwise SDL will not poll
     // events.
-    mWindow = SDL_CreateWindow(title.c_str(), x, y, (int) w, (int) h, windowFlags);
-
+    mWindow = SDL_CreateWindow(title.c_str(), x, y, (int) w, (int) h,   windowFlags);
+    //SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES );
     if (config.headless) {
-        mFilamentApp->mEngine = Engine::create(config.backend);
+        mFilamentApp->mEngine = Engine::create();
         mSwapChain = mFilamentApp->mEngine->createSwapChain((uint32_t) w, (uint32_t) h);
         mWidth = w;
         mHeight = h;
@@ -542,12 +552,15 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
         // Create the Engine after the window in case this happens to be a single-threaded platform.
         // For single-threaded platforms, we need to ensure that Filament's OpenGL context is
         // current, rather than the one created by SDL.
-        mFilamentApp->mEngine = Engine::create(config.backend);
 
+
+
+        mFilamentApp->mEngine = Engine::create(config.backend);
         // get the resolved backend
         mBackend = config.backend = mFilamentApp->mEngine->getBackend();
 
         void* nativeSwapChain = nativeWindow;
+
 
 #if defined(__APPLE__)
         ::prepareNativeWindow(mWindow);
@@ -569,8 +582,8 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
 #endif
 
         // Select the feature level to use
-        config.featureLevel = std::min(config.featureLevel,
-                mFilamentApp->mEngine->getSupportedFeatureLevel());
+//        config.featureLevel = std::min(config.featureLevel,
+//                mFilamentApp->mEngine->getSupportedFeatureLevel());
         mFilamentApp->mEngine->setActiveFeatureLevel(config.featureLevel);
 
         mSwapChain = mFilamentApp->mEngine->createSwapChain(nativeSwapChain);
@@ -789,12 +802,12 @@ void FilamentApp::Window::configureCamerasForWindow() {
 
     // To trigger a floating-point exception, users could shrink the window to be smaller than
     // the sidebar. To prevent this we simply clamp the width of the main viewport.
-    const uint32_t mainWidth = splitview ? width : std::max(1, (int) width - sidebar);
+    const uint32_t mainWidth = mHeight;//splitview ? width : std::max(1, (int) width - sidebar);
 
     double near = 0.1;
     double far = 100;
-    mMainCamera->setLensProjection(mFilamentApp->mCameraFocalLength, double(mainWidth) / height, near, far);
-    mDebugCamera->setProjection(45.0, double(width) / height, 0.0625, 4096, Camera::Fov::VERTICAL);
+    mMainCamera->setLensProjection(mFilamentApp->mCameraFocalLength, double(mWidth) / mHeight, near, far);
+    mDebugCamera->setProjection(45.0, double(mWidth) / mHeight, 0.0625, 4096, Camera::Fov::VERTICAL);
 
     // We're in split view when there are more views than just the Main and UI views.
     if (splitview) {
@@ -805,7 +818,7 @@ void FilamentApp::Window::configureCamerasForWindow() {
         mGodView->setViewport  ({ int32_t(vpw), int32_t(vph), width - vpw, height - vph });
         mOrthoView->setViewport({            0, int32_t(vph), vpw,         height - vph });
     } else {
-        mMainView->setViewport({ sidebar, 0, mainWidth, height });
+        mMainView->setViewport({ 0, 0, (uint32_t)mWidth, (uint32_t)mHeight });
     }
     mUiView->setViewport({ 0, 0, width, height });
 }

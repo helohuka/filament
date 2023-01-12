@@ -48,8 +48,10 @@ install(DIRECTORY ${PUBLIC_HDR_DIR}/geometry DESTINATION include)
 # ==================================================================================================
 # Tests
 # ==================================================================================================
+if(FILAMENT_ENABLE_BUILD_TEST)
 if (NOT ANDROID AND NOT WEBGL AND NOT IOS)
     add_executable(test_transcoder tests/test_transcoder.cpp)
     target_link_libraries(test_transcoder PRIVATE ${TARGET} gtest)
     set_target_properties(test_transcoder PROPERTIES FOLDER Tests)
+endif()
 endif()

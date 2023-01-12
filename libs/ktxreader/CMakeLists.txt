@@ -48,7 +48,7 @@ install(DIRECTORY ${PUBLIC_HDR_DIR}/${TARGET} DESTINATION include)
 # ==================================================================================================
 # Tests
 # ==================================================================================================
-
+if(FILAMENT_ENABLE_BUILD_TEST)
 function(add_testfile filename)
     set(source_path "${CMAKE_CURRENT_SOURCE_DIR}/tests/${filename}")
     set(target_path "${PROJECT_BINARY_DIR}/${filename}")
@@ -66,4 +66,5 @@ if (NOT ANDROID AND NOT WEBGL AND NOT IOS)
     add_executable(test_ktxreader tests/test_ktxreader.cpp ${TESTFILES})
     target_link_libraries(test_ktxreader PRIVATE ${TARGET} gtest)
     set_target_properties(test_ktxreader PROPERTIES FOLDER Tests)
+endif()
 endif()

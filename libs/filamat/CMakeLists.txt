@@ -161,29 +161,33 @@ install(TARGETS filamat_lite ARCHIVE DESTINATION lib/${DIST_DIR})
 # ==================================================================================================
 # Tests
 # ==================================================================================================
-project(test_filamat)
-set(TARGET test_filamat)
-set(SRCS
-        tests/test_filamat.cpp
-        tests/test_argBufferFixup.cpp
-        tests/test_includes.cpp)
+if(FILAMENT_ENABLE_BUILD_TEST)
 
-add_executable(${TARGET} ${SRCS})
+    project(test_filamat)
+    set(TARGET test_filamat)
+    set(SRCS
+            tests/test_filamat.cpp
+            tests/test_argBufferFixup.cpp
+            tests/test_includes.cpp)
 
-target_include_directories(${TARGET} PRIVATE src)
+    add_executable(${TARGET} ${SRCS})
 
-target_link_libraries(${TARGET} filamat gtest)
+    target_include_directories(${TARGET} PRIVATE src)
 
-set_target_properties(${TARGET} PROPERTIES FOLDER Tests)
+    target_link_libraries(${TARGET} filamat gtest)
 
-set(TARGET test_filamat_lite)
-set(SRCS
-        tests/test_filamat_lite.cpp)
+    set_target_properties(${TARGET} PROPERTIES FOLDER Tests)
 
-add_executable(${TARGET} ${SRCS})
+    set(TARGET test_filamat_lite)
+    set(SRCS
+            tests/test_filamat_lite.cpp)
 
-target_include_directories(${TARGET} PRIVATE src)
+    add_executable(${TARGET} ${SRCS})
 
-target_link_libraries(${TARGET} filamat_lite gtest)
+    target_include_directories(${TARGET} PRIVATE src)
 
-set_target_properties(${TARGET} PROPERTIES FOLDER Tests)
+    target_link_libraries(${TARGET} filamat_lite gtest)
+
+    set_target_properties(${TARGET} PROPERTIES FOLDER Tests)
+
+endif()

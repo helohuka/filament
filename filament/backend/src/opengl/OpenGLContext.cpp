@@ -273,6 +273,7 @@ OpenGLContext::OpenGLContext() noexcept {
         auto cb = +[](GLenum, GLenum type, GLuint, GLenum severity, GLsizei length,
                 const GLchar* message, const void *) {
             io::ostream* stream = &slog.i;
+
             switch (severity) {
                 case GL_DEBUG_SEVERITY_HIGH:    stream = &slog.e;   break;
                 case GL_DEBUG_SEVERITY_MEDIUM:  stream = &slog.w;   break;
@@ -292,6 +293,7 @@ OpenGLContext::OpenGLContext() noexcept {
                 case GL_DEBUG_TYPE_MARKER:              level = "MARKER: ";              break;
                 default: break;
             }
+
             out << "KHR_debug " << level << std::string_view{ message, size_t(length) } << io::endl;
         };
         glEnable(GL_DEBUG_OUTPUT);

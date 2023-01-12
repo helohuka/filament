@@ -53,8 +53,10 @@ install(DIRECTORY ${PUBLIC_HDR_DIR}/image DESTINATION include)
 # ==================================================================================================
 # Tests
 # ==================================================================================================
+if(FILAMENT_ENABLE_BUILD_TEST)
 if (NOT ANDROID AND NOT WEBGL AND NOT IOS AND NOT FILAMENT_SKIP_SDL2)
     add_executable(test_${TARGET} tests/test_image.cpp)
     target_link_libraries(test_${TARGET} PRIVATE image imageio gtest)
     set_target_properties(test_${TARGET} PROPERTIES FOLDER Tests)
+endif()
 endif()

@@ -21,6 +21,8 @@ struct SDL_Window;
 
 extern "C" void* getNativeWindow(SDL_Window* sdlWindow);
 
+extern "C" void* getNativeSurface(SDL_Window* sdlWindow);
+
 #if defined(__APPLE__)
 // Add a backing CAMetalLayer to the NSView and return the layer.
 extern "C" void* setUpMetalLayer(void* nativeWindow);

@@ -185,6 +185,101 @@ if (WIN32)
 endif()
 ###################################################################################################
 
+
+###################################################################################################
+# Android specific files
+
+
+if(ANDROID)
+
+ file(GLOB SRCS_ANDROID
+         ${SRC_DIR}/atomic/SDL_atomic.c.arm
+         ${SRC_DIR}/atomic/SDL_spinlock.c.arm
+         ${SRC_DIR}/*.c
+         ${SRC_DIR}/audio/*.c
+         ${SRC_DIR}/audio/android/*.c
+         ${SRC_DIR}/audio/dummy/*.c
+         ${SRC_DIR}/audio/aaudio/*.c
+         ${SRC_DIR}/audio/openslES/*.c
+         ${SRC_DIR}/core/android/*.c
+         ${SRC_DIR}/cpuinfo/*.c
+         ${SRC_DIR}/dynapi/*.c
+         ${SRC_DIR}/events/*.c
+         ${SRC_DIR}/file/*.c
+         ${SRC_DIR}/haptic/*.c
+         ${SRC_DIR}/haptic/android/*.c
+         ${SRC_DIR}/hidapi/*.c
+         ${SRC_DIR}/hidapi/android/*.cpp
+         ${SRC_DIR}/joystick/*.c
+         ${SRC_DIR}/joystick/android/*.c
+         ${SRC_DIR}/joystick/hidapi/*.c
+         ${SRC_DIR}/joystick/virtual/*.c
+         ${SRC_DIR}/loadso/dlopen/*.c
+         ${SRC_DIR}/locale/*.c
+         ${SRC_DIR}/locale/android/*.c
+         ${SRC_DIR}/misc/*.c
+         ${SRC_DIR}/misc/android/*.c
+         ${SRC_DIR}/power/*.c
+         ${SRC_DIR}/power/android/*.c
+         ${SRC_DIR}/filesystem/android/*.c
+         ${SRC_DIR}/sensor/*.c
+         ${SRC_DIR}/sensor/android/*.c
+         ${SRC_DIR}/render/*.c
+         ${SRC_DIR}/render/*/*.c
+         ${SRC_DIR}/stdlib/*.c
+         ${SRC_DIR}/thread/*.c
+         ${SRC_DIR}/thread/pthread/*.c
+         ${SRC_DIR}/timer/*.c
+         ${SRC_DIR}/timer/unix/*.c
+         ${SRC_DIR}/video/*.c
+         ${SRC_DIR}/video/android/*.c
+         ${SRC_DIR}/video/yuv2rgb/*.c
+    )
+  list(APPEND SRCS_ANDROID ${ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c)
+
+  set(SRCS ${SRCS} ${SRCS_ANDROID})
+
+     set(SDL_VIDEO_DRIVER_ANDROID 1)
+
+     set(HAVE_SDL_VIDEO TRUE)
+
+     # Core stuff
+     # find_library(ANDROID_DL_LIBRARY dl)
+     # FIXME failing dlopen https://github.com/android-ndk/ndk/issues/929
+     list(APPEND EXTRA_LIBS dl log android)
+
+     #enable gles
+     #if(SDL_OPENGLES)
+     #    set(SDL_VIDEO_OPENGL_EGL 1)
+     #    set(HAVE_OPENGLES TRUE)
+     #    set(SDL_VIDEO_OPENGL_ES 1)
+     #    set(SDL_VIDEO_RENDER_OGL_ES 1)
+     #    set(SDL_VIDEO_OPENGL_ES2 1)
+     #    set(SDL_VIDEO_RENDER_OGL_ES2 1)
+#
+     #    list(APPEND EXTRA_LIBS GLESv1_CM GLESv2)
+     #endif()
+
+     #if(SDL_VULKAN)
+     #    CHECK_C_SOURCE_COMPILES("
+     # #if defined(__ARM_ARCH) && __ARM_ARCH < 7
+     # #error Vulkan doesn't work on this configuration
+     # #endif
+     # int main(int argc, char **argv) { return 0; }
+     # " VULKAN_PASSED_ANDROID_CHECKS)
+     #    if(VULKAN_PASSED_ANDROID_CHECKS)
+     #        set(SDL_VIDEO_VULKAN 1)
+     #        set(HAVE_VULKAN TRUE)
+     #    endif()
+     #endif()
+
+
+  list(APPEND EXTRA_LIBS OpenSLES)
+  #CheckPTHREAD()
+endif()
+
+###################################################################################################
+
 # include directories...
 include_directories(
     ${PUBLIC_HDR_DIR}
@@ -231,3 +326,5 @@ else()
     #        implementation for aarch64 on certain targets. ideally, we would just std::atomic
     target_compile_definitions(${TARGET} PRIVATE SDL_ATOMIC_DISABLED=1)
 endif()
+
+

@@ -76,7 +76,7 @@ public:
     void run(const Config& config, SetupCallback setup, CleanupCallback cleanup,
             ImGuiCallback imgui = ImGuiCallback(), PreRenderCallback preRender = PreRenderCallback(),
             PostRenderCallback postRender = PostRenderCallback(),
-            size_t width = 1024, size_t height = 640);
+            size_t width = 720, size_t height = 1280);
 
     filament::Material const* getDefaultMaterial() const noexcept { return mDefaultMaterial; }
     filament::Material const* getTransparentMaterial() const noexcept { return mTransparentMaterial; }

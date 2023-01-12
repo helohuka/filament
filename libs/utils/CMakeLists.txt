@@ -133,7 +133,7 @@ endif()
 # ==================================================================================================
 # Test executables
 # ==================================================================================================
-
+if(FILAMENT_ENABLE_BUILD_TEST)
 set(TEST_SRCS
         test/test_algorithm.cpp
         test/test_Allocators.cpp
@@ -172,11 +172,11 @@ add_executable(test_${TARGET} ${TEST_SRCS})
 
 target_link_libraries(test_${TARGET} PRIVATE gtest utils tsl math)
 set_target_properties(test_${TARGET} PROPERTIES FOLDER Tests)
-
+endif()
 # ==================================================================================================
 # Benchmarks
 # ==================================================================================================
-
+if(FILAMENT_ENABLE_BUILD_BENCHMARK)
 if (NOT WEBGL)
 
     add_library(benchmark_${TARGET}_callee SHARED benchmark/benchmark_callee.cpp)
@@ -197,4 +197,5 @@ if (NOT WEBGL)
 
     set_target_properties(benchmark_${TARGET} PROPERTIES FOLDER Benchmarks)
 
+endif()
 endif()

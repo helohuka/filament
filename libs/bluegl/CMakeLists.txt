@@ -51,6 +51,7 @@ endif()
 install(TARGETS ${TARGET} ARCHIVE DESTINATION lib/${DIST_DIR})
 
 # Build the tests...
+if(FILAMENT_ENABLE_BUILD_TEST)
 add_executable(test_${TARGET}
     tests/OpenGLSupport.cpp
     tests/OpenGLSupport.hpp
@@ -64,3 +65,4 @@ endif()
 target_link_libraries(test_${TARGET} LINK_PUBLIC ${TARGET})
 target_link_libraries(test_${TARGET} LINK_PUBLIC gtest)
 set_target_properties(test_${TARGET} PROPERTIES FOLDER Tests)
+endif()
