@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-#include <filamentapp/FilamentApp.h>
+#include <gamedriver/FilamentApp.h>
 
 #if defined(WIN32)
 #    include <SDL_syswm.h>
@@ -46,12 +46,12 @@
 
 #include <filagui/ImGuiHelper.h>
 
-#include <filamentapp/Cube.h>
-#include <filamentapp/NativeWindowHelper.h>
+#include <gamedriver/Cube.h>
+#include <gamedriver/NativeWindowHelper.h>
 
 #include <stb_image.h>
 
-#include "generated/resources/filamentapp.h"
+#include "generated/resources/gamedriver.h"
 
 using namespace filament;
 using namespace filagui;
@@ -84,17 +84,17 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
             new FilamentApp::Window(this, config, config.title, width, height));
 
     mDepthMaterial = Material::Builder()
-            .package(FILAMENTAPP_DEPTHVISUALIZER_DATA, FILAMENTAPP_DEPTHVISUALIZER_SIZE)
+            .package(GAMEDRIVER_DEPTHVISUALIZER_DATA, GAMEDRIVER_DEPTHVISUALIZER_SIZE)
             .build(*mEngine);
 
     mDepthMI = mDepthMaterial->createInstance();
 
     mDefaultMaterial = Material::Builder()
-            .package(FILAMENTAPP_AIDEFAULTMAT_DATA, FILAMENTAPP_AIDEFAULTMAT_SIZE)
+            .package(GAMEDRIVER_AIDEFAULTMAT_DATA, GAMEDRIVER_AIDEFAULTMAT_SIZE)
             .build(*mEngine);
 
     mTransparentMaterial = Material::Builder()
-            .package(FILAMENTAPP_TRANSPARENTCOLOR_DATA, FILAMENTAPP_TRANSPARENTCOLOR_SIZE)
+            .package(GAMEDRIVER_TRANSPARENTCOLOR_DATA, GAMEDRIVER_TRANSPARENTCOLOR_SIZE)
             .build(*mEngine);
 
     std::unique_ptr<Cube> cameraCube(new Cube(*mEngine, mTransparentMaterial, {1,0,0}));
