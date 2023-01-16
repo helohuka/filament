@@ -50,6 +50,8 @@ set(LIBS
         stb
         utils
         SDL2-static
+        Luau.Compiler
+        Luau.VM
 )
 
 set(MATERIAL_SRCS
