@@ -705,7 +705,7 @@ if (FILAMENT_SUPPORTS_VULKAN)
     add_subdirectory(${EXTERNAL}/vkmemalloc/tnt)
 endif()
 
-set(FILAMENT_SAMPLES_BINARY_DIR ${PROJECT_BINARY_DIR}/samples)
+#set(FILAMENT_SAMPLES_BINARY_DIR ${PROJECT_BINARY_DIR}/samples)
 
 if (WEBGL)
     add_subdirectory(web/filament-js)
@@ -716,16 +716,16 @@ if (IS_HOST_PLATFORM)
     if (FILAMENT_SUPPORTS_OPENGL)
         add_subdirectory(${LIBRARIES}/bluegl)
     endif()
-    if (NOT FILAMENT_SKIP_SDL2)
-      add_subdirectory(${LIBRARIES}/filamentapp)
-    endif()
+    #if (NOT FILAMENT_SKIP_SDL2)
+    #  add_subdirectory(${LIBRARIES}/filamentapp)
+    #endif()
     add_subdirectory(${LIBRARIES}/imageio)
 
-    add_subdirectory(${FILAMENT}/samples)
+    #add_subdirectory(${FILAMENT}/samples)
 
     add_subdirectory(${EXTERNAL}/libassimp/tnt)
     add_subdirectory(${EXTERNAL}/libpng/tnt)
-    add_subdirectory(${EXTERNAL}/libsdl2/tnt)
+    #add_subdirectory(${EXTERNAL}/libsdl2/tnt)
     add_subdirectory(${EXTERNAL}/libz/tnt)
     add_subdirectory(${EXTERNAL}/tinyexr/tnt)
 
@@ -750,6 +750,22 @@ if(ANDROID)
 	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/apps/android/gamedriver)
     add_subdirectory(${LIBRARIES}/gamedriver)
     add_subdirectory(${LIBRARIES}/resources)
+elseif(WIN32)
+
+
+if (MSVC)
+    set(COMPILER_FLAGS $<$<CONFIG:Release>:/fp:fast>)
+else()
+    set(COMPILER_FLAGS
+            -Wno-extern-c-compat
+            $<$<NOT:$<PLATFORM_ID:Linux>>:-Wno-address-of-packed-member>
+            $<$<CONFIG:Release>:-ffast-math>)
+endif()
+
+    add_subdirectory(${EXTERNAL}/libsdl2)
+	add_subdirectory(${LIBRARIES}/gamedriver)
+	add_subdirectory(${LIBRARIES}/resources)
+	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/apps/windows/launcher)
 endif()
 
 # Generate exported executables for cross-compiled builds (Android, WebGL, and iOS)

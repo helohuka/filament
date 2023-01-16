@@ -28,8 +28,8 @@
 
 #include <utils/EntityManager.h>
 
-#include <filamentapp/Config.h>
-#include <filamentapp/FilamentApp.h>
+#include <gamedriver/Config.h>
+#include <gamedriver/FilamentApp.h>
 
 #include <cmath>
 

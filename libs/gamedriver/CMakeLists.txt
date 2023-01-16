@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.19)
 project(gamedriver C ASM)
 
-#if (FILAMENT_SKIP_SAMPLES)
-#    return()
-#endif()
 
 set(TARGET gamedriver)
 set(PUBLIC_HDR_DIR include)
@@ -49,8 +46,7 @@ set(LIBS
         image
         imgui
         ktxreader
-        math
-        sdl2
+        math 
         stb
         utils
 )
@@ -73,7 +69,7 @@ endif()
 
 if (WIN32)
     list(APPEND SRCS src/NativeWindowHelperWindows.cpp)
-    list(APPEND LIBS sdl2main)
+    list(APPEND LIBS SDL2main)
 endif()
 
 if (ANDROID)
