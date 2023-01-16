@@ -1,35 +1,8 @@
-/*
- * Copyright (C) 2017 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+
 
 #include <jni.h>
 #include <SDL.h>
 #include "private/backend/VirtualMachineEnv.h"
-
-//JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-//    JNIEnv* env;
-//    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
-//        return -1;
-//    }
-//
-//    // This must be called when the library is loaded. We need this to get a reference to the
-//    // global VM
-//    ::filament::VirtualMachineEnv::JNI_OnLoad(vm);
-//
-//    return JNI_VERSION_1_6;
-//}
 #include <filament/Camera.h>
 #include <filament/Engine.h>
 #include <filament/IndexBuffer.h>
@@ -45,7 +18,7 @@
 #include <utils/EntityManager.h>
 
 #include "gamedriver/Config.h"
-#include "gamedriver/FilamentApp.h"
+#include "gamedriver/GameDriver.h"
 
 #include <cmath>
 
@@ -124,7 +97,7 @@ int SDL_main(int argc, char* argv[]) {
         utils::EntityManager::get().destroy(app.camera);
     };
 
-    FilamentApp::get().animate([&app](Engine* engine, View* view, double now) {
+    GameDriver::get().animate([&app](Engine* engine, View* view, double now) {
 
 #if 0
         engine->destroy(app.vb);
@@ -167,7 +140,7 @@ int SDL_main(int argc, char* argv[]) {
                          filament::math::mat4f::rotation(now, filament::math::float3{ 0, 0, 1 }));
     });
 
-    FilamentApp::get().run(config, setup, cleanup);
+    GameDriver::get().run(config, setup, cleanup);
 
     return 0;
 }

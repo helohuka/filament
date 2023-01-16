@@ -17,7 +17,7 @@ set(MATERIAL_DIR  "${GENERATION_ROOT}/generated/material")
 set(PUBLIC_HDRS
         include/gamedriver/Config.h
         include/gamedriver/Cube.h
-        include/gamedriver/FilamentApp.h
+        include/gamedriver/GameDriver.h
         include/gamedriver/IBL.h
         include/gamedriver/IcoSphere.h
         include/gamedriver/MeshAssimp.h
@@ -27,7 +27,7 @@ set(PUBLIC_HDRS
 
 set(SRCS
         src/Cube.cpp
-        src/FilamentApp.cpp
+        src/GameDriver.cpp
         src/IBL.cpp
         src/IcoSphere.cpp
         src/MeshAssimp.cpp
@@ -49,6 +49,7 @@ set(LIBS
         math 
         stb
         utils
+        SDL2-static
 )
 
 set(MATERIAL_SRCS

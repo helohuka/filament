@@ -6,7 +6,8 @@ cmake_minimum_required(VERSION 3.19)
 # ==================================================================================================
 # Project declaration
 # ==================================================================================================
-project(TNT)
+#project(TNT) 更换项目根名
+project(GameDriver)
 
 # ==================================================================================================
 # Options
@@ -17,7 +18,8 @@ option(FILAMENT_USE_SWIFTSHADER "Compile Filament against SwiftShader" OFF)
 
 option(FILAMENT_ENABLE_LTO "Enable link-time optimizations if supported by the compiler" OFF)
 
-option(FILAMENT_SKIP_SAMPLES "Don't build samples" OFF)
+#去掉Filament自带的例子
+#option(FILAMENT_SKIP_SAMPLES "Don't build samples" OFF)
 
 option(FILAMENT_SUPPORTS_XCB "Include XCB support in Linux builds" ON)
 
@@ -27,7 +29,8 @@ option(FILAMENT_SUPPORTS_EGL_ON_LINUX "Use EGL for OpenGL in Linux builds" OFF)
 
 option(FILAMENT_SUPPORTS_WAYLAND "Include Wayland support in Linux builds" OFF)
 
-option(FILAMENT_SKIP_SDL2 "Skip dependencies of SDL2, and SDL2" OFF)
+#所有平台都是用SDL作为平台抽象层
+#option(FILAMENT_SKIP_SDL2 "Skip dependencies of SDL2, and SDL2" OFF)
 
 option(FILAMENT_LINUX_IS_MOBILE "Treat Linux as Mobile" OFF)
 
@@ -58,6 +61,8 @@ set(FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB "4" CACHE STRING
 set(FILAMENT_METAL_HANDLE_ARENA_SIZE_IN_MB "8" CACHE STRING
     "Size of the Metal handle arena, default 8."
 )
+
+set(CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR}/installed/${CMAKE_GENERATOR_PLATFORM})
 
 # ==================================================================================================
 # CMake policies
@@ -215,7 +220,7 @@ endif()
 # ==================================================================================================
 #  Paths
 # ==================================================================================================
-# Where our external libs are
+# Where our external OFFlibs are
 set(EXTERNAL ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 
 # Where our libraries are
@@ -686,6 +691,13 @@ add_subdirectory(${EXTERNAL}/jsmn/tnt)
 add_subdirectory(${EXTERNAL}/stb/tnt)
 add_subdirectory(${EXTERNAL}/getopt)
 
+add_subdirectory(${EXTERNAL}/libsdl2)
+set_target_properties(SDL2 PROPERTIES FOLDER ThirdParty/libsdl2)
+set_target_properties(SDL2main PROPERTIES FOLDER ThirdParty/libsdl2)
+set_target_properties(SDL2-static PROPERTIES FOLDER ThirdParty/libsdl2)
+set_target_properties(sdl_headers_copy PROPERTIES FOLDER ThirdParty/libsdl2)
+
+
 if (FILAMENT_BUILD_FILAMAT OR IS_HOST_PLATFORM)
     # spirv-tools must come before filamat, as filamat relies on the presence of the
     # spirv-tools_SOURCE_DIR variable.
@@ -745,24 +757,13 @@ if (IS_HOST_PLATFORM)
 endif()
 
 if(ANDROID)
-    add_subdirectory(${EXTERNAL}/libsdl2/tnt)
+
     add_subdirectory(${EXTERNAL}/libassimp/tnt)
 	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/apps/android/gamedriver)
     add_subdirectory(${LIBRARIES}/gamedriver)
     add_subdirectory(${LIBRARIES}/resources)
 elseif(WIN32)
-
-
-if (MSVC)
-    set(COMPILER_FLAGS $<$<CONFIG:Release>:/fp:fast>)
-else()
-    set(COMPILER_FLAGS
-            -Wno-extern-c-compat
-            $<$<NOT:$<PLATFORM_ID:Linux>>:-Wno-address-of-packed-member>
-            $<$<CONFIG:Release>:-ffast-math>)
-endif()
-
-    add_subdirectory(${EXTERNAL}/libsdl2)
+    #add_subdirectory(${EXTERNAL}/libsdl2)
 	add_subdirectory(${LIBRARIES}/gamedriver)
 	add_subdirectory(${LIBRARIES}/resources)
 	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/apps/windows/launcher)

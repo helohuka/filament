@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-#include <gamedriver/FilamentApp.h>
+#include <gamedriver/GameDriver.h>
 
 #if defined(WIN32)
 #    include <SDL_syswm.h>
@@ -58,30 +58,30 @@ using namespace filagui;
 using namespace filament::math;
 using namespace utils;
 
-FilamentApp& FilamentApp::get() {
-    static FilamentApp filamentApp;
+GameDriver& GameDriver::get() {
+    static GameDriver filamentApp;
     return filamentApp;
 }
 
-FilamentApp::FilamentApp() {
+GameDriver::GameDriver() {
     initSDL();
 }
 
-FilamentApp::~FilamentApp() {
+GameDriver::~GameDriver() {
     SDL_Quit();
 }
 
-View* FilamentApp::getGuiView() const noexcept {
+View* GameDriver::getGuiView() const noexcept {
     return mImGuiHelper->getView();
 }
 
-void FilamentApp::run(const Config& config, SetupCallback setupCallback,
+void GameDriver::run(const Config& config, SetupCallback setupCallback,
         CleanupCallback cleanupCallback, ImGuiCallback imguiCallback,
         PreRenderCallback preRender, PostRenderCallback postRender,
         size_t width, size_t height) {
     mWindowTitle = config.title;
-    std::unique_ptr<FilamentApp::Window> window(
-            new FilamentApp::Window(this, config, config.title, width, height));
+    std::unique_ptr<GameDriver::Window> window(
+            new GameDriver::Window(this, config, config.title, width, height));
 
     mDepthMaterial = Material::Builder()
             .package(GAMEDRIVER_DEPTHVISUALIZER_DATA, GAMEDRIVER_DEPTHVISUALIZER_SIZE)
@@ -450,12 +450,12 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
 #define RELATIVE_ASSET_PATH "."
 #endif
 
-const utils::Path& FilamentApp::getRootAssetsPath() {
+const utils::Path& GameDriver::getRootAssetsPath() {
     static const utils::Path root = utils::Path::getCurrentExecutable().getParent() + RELATIVE_ASSET_PATH;
     return root;
 }
 
-void FilamentApp::loadIBL(const Config& config) {
+void GameDriver::loadIBL(const Config& config) {
     if (!config.iblDirectory.empty()) {
         Path iblPath(config.iblDirectory);
 
@@ -482,7 +482,7 @@ void FilamentApp::loadIBL(const Config& config) {
     }
 }
 
-void FilamentApp::loadDirt(const Config& config) {
+void GameDriver::loadDirt(const Config& config) {
     if (!config.dirt.empty()) {
         Path dirtPath(config.dirt);
 
@@ -513,15 +513,15 @@ void FilamentApp::loadDirt(const Config& config) {
     }
 }
 
-void FilamentApp::initSDL() {
+void GameDriver::initSDL() {
     ASSERT_POSTCONDITION(SDL_Init(SDL_INIT_EVERYTHING) == 0, "SDL_Init Failure");
 }
 
 // ------------------------------------------------------------------------------------------------
 
-FilamentApp::Window::Window(FilamentApp* filamentApp,
+GameDriver::Window::Window(GameDriver* filamentApp,
         const Config& config, std::string title, size_t w, size_t h)
-        : mFilamentApp(filamentApp), mIsHeadless(config.headless) {
+        : mGameDriver(filamentApp), mIsHeadless(config.headless) {
     const int x = SDL_WINDOWPOS_CENTERED;
     const int y = SDL_WINDOWPOS_CENTERED;
     uint32_t windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
@@ -535,11 +535,11 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
 
     // Even if we're in headless mode, we still need to create a window, otherwise SDL will not poll
     // events.
-    mWindow = SDL_CreateWindow(title.c_str(), x, y, (int) w, (int) h, 0);
+    mWindow = SDL_CreateWindow(title.c_str(), x, y, (int) w, (int) h, windowFlags);
 
     if (config.headless) {
-        mFilamentApp->mEngine = Engine::create(config.backend);
-        mSwapChain = mFilamentApp->mEngine->createSwapChain((uint32_t) w, (uint32_t) h);
+        mGameDriver->mEngine = Engine::create(config.backend);
+        mSwapChain = mGameDriver->mEngine->createSwapChain((uint32_t) w, (uint32_t) h);
         mWidth = w;
         mHeight = h;
     } else {
@@ -549,10 +549,10 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
         // Create the Engine after the window in case this happens to be a single-threaded platform.
         // For single-threaded platforms, we need to ensure that Filament's OpenGL context is
         // current, rather than the one created by SDL.
-        mFilamentApp->mEngine = Engine::create(config.backend);
+        mGameDriver->mEngine = Engine::create(config.backend);
 
         // get the resolved backend
-        mBackend = config.backend = mFilamentApp->mEngine->getBackend();
+        mBackend = config.backend = mGameDriver->mEngine->getBackend();
 
         void* nativeSwapChain = nativeWindow;
 
@@ -577,19 +577,19 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
 
         // Select the feature level to use
         //config.featureLevel = std::min(config.featureLevel,
-        //        mFilamentApp->mEngine->getSupportedFeatureLevel());
-        mFilamentApp->mEngine->setActiveFeatureLevel(config.featureLevel);
+        //        mGameDriver->mEngine->getSupportedFeatureLevel());
+        mGameDriver->mEngine->setActiveFeatureLevel(config.featureLevel);
 
-        mSwapChain = mFilamentApp->mEngine->createSwapChain(nativeSwapChain);
+        mSwapChain = mGameDriver->mEngine->createSwapChain(nativeSwapChain);
     }
-    mRenderer = mFilamentApp->mEngine->createRenderer();
+    mRenderer = mGameDriver->mEngine->createRenderer();
 
     // create cameras
     utils::EntityManager& em = utils::EntityManager::get();
     em.create(3, mCameraEntities);
-    mCameras[0] = mMainCamera = mFilamentApp->mEngine->createCamera(mCameraEntities[0]);
-    mCameras[1] = mDebugCamera = mFilamentApp->mEngine->createCamera(mCameraEntities[1]);
-    mCameras[2] = mOrthoCamera = mFilamentApp->mEngine->createCamera(mCameraEntities[2]);
+    mCameras[0] = mMainCamera = mGameDriver->mEngine->createCamera(mCameraEntities[0]);
+    mCameras[1] = mDebugCamera = mGameDriver->mEngine->createCamera(mCameraEntities[1]);
+    mCameras[2] = mOrthoCamera = mGameDriver->mEngine->createCamera(mCameraEntities[2]);
 
     // set exposure
     for (auto camera : mCameras) {
@@ -637,21 +637,21 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
     mMainCamera->lookAt({4, 0, -4}, {0, 0, -4}, {0, 1, 0});
 }
 
-FilamentApp::Window::~Window() {
+GameDriver::Window::~Window() {
     mViews.clear();
     utils::EntityManager& em = utils::EntityManager::get();
     for (auto e : mCameraEntities) {
-        mFilamentApp->mEngine->destroyCameraComponent(e);
+        mGameDriver->mEngine->destroyCameraComponent(e);
         em.destroy(e);
     }
-    mFilamentApp->mEngine->destroy(mRenderer);
-    mFilamentApp->mEngine->destroy(mSwapChain);
+    mGameDriver->mEngine->destroy(mRenderer);
+    mGameDriver->mEngine->destroy(mSwapChain);
     SDL_DestroyWindow(mWindow);
     delete mMainCameraMan;
     delete mDebugCameraMan;
 }
 
-void FilamentApp::Window::mouseDown(int button, ssize_t x, ssize_t y) {
+void GameDriver::Window::mouseDown(int button, ssize_t x, ssize_t y) {
     fixupMouseCoordinatesForHdpi(x, y);
     y = mHeight - y;
     for (auto const& view : mViews) {
@@ -663,7 +663,7 @@ void FilamentApp::Window::mouseDown(int button, ssize_t x, ssize_t y) {
     }
 }
 
-void FilamentApp::Window::mouseWheel(ssize_t x) {
+void GameDriver::Window::mouseWheel(ssize_t x) {
     if (mMouseEventTarget) {
         mMouseEventTarget->mouseWheel(x);
     } else {
@@ -676,7 +676,7 @@ void FilamentApp::Window::mouseWheel(ssize_t x) {
     }
 }
 
-void FilamentApp::Window::mouseUp(ssize_t x, ssize_t y) {
+void GameDriver::Window::mouseUp(ssize_t x, ssize_t y) {
     fixupMouseCoordinatesForHdpi(x, y);
     if (mMouseEventTarget) {
         y = mHeight - y;
@@ -685,7 +685,7 @@ void FilamentApp::Window::mouseUp(ssize_t x, ssize_t y) {
     }
 }
 
-void FilamentApp::Window::mouseMoved(ssize_t x, ssize_t y) {
+void GameDriver::Window::mouseMoved(ssize_t x, ssize_t y) {
     fixupMouseCoordinatesForHdpi(x, y);
     y = mHeight - y;
     if (mMouseEventTarget) {
@@ -695,7 +695,7 @@ void FilamentApp::Window::mouseMoved(ssize_t x, ssize_t y) {
     mLastY = y;
 }
 
-void FilamentApp::Window::keyDown(SDL_Scancode key) {
+void GameDriver::Window::keyDown(SDL_Scancode key) {
     auto& eventTarget = mKeyEventTarget[key];
 
     // keyDown events can be sent multiple times per key (for key repeat)
@@ -725,7 +725,7 @@ void FilamentApp::Window::keyDown(SDL_Scancode key) {
     }
 }
 
-void FilamentApp::Window::keyUp(SDL_Scancode key) {
+void GameDriver::Window::keyUp(SDL_Scancode key) {
     auto& eventTarget = mKeyEventTarget[key];
     if (!eventTarget) {
         return;
@@ -734,7 +734,7 @@ void FilamentApp::Window::keyUp(SDL_Scancode key) {
     eventTarget = nullptr;
 }
 
-void FilamentApp::Window::fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const {
+void GameDriver::Window::fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const {
     int dw, dh, ww, wh;
     SDL_GL_GetDrawableSize(mWindow, &dw, &dh);
     SDL_GetWindowSize(mWindow, &ww, &wh);
@@ -742,7 +742,7 @@ void FilamentApp::Window::fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) c
     y = y * dh / wh;
 }
 
-void FilamentApp::Window::resize() {
+void GameDriver::Window::resize() {
     void* nativeWindow = ::getNativeWindow(mWindow);
 
 #if defined(__APPLE__)
@@ -761,14 +761,14 @@ void FilamentApp::Window::resize() {
 
     configureCamerasForWindow();
 
-    // Call the resize callback, if this FilamentApp has one. This must be done after
+    // Call the resize callback, if this GameDriver has one. This must be done after
     // configureCamerasForWindow, so the viewports are correct.
-    if (mFilamentApp->mResize) {
-        mFilamentApp->mResize(mFilamentApp->mEngine, mMainView->getView());
+    if (mGameDriver->mResize) {
+        mGameDriver->mResize(mGameDriver->mEngine, mMainView->getView());
     }
 }
 
-void FilamentApp::Window::configureCamerasForWindow() {
+void GameDriver::Window::configureCamerasForWindow() {
     float dpiScaleX = 1.0f;
     float dpiScaleY = 1.0f;
 
@@ -790,7 +790,7 @@ void FilamentApp::Window::configureCamerasForWindow() {
 
     const float3 at(0, 0, -4);
     const double ratio = double(height) / double(width);
-    const int sidebar = mFilamentApp->mSidebarWidth * dpiScaleX;
+    const int sidebar = mGameDriver->mSidebarWidth * dpiScaleX;
 
     const bool splitview = mViews.size() > 2;
 
@@ -800,7 +800,7 @@ void FilamentApp::Window::configureCamerasForWindow() {
 
     double near = 0.1;
     double far = 100;
-    mMainCamera->setLensProjection(mFilamentApp->mCameraFocalLength, double(mainWidth) / height, near, far);
+    mMainCamera->setLensProjection(mGameDriver->mCameraFocalLength, double(mainWidth) / height, near, far);
     mDebugCamera->setProjection(45.0, double(width) / height, 0.0625, 4096, Camera::Fov::VERTICAL);
 
     // We're in split view when there are more views than just the Main and UI views.
@@ -819,17 +819,17 @@ void FilamentApp::Window::configureCamerasForWindow() {
 
 // ------------------------------------------------------------------------------------------------
 
-FilamentApp::CView::CView(Renderer& renderer, std::string name)
+GameDriver::CView::CView(Renderer& renderer, std::string name)
         : engine(*renderer.getEngine()), mName(name) {
     view = engine.createView();
     view->setName(name.c_str());
 }
 
-FilamentApp::CView::~CView() {
+GameDriver::CView::~CView() {
     engine.destroy(view);
 }
 
-void FilamentApp::CView::setViewport(Viewport const& viewport) {
+void GameDriver::CView::setViewport(Viewport const& viewport) {
     mViewport = viewport;
     view->setViewport(viewport);
     if (mCameraManipulator) {
@@ -837,31 +837,31 @@ void FilamentApp::CView::setViewport(Viewport const& viewport) {
     }
 }
 
-void FilamentApp::CView::mouseDown(int button, ssize_t x, ssize_t y) {
+void GameDriver::CView::mouseDown(int button, ssize_t x, ssize_t y) {
     if (mCameraManipulator) {
         mCameraManipulator->grabBegin(x, y, button == 3);
     }
 }
 
-void FilamentApp::CView::mouseUp(ssize_t x, ssize_t y) {
+void GameDriver::CView::mouseUp(ssize_t x, ssize_t y) {
     if (mCameraManipulator) {
         mCameraManipulator->grabEnd();
     }
 }
 
-void FilamentApp::CView::mouseMoved(ssize_t x, ssize_t y) {
+void GameDriver::CView::mouseMoved(ssize_t x, ssize_t y) {
     if (mCameraManipulator) {
         mCameraManipulator->grabUpdate(x, y);
     }
 }
 
-void FilamentApp::CView::mouseWheel(ssize_t x) {
+void GameDriver::CView::mouseWheel(ssize_t x) {
     if (mCameraManipulator) {
         mCameraManipulator->scroll(0, 0, x);
     }
 }
 
-bool FilamentApp::manipulatorKeyFromKeycode(SDL_Scancode scancode, CameraManipulator::Key& key) {
+bool GameDriver::manipulatorKeyFromKeycode(SDL_Scancode scancode, CameraManipulator::Key& key) {
     switch (scancode) {
         case SDL_SCANCODE_W:
             key = CameraManipulator::Key::FORWARD;
@@ -886,7 +886,7 @@ bool FilamentApp::manipulatorKeyFromKeycode(SDL_Scancode scancode, CameraManipul
     }
 }
 
-void FilamentApp::CView::keyUp(SDL_Scancode scancode) {
+void GameDriver::CView::keyUp(SDL_Scancode scancode) {
     if (mCameraManipulator) {
         CameraManipulator::Key key;
         if (manipulatorKeyFromKeycode(scancode, key)) {
@@ -895,7 +895,7 @@ void FilamentApp::CView::keyUp(SDL_Scancode scancode) {
     }
 }
 
-void FilamentApp::CView::keyDown(SDL_Scancode scancode) {
+void GameDriver::CView::keyDown(SDL_Scancode scancode) {
     if (mCameraManipulator) {
         CameraManipulator::Key key;
         if (manipulatorKeyFromKeycode(scancode, key)) {
@@ -904,7 +904,7 @@ void FilamentApp::CView::keyDown(SDL_Scancode scancode) {
     }
 }
 
-bool FilamentApp::CView::intersects(ssize_t x, ssize_t y) {
+bool GameDriver::CView::intersects(ssize_t x, ssize_t y) {
     if (x >= mViewport.left && x < mViewport.left + mViewport.width)
         if (y >= mViewport.bottom && y < mViewport.bottom + mViewport.height)
             return true;
@@ -912,14 +912,14 @@ bool FilamentApp::CView::intersects(ssize_t x, ssize_t y) {
     return false;
 }
 
-void FilamentApp::CView::setCameraManipulator(CameraManipulator* cm) {
+void GameDriver::CView::setCameraManipulator(CameraManipulator* cm) {
     mCameraManipulator = cm;
 }
 
-void FilamentApp::CView::setCamera(Camera* camera) {
+void GameDriver::CView::setCamera(Camera* camera) {
     view->setCamera(camera);
 }
 
-void FilamentApp::GodView::setGodCamera(Camera* camera) {
+void GameDriver::GodView::setGodCamera(Camera* camera) {
     getView()->setDebugCamera(camera);
 }

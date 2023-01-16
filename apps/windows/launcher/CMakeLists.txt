@@ -4,7 +4,6 @@ project(launcher C ASM)
 
 add_executable(launcher src/main.cpp)
 
-target_include_libraries()
 
 # Ordering is significant in the following list. The PRIVATE qualifier prevents transitive deps.
 target_link_libraries(launcher

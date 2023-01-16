@@ -31,6 +31,7 @@ install(TARGETS ${TARGET} RUNTIME DESTINATION bin)
 # ==================================================================================================
 # Tests
 # ==================================================================================================
+if (FILAMENT_ENABLE_BUILD_TEST)
 if (NOT ANDROID)
     add_executable(test_${TARGET}
             src/GlslMinify.cpp
@@ -39,4 +40,5 @@ if (NOT ANDROID)
     target_include_directories(test_${TARGET} PRIVATE src)
     target_link_libraries(test_${TARGET} PRIVATE gtest)
     set_target_properties(test_${TARGET} PROPERTIES FOLDER Tests)
+endif()
 endif()

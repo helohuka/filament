@@ -49,7 +49,7 @@ class ImGuiHelper;
 class IBL;
 class MeshAssimp;
 
-class FilamentApp {
+class GameDriver {
 public:
     using SetupCallback = std::function<void(filament::Engine*, filament::View*, filament::Scene*)>;
     using CleanupCallback =
@@ -63,9 +63,9 @@ public:
     using ResizeCallback = std::function<void(filament::Engine*, filament::View*)>;
     using DropCallback = std::function<void(std::string)>;
 
-    static FilamentApp& get();
+    static GameDriver& get();
 
-    ~FilamentApp();
+    ~GameDriver();
 
     void animate(AnimCallback animation) { mAnimation = animation; }
 
@@ -94,10 +94,10 @@ public:
 
     size_t getSkippedFrameCount() const { return mSkippedFrames; }
 
-    FilamentApp(const FilamentApp& rhs) = delete;
-    FilamentApp(FilamentApp&& rhs) = delete;
-    FilamentApp& operator=(const FilamentApp& rhs) = delete;
-    FilamentApp& operator=(FilamentApp&& rhs) = delete;
+    GameDriver(const GameDriver& rhs) = delete;
+    GameDriver(GameDriver&& rhs) = delete;
+    GameDriver& operator=(const GameDriver& rhs) = delete;
+    GameDriver& operator=(GameDriver&& rhs) = delete;
 
     /**
      * Returns the path to the Filament root for loading assets. This is determined from the
@@ -109,7 +109,7 @@ public:
     static const utils::Path& getRootAssetsPath();
 
 private:
-    FilamentApp();
+    GameDriver();
 
     using CameraManipulator = filament::camutils::Manipulator<float>;
 
@@ -155,9 +155,9 @@ private:
     };
 
     class Window {
-        friend class FilamentApp;
+        friend class GameDriver;
     public:
-        Window(FilamentApp* filamentApp, const Config& config,
+        Window(GameDriver* filamentApp, const Config& config,
                std::string title, size_t w, size_t h);
         virtual ~Window();
 
@@ -180,7 +180,7 @@ private:
         void configureCamerasForWindow();
         void fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const;
 
-        FilamentApp* const mFilamentApp = nullptr;
+        GameDriver* const mGameDriver = nullptr;
         const bool mIsHeadless;
 
         SDL_Window* mWindow = nullptr;

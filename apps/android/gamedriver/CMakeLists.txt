@@ -25,7 +25,7 @@ target_link_libraries(main
     PRIVATE jnigraphics
     PRIVATE utils
     PRIVATE camutils
-    PRIVATE sdl2
+    PRIVATE SDL2-static
     PRIVATE gamedriver
     PRIVATE sample-resources
     # libgeometry is PUBLIC because gltfio uses it.
@@ -45,3 +45,4 @@ target_include_directories(main PRIVATE
         ../../../third_party/robin-map
         ../../../libs/utils/include)
 
+target_compile_options(main PRIVATE $<$<CONFIG:Release>:/fp:fast>)

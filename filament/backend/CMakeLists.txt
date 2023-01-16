@@ -378,6 +378,8 @@ install(TARGETS ${TARGET} ${INSTALL_TYPE} DESTINATION lib/${DIST_DIR})
 install(TARGETS vkshaders ${INSTALL_TYPE} DESTINATION lib/${DIST_DIR})
 install(DIRECTORY ${PUBLIC_HDR_DIR}/backend DESTINATION include)
 
+if(FILAMENT_ENABLE_BUILD_TEST)
+
 # ==================================================================================================
 # Test
 # ==================================================================================================
@@ -454,8 +456,8 @@ endif()
 # ==================================================================================================
 # Compute tests
 
-if (NOT IOS AND NOT WEBGL)
 
+if (NOT IOS AND NOT WEBGL)
 add_executable(compute_test
         test/ComputeTest.cpp
         test/Arguments.cpp
@@ -469,5 +471,5 @@ target_link_libraries(compute_test PRIVATE
         )
 
 set_target_properties(compute_test PROPERTIES FOLDER Tests)
-
+endif()
 endif()

@@ -29,7 +29,7 @@
 #include <utils/EntityManager.h>
 
 #include <gamedriver/Config.h>
-#include <gamedriver/FilamentApp.h>
+#include <gamedriver/GameDriver.h>
 
 #include <cmath>
 
@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
         utils::EntityManager::get().destroy(app.camera);
     };
 
-    FilamentApp::get().animate([&app](Engine* engine, View* view, double now) {
+    GameDriver::get().animate([&app](Engine* engine, View* view, double now) {
 
         #if 0
         engine->destroy(app.vb);
@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
                 filament::math::mat4f::rotation(now, filament::math::float3{ 0, 0, 1 }));
     });
 
-    FilamentApp::get().run(config, setup, cleanup);
+    GameDriver::get().run(config, setup, cleanup);
 
     return 0;
 }
