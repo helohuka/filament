@@ -1,0 +1,3 @@
+
+
+buildDir "${project.rootDir}/../build/${project.name}"

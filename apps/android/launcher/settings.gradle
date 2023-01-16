@@ -12,8 +12,8 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "gamedriver"
-include 'common',
+rootProject.name = "launcher"
+include 'gamedriver',
         ':app'
 
-project(':common').projectDir = new File(settingsDir, '../../nativeapps/android')
+project(':gamedriver').projectDir = new File(settingsDir, '../gamedriver')
