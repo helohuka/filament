@@ -167,7 +167,7 @@ if (WEBGL_PTHREADS)
     target_compile_definitions(gltfio_core PUBLIC -DFILAMENT_WASM_THREADS)
 endif()
 
-if (NOT WEBGL AND NOT ANDROID AND NOT IOS)
+#if (NOT WEBGL AND NOT ANDROID AND NOT IOS)
 
     # ==================================================================================================
     # Link the core library with additional dependencies to create the "full" library
@@ -189,7 +189,7 @@ if (NOT WEBGL AND NOT ANDROID AND NOT IOS)
 
     install(TARGETS ${TARGET} ARCHIVE DESTINATION lib/${DIST_DIR})
 
-endif()
+#endif()
 
 # ==================================================================================================
 # Installation

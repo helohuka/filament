@@ -6,7 +6,7 @@ endif()
 
 cmake_minimum_required(VERSION 3.0)
 
-option(LUAU_BUILD_CLI "Build CLI" ON)
+option(LUAU_BUILD_CLI "Build CLI" OFF)
 option(LUAU_BUILD_TESTS "Build tests" OFF)
 option(LUAU_BUILD_WEB "Build Web module" OFF)
 option(LUAU_WERROR "Warnings as errors" OFF)
@@ -121,7 +121,7 @@ endif()
 
 target_compile_options(Luau.Ast PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.Analysis PRIVATE ${LUAU_OPTIONS})
-target_compile_options(Luau.CodeGen PRIVATE ${LUAU_OPTIONS})
+#target_compile_options(Luau.CodeGen PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.VM PRIVATE ${LUAU_OPTIONS})
 target_compile_options(isocline PRIVATE ${LUAU_OPTIONS} ${ISOCLINE_OPTIONS})
 

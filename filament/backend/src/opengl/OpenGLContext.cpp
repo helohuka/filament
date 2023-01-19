@@ -17,7 +17,7 @@
 #include "OpenGLContext.h"
 
 // change to true to display all GL extensions in the console on start-up
-#define DEBUG_PRINT_EXTENSIONS false
+#define DEBUG_PRINT_EXTENSIONS true
 
 using namespace utils;
 

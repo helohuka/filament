@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
 
     App app;
     auto setup = [&app](Engine* engine, View* view, Scene* scene) {
-        app.skybox = Skybox::Builder().color({0.1, 0.125, 0.25, 1.0}).build(*engine);
+        app.skybox = Skybox::Builder().color({0, 0, 0, 1.0}).build(*engine);
         scene->setSkybox(app.skybox);
         view->setPostProcessingEnabled(false);
         app.vb = VertexBuffer::Builder()

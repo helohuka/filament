@@ -23,7 +23,7 @@ buildscript {
             .gradleProperty("com.google.android.filament.matdbg")
             .isPresent()*/
 
-    def abis = ["arm64-v8a" ]//, "armeabi-v7a", "x86_64", "x86"]
+    def abis = ["armeabi-v7a","arm64-v8a"]//, "armeabi-v7a","arm64-v8a" , "x86_64", "x86"]
     def newAbis = providers
             .gradleProperty("com.google.android.filament.abis")
             .get()
@@ -33,13 +33,13 @@ buildscript {
     }
 
     ext.versions = [
-            'minSdk': 19,
+            'minSdk': 21,
             'targetSdk': 33,
             'compileSdk': 33,
             'kotlin': '1.7.10',
             'kotlin_coroutines': '1.6.1',
             'buildTools': '33.0.0',
-            'ndk': '25.1.8937393',
+            'ndk': '23.1.7779620',
             'androidx_core': '1.9.0',
             'androidx_annotations': '1.3.0'
     ]
@@ -65,9 +65,10 @@ buildscript {
     ext.cmakeArgs = [
             "--no-warn-unused-cli",
             "-DANDROID_PIE=ON",
+            "-DANDROID=1",
             "-DEGL=ON",
             "-DANDROID_PLATFORM=21",
-            "-DANDROID_STL=c++_static",
+            //"-DANDROID_STL=c++_static",
             "-DFILAMENT_DIST_DIR=${filamentPath}".toString(),
             "-DFILAMENT_SUPPORTS_VULKAN=${excludeVulkan ? 'OFF' : 'ON'}".toString(),
             "-DFILAMENT_ENABLE_MATDBG=${matdbg ? 'ON' : 'OFF'}".toString(),
@@ -93,7 +94,7 @@ buildscript {
             "-Wno-unused-command-line-argument",
             "-Wl,--gc-sections",
             "-Wl,-Bsymbolic-functions",
-            "-Wl,--hash-style=both", // Required to support API levels below 23
+            "-Wl,--hash-style=both" // Required to support API levels below 23
     ]
 
     ext.abis = abis

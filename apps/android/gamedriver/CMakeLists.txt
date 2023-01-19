@@ -19,6 +19,7 @@ target_link_libraries(main
     PRIVATE filabridge
     PRIVATE ibl-lite
     PRIVATE log
+    PRIVATE unwind
     PRIVATE GLESv3
     PRIVATE EGL
     PRIVATE android
@@ -27,15 +28,10 @@ target_link_libraries(main
     PRIVATE camutils
     PRIVATE SDL2-static
     PRIVATE gamedriver
-    PRIVATE sample-resources
+    PRIVATE embed-resources
+        PRIVATE gltf-demo-resources
     # libgeometry is PUBLIC because gltfio uses it.
     PUBLIC geometry
-
-    $<$<STREQUAL:${FILAMENT_ENABLE_MATDBG},ON>:matdbg>
-    $<$<STREQUAL:${FILAMENT_ENABLE_MATDBG},ON>:filamat>
-    $<$<STREQUAL:${FILAMENT_SUPPORTS_VULKAN},ON>:bluevk>
-    $<$<STREQUAL:${FILAMENT_SUPPORTS_VULKAN},ON>:vkshaders>
-    $<$<STREQUAL:${FILAMENT_SUPPORTS_VULKAN},ON>:smol-v>
 )
 
 target_include_directories(main PRIVATE
@@ -44,5 +40,3 @@ target_include_directories(main PRIVATE
         ../../../filament/backend/include
         ../../../third_party/robin-map
         ../../../libs/utils/include)
-
-target_compile_options(main PRIVATE $<$<CONFIG:Release>:/fp:fast>)

@@ -216,11 +216,15 @@ public:
                 if (!writer.writeMaterialInfo(package)) {
                     return error(__LINE__);
                 }
-
+                
+                char  tmp[9];
+                std::sprintf(tmp,"%8.8x",record.first);
+                slog.i << tmp << io::endl;
                 mg_printf(conn, "{ \"matid\": \"%8.8x\", %s } %s", record.first,
                         writer.getJsonString(), last ? "" : ",");
             }
             mg_printf(conn, "]");
+            
             return true;
         }
 
@@ -229,11 +233,13 @@ public:
         }
 
         const size_t qlength = strlen(request->query_string);
-        char matid[9] = {};
-        if (mg_get_var(request->query_string, qlength, "matid", matid, sizeof(matid)) < 0) {
+        char matid[9] = {'\0'};
+        if (mg_get_var(request->query_string, qlength, "matid", matid, 9) < 0) {
             return error(__LINE__);
-        }
-        const uint32_t id = strtol(matid, nullptr, 16);
+        }        std::string s(matid);
+        const uint32_t id = std::stoul(s, nullptr, 16);
+
+        slog.i << "---" << matid << " " << id << io::endl;
         const DebugServer::MaterialRecord* result = mServer->getRecord(id);
         if (result == nullptr) {
             return error(__LINE__);
@@ -502,7 +508,7 @@ DebugServer::DebugServer(Backend backend, int port) : mBackend(backend) {
     // (CSS, JavaScript, images, ...)."  If this count is too small, the web app basically hangs.
     const char* kServerOptions[] = {
         "listening_ports", "8080",
-        "num_threads", "10",
+        "num_threads", "2",
         "error_log_file", "civetweb.txt",
         nullptr
     };

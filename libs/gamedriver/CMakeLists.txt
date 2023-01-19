@@ -49,6 +49,9 @@ set(LIBS
         math 
         stb
         utils
+        gltfio
+        viewer
+        uberarchive
         SDL2-static
         Luau.Compiler
         Luau.VM
@@ -122,8 +125,8 @@ endif()
 set(DUMMY_SRC "${RESOURCE_DIR}/dummy.c")
 add_custom_command(OUTPUT ${DUMMY_SRC} COMMAND echo "//" > ${DUMMY_SRC})
 
-add_library(filamentapp-resources ${DUMMY_SRC} ${RESGEN_SOURCE})
-set_target_properties(filamentapp-resources PROPERTIES FOLDER Samples/Resources)
+add_library(gamedriver-resources ${DUMMY_SRC} ${RESGEN_SOURCE})
+set_target_properties(gamedriver-resources PROPERTIES FOLDER Libs/Resources)
 
 # ==================================================================================================
 # Include and target definitions
@@ -133,7 +136,7 @@ include_directories(${PUBLIC_HDR_DIR})
 
 add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS})
 
-target_link_libraries(${TARGET} PUBLIC ${LIBS} filamentapp-resources)
+target_link_libraries(${TARGET} PUBLIC ${LIBS} gamedriver-resources)
 
 target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
 set_target_properties(${TARGET} PROPERTIES FOLDER Libs)

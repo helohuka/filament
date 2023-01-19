@@ -515,7 +515,7 @@ void FEngine::prepare() {
     // Commit default material instances.
     mMaterials.forEach([&driver](FMaterial* material) {
 #if FILAMENT_ENABLE_MATDBG
-        material->checkProgramEdits();
+        //material->checkProgramEdits();
 #endif
         material->getDefaultInstance()->commit(driver);
     });
@@ -602,7 +602,7 @@ int FEngine::loop() {
     #ifdef __ANDROID__
         const char* portString = "8081";
     #else
-        const char* portString = getenv("FILAMENT_MATDBG_PORT");
+    const char* portString = "8081";//getenv("FILAMENT_MATDBG_PORT");
     #endif
     if (portString != nullptr) {
         const int port = atoi(portString);

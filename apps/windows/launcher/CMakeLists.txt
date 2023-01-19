@@ -17,9 +17,11 @@ target_link_libraries(launcher
     PRIVATE camutils
     PRIVATE gamedriver
     PRIVATE SDL2-static
-    PRIVATE sample-resources
+    PRIVATE embed-resources
     # libgeometry is PUBLIC because gltfio uses it.
     PUBLIC geometry
+           PRIVATE   matdbg
+        PRIVATE  filamat
 
 )
 
