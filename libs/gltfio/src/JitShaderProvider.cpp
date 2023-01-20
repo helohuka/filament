@@ -320,6 +320,9 @@ Material* createMaterial(Engine* engine, const MaterialKey& config, const UvMap&
     processShaderString(&shader, uvmap, config);
     MaterialBuilder builder;
     builder.name(name)
+#ifdef __ANDROID__
+            .platform(filamat::MaterialBuilderBase::Platform::MOBILE)
+#endif
            .flipUV(false)
            .specularAmbientOcclusion(MaterialBuilder::SpecularAmbientOcclusion::SIMPLE)
            .specularAntiAliasing(true)

@@ -81,7 +81,7 @@ function(build_ubershader NAME SRC SHADINGMODEL BLENDING)
         COMMAND matc ${MATC_BASE_FLAGS} ${TEMPLATE_ARGS} -o "${NAME}.filamat" "${NAME}.mat"
         DEPENDS matc "${DEST}.mat"
         WORKING_DIRECTORY ${RESOURCE_DIR}
-        COMMENT "Compiling material ${NAME}")
+        COMMENT "Compiling material [${MATC_BASE_FLAGS}] [${TEMPLATE_ARGS}] ${NAME}")
 
     set(UBERZ_ARGS -o ${UBERZ_OUTPUT_PATH} ${TEMPLATE_ARGS})
 
@@ -128,6 +128,7 @@ set_target_properties(uberz_file PROPERTIES FOLDER Libs)
 # ==================================================================================================
 # Build a resgen library for the ubershader archive.
 # ==================================================================================================
+
 
 get_resgen_vars("${RESOURCE_DIR}/materials" uberarchive)
 

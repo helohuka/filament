@@ -1,5 +1,5 @@
 
-
+/*
 #include <jni.h>
 #include <SDL.h>
 #include "private/backend/VirtualMachineEnv.h"
@@ -24,7 +24,7 @@
 #include <cmath>
 
 #include "generated/resources/resources.h"
-/*
+
 
 using namespace filament;
 using utils::Entity;
@@ -147,7 +147,8 @@ int SDL_main(int argc, char* argv[]) {
     GameDriver::get().run(config, setup, cleanup);
 
     return 0;
-}*/
+}
+*/
 
 #include <gamedriver/Config.h>
 #include <gamedriver/GameDriver.h>
@@ -596,7 +597,7 @@ int main(int argc, char** argv) {
     App app;
 
     app.config.title = "Filament";
-    app.config.iblDirectory = FilamentApp::getRootAssetsPath() + DEFAULT_IBL;
+    app.config.iblDirectory = GameDriver::getRootAssetsPath() + DEFAULT_IBL;
 
     int optionIndex = handleCommandLineArguments(argc, argv, &app);
 
@@ -687,7 +688,7 @@ int main(int argc, char** argv) {
             instances[mi]->setStencilOpDepthStencilPass(MaterialInstance::StencilOperation::INCR);
         }
 
-        auto ibl = FilamentApp::get().getIBL();
+        auto ibl = GameDriver::get().getIBL();
         if (ibl) {
             app.viewer->setIndirectLight(ibl->getIndirectLight(), ibl->getSphericalHarmonics());
         }
@@ -845,7 +846,7 @@ int main(int argc, char** argv) {
                 ImGui::Indent();
                 ImGui::Text("%zu entities in the asset", app.asset->getEntityCount());
                 ImGui::Text("%zu renderables (excluding UI)", scene->getRenderableCount());
-                ImGui::Text("%zu skipped frames", FilamentApp::get().getSkippedFrameCount());
+                ImGui::Text("%zu skipped frames", GameDriver::get().getSkippedFrameCount());
                 ImGui::Unindent();
             }
 
@@ -983,7 +984,7 @@ int main(int argc, char** argv) {
     auto gui = [&app](Engine* engine, View* view) {
         app.viewer->updateUserInterface();
 
-        FilamentApp::get().setSidebarWidth(app.viewer->getSidebarWidth());
+        GameDriver::get().setSidebarWidth(app.viewer->getSidebarWidth());
     };
 
     auto preRender = [&app](Engine* engine, View* view, Scene* scene, Renderer* renderer) {
@@ -998,7 +999,7 @@ int main(int argc, char** argv) {
 
         // Note that this focal length might be different from the slider value because the
         // automation engine applies Camera::computeEffectiveFocalLength when DoF is enabled.
-        FilamentApp::get().getCameraFocalLength() = viewerOptions.cameraFocalLength;
+        GameDriver::get().getCameraFocalLength() = viewerOptions.cameraFocalLength;
 
         const size_t cameraCount = app.asset->getCameraEntityCount();
         view->setCamera(app.mainCamera);
@@ -1042,7 +1043,7 @@ int main(int argc, char** argv) {
 
     auto postRender = [&app](Engine* engine, View* view, Scene* scene, Renderer* renderer) {
         if (app.automationEngine->shouldClose()) {
-            FilamentApp::get().close();
+            GameDriver::get().close();
             return;
         }
         AutomationEngine::ViewerContent content = {
@@ -1054,19 +1055,19 @@ int main(int argc, char** argv) {
         app.automationEngine->tick(engine, content, ImGui::GetIO().DeltaTime);
     };
 
-    FilamentApp& filamentApp = FilamentApp::get();
+    GameDriver& filamentApp = GameDriver::get();
     filamentApp.animate(animate);
     filamentApp.resize(resize);
 
-    filamentApp.setDropHandler([&] (std::string_view path) {
-        app.resourceLoader->asyncCancelLoad();
-        app.resourceLoader->evictResourceData();
-        app.viewer->removeAsset();
-        app.assetLoader->destroyAsset(app.asset);
-        loadAsset(path);
-        loadResources(path);
-        app.viewer->setAsset(app.asset, app.instance);
-    });
+//    filamentApp.setDropHandler([&] (std::string_view path) {
+//        app.resourceLoader->asyncCancelLoad();
+//        app.resourceLoader->evictResourceData();
+//        app.viewer->removeAsset();
+//        app.assetLoader->destroyAsset(app.asset);
+//        loadAsset(path);
+//        loadResources(path);
+//        app.viewer->setAsset(app.asset, app.instance);
+//    });
 
     filamentApp.run(app.config, setup, cleanup, gui, preRender, postRender);
 

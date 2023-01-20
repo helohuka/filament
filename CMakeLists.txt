@@ -443,7 +443,8 @@ endif()
 
 # By default, build with Vulkan support on desktop platforms, although clients must request to use
 # it at run time.
-if (WIN32 OR WEBGL OR IOS)
+#if (WIN32 OR WEBGL OR IOS )
+if (WIN32 OR WEBGL OR IS_MOBILE_TARGET )
     option(FILAMENT_SUPPORTS_VULKAN "Include the Vulkan backend" OFF)
 else()
     option(FILAMENT_SUPPORTS_VULKAN "Include the Vulkan backend" ON)
