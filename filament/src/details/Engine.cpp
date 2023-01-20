@@ -515,7 +515,7 @@ void FEngine::prepare() {
     // Commit default material instances.
     mMaterials.forEach([&driver](FMaterial* material) {
 #if FILAMENT_ENABLE_MATDBG
-        //material->checkProgramEdits();
+        material->checkProgramEdits();
 #endif
         material->getDefaultInstance()->commit(driver);
     });
