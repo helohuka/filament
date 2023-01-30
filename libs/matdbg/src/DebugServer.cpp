@@ -82,8 +82,9 @@ static void spirvToAsm(struct mg_connection *conn, const uint32_t* spirv, size_t
     spvContextDestroy(context);
 }
 
-static void spirvToGlsl(struct mg_connection *conn, const uint32_t* spirv, size_t size) {
-    auto glsl = ShaderExtractor::spirvToGLSL(spirv, size / 4);
+static void spirvToGlsl(ShaderModel shaderModel, struct mg_connection *conn, const uint32_t* spirv,
+        size_t size) {
+    auto glsl = ShaderExtractor::spirvToGLSL(shaderModel, spirv, size / 4);
     mg_printf(conn, kSuccessHeader.data(), "application/txt");
     mg_printf(conn, glsl.c_str(), glsl.size());
 }
@@ -341,7 +342,7 @@ public:
             }
 
             if (language == glsl) {
-                spirvToGlsl(conn, (const uint32_t*) content.data(), content.size());
+                spirvToGlsl(item.shaderModel, conn, (const uint32_t*) content.data(), content.size());
                 return true;
             }
 
