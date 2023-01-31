@@ -16,9 +16,16 @@ cmake_minimum_required(VERSION 3.17.2)
 
 project(spirv-tools)
 
+if (APPLE)
+  set(CMAKE_MACOSX_RPATH ON)
+endif (APPLE)
+set(SPIRV_SKIP_EXECUTABLES_OPTION ON)
+set(SPIRV_SKIP_TESTS_OPTION ON)
+set(SKIP_SPIRV_TOOLS_INSTALL ON)
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-enable_testing()
+#enable_testing()
 set(SPIRV_TOOLS "SPIRV-Tools")
 
 include(GNUInstallDirs)
@@ -76,7 +83,7 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
   set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
-option(SKIP_SPIRV_TOOLS_INSTALL "Skip installation" ${SKIP_SPIRV_TOOLS_INSTALL})
+#option(SKIP_SPIRV_TOOLS_INSTALL "Skip installation" ${SKIP_SPIRV_TOOLS_INSTALL})
 if(NOT ${SKIP_SPIRV_TOOLS_INSTALL})
   set(ENABLE_SPIRV_TOOLS_INSTALL ON)
 endif()
@@ -93,7 +100,8 @@ set(SPIRV_LIB_FUZZING_ENGINE_LINK_OPTIONS "" CACHE STRING "Used by OSS-Fuzz to c
 
 option(SPIRV_BUILD_LIBFUZZER_TARGETS "Build libFuzzer targets" OFF)
 
-option(SPIRV_WERROR "Enable error on warning" ON)
+#option(SPIRV_WERROR "Enable error on warning" OFF)
+set(SPIRV_WERROR OFF)
 if(("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU") OR (("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang") AND (NOT CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")))
   set(COMPILER_IS_LIKE_GNU TRUE)
 endif()
@@ -248,8 +256,13 @@ if(NOT COMMAND find_host_program)
 endif()
 
 # Tests require Python3
-find_host_package(PythonInterp 3 REQUIRED)
-
+#find_host_package(PythonInterp 3 REQUIRED)
+if(CMAKE_VERSION VERSION_LESS "3.12" OR ${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+  find_host_package(PythonInterp 3 REQUIRED)
+else()
+  find_package(Python3 COMPONENTS Interpreter)
+  set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
+endif()
 # Check for symbol exports on Linux.
 # At the moment, this check will fail on the OSX build machines for the Android NDK.
 # It appears they don't have objdump.
@@ -293,9 +306,9 @@ endif()
 # Defaults to OFF if the user didn't set it.
 option(SPIRV_SKIP_EXECUTABLES
   "Skip building the executable and tests along with the library"
-  ${SPIRV_SKIP_EXECUTABLES})
+  ${SPIRV_SKIP_EXECUTABLES_OPTION})
 option(SPIRV_SKIP_TESTS
-  "Skip building tests along with the library" ${SPIRV_SKIP_TESTS})
+  "Skip building tests along with the library" ${SPIRV_SKIP_TESTS_OPTION})
 if ("${SPIRV_SKIP_EXECUTABLES}")
   set(SPIRV_SKIP_TESTS ON)
 endif()
@@ -339,8 +352,8 @@ endif()
 add_subdirectory(source)
 add_subdirectory(tools)
 
-add_subdirectory(test)
-add_subdirectory(examples)
+#add_subdirectory(test)
+#add_subdirectory(examples)
 
 if(ENABLE_SPIRV_TOOLS_INSTALL)
   install(
@@ -365,35 +378,35 @@ set(SPIRV_SHARED_LIBRARIES "-lSPIRV-Tools-shared")
 
 # Build pkg-config file
 # Use a first-class target so it's regenerated when relevant files are updated.
-add_custom_target(spirv-tools-pkg-config ALL
-        COMMAND ${CMAKE_COMMAND}
-                      -DCHANGES_FILE=${CMAKE_CURRENT_SOURCE_DIR}/CHANGES
-                      -DTEMPLATE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/SPIRV-Tools.pc.in
-                      -DOUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/SPIRV-Tools.pc
-                      -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
-                      -DCMAKE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
-                      -DCMAKE_INSTALL_INCLUDEDIR=${CMAKE_INSTALL_INCLUDEDIR}
-                      -DSPIRV_LIBRARIES=${SPIRV_LIBRARIES}
-                      -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/write_pkg_config.cmake
-        DEPENDS "CHANGES" "cmake/SPIRV-Tools.pc.in" "cmake/write_pkg_config.cmake")
-add_custom_target(spirv-tools-shared-pkg-config ALL
-        COMMAND ${CMAKE_COMMAND}
-                      -DCHANGES_FILE=${CMAKE_CURRENT_SOURCE_DIR}/CHANGES
-                      -DTEMPLATE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/SPIRV-Tools-shared.pc.in
-                      -DOUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/SPIRV-Tools-shared.pc
-                      -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
-                      -DCMAKE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
-                      -DCMAKE_INSTALL_INCLUDEDIR=${CMAKE_INSTALL_INCLUDEDIR}
-                      -DSPIRV_SHARED_LIBRARIES=${SPIRV_SHARED_LIBRARIES}
-                      -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/write_pkg_config.cmake
-        DEPENDS "CHANGES" "cmake/SPIRV-Tools-shared.pc.in" "cmake/write_pkg_config.cmake")
-
+#add_custom_target(spirv-tools-pkg-config ALL
+#        COMMAND ${CMAKE_COMMAND}
+#                      -DCHANGES_FILE=${CMAKE_CURRENT_SOURCE_DIR}/CHANGES
+#                      -DTEMPLATE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/SPIRV-Tools.pc.in
+#                      -DOUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/SPIRV-Tools.pc
+#                      -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+#                      -DCMAKE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
+#                      -DCMAKE_INSTALL_INCLUDEDIR=${CMAKE_INSTALL_INCLUDEDIR}
+#                      -DSPIRV_LIBRARIES=${SPIRV_LIBRARIES}
+#                      -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/write_pkg_config.cmake
+#        DEPENDS "CHANGES" "cmake/SPIRV-Tools.pc.in" "cmake/write_pkg_config.cmake")
+#add_custom_target(spirv-tools-shared-pkg-config ALL
+#        COMMAND ${CMAKE_COMMAND}
+#                      -DCHANGES_FILE=${CMAKE_CURRENT_SOURCE_DIR}/CHANGES
+#                      -DTEMPLATE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/SPIRV-Tools-shared.pc.in
+#                      -DOUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/SPIRV-Tools-shared.pc
+#                      -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+#                      -DCMAKE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
+#                      -DCMAKE_INSTALL_INCLUDEDIR=${CMAKE_INSTALL_INCLUDEDIR}
+#                      -DSPIRV_SHARED_LIBRARIES=${SPIRV_SHARED_LIBRARIES}
+#                      -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/write_pkg_config.cmake
+#        DEPENDS "CHANGES" "cmake/SPIRV-Tools-shared.pc.in" "cmake/write_pkg_config.cmake")
+#
 # Install pkg-config file
-if (ENABLE_SPIRV_TOOLS_INSTALL)
-  install(
-    FILES
-      ${CMAKE_CURRENT_BINARY_DIR}/SPIRV-Tools.pc
-      ${CMAKE_CURRENT_BINARY_DIR}/SPIRV-Tools-shared.pc
-    DESTINATION
-      ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
-endif()
+#if (ENABLE_SPIRV_TOOLS_INSTALL)
+#  install(
+#    FILES
+#      ${CMAKE_CURRENT_BINARY_DIR}/SPIRV-Tools.pc
+#      ${CMAKE_CURRENT_BINARY_DIR}/SPIRV-Tools-shared.pc
+#    DESTINATION
+#      ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+#endif()

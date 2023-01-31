@@ -53,7 +53,7 @@ determine_target_architecture(CIVETWEB_ARCHITECTURE)
 include(GNUInstallDirs)
 
 # CTest automation
-option(CIVETWEB_BUILD_TESTING "Enable automated testing of civetweb" ON)
+option(CIVETWEB_BUILD_TESTING "Enable automated testing of civetweb" OFF)
 message(STATUS "Enabling tests in the build - ${CIVETWEB_BUILD_TESTING}")
 
 # C++ wrappers
