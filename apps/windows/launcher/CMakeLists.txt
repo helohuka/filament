@@ -7,23 +7,7 @@ add_executable(launcher src/main.cpp)
 
 # Ordering is significant in the following list. The PRIVATE qualifier prevents transitive deps.
 target_link_libraries(launcher
-
-    PRIVATE filament
-    PRIVATE backend
-    PRIVATE filaflat
-    PRIVATE filabridge
-    PRIVATE ibl-lite
-    PRIVATE utils
-    PRIVATE camutils
     PRIVATE gamedriver
-    PRIVATE SDL2-static
-    PRIVATE embed-resources
-        PRIVATE gltf-demo-resources
-    # libgeometry is PUBLIC because gltfio uses it.
-    PUBLIC geometry
-           PRIVATE   matdbg
-        PRIVATE  filamat
-
 )
 
 
@@ -40,4 +24,22 @@ else()
             $<$<CONFIG:Release>:-ffast-math>)
 endif()
 
-    target_compile_options(launcher PRIVATE $<$<CONFIG:Release>:/fp:fast>)
+target_compile_options(launcher PRIVATE $<$<CONFIG:Release>:/fp:fast>)
+
+
+file(COPY ../../../third_party/textures DESTINATION ${PROJECT_BINARY_DIR})
+add_custom_target(textures ALL DEPENDS textures)
+add_dependencies(launcher textures)
+#set_target_properties(textures PROPERTIES FOLDER Samples/Assets)
+
+file(COPY ../../../assets DESTINATION ${PROJECT_BINARY_DIR}
+        PATTERN "reference" EXCLUDE
+        PATTERN "environments" EXCLUDE)
+add_custom_target(assets ALL DEPENDS assets)
+add_dependencies(launcher assets)
+#set_target_properties(assets PROPERTIES FOLDER Samples/Assets)
+
+add_custom_target(envs DEPENDS ${target_envmaps})
+add_dependencies(launcher envs)
+#set_target_properties(envs PROPERTIES FOLDER Samples/Assets)
+

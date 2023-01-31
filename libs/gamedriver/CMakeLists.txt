@@ -23,6 +23,8 @@ set(PUBLIC_HDRS
         include/gamedriver/MeshAssimp.h
         include/gamedriver/NativeWindowHelper.h
         include/gamedriver/Sphere.h
+        include/gamedriver/Prepare.h
+        include/gamedriver/AppEntry.h
 )
 
 set(SRCS
@@ -32,6 +34,7 @@ set(SRCS
         src/IcoSphere.cpp
         src/MeshAssimp.cpp
         src/Sphere.cpp
+        src/AppEntry.cpp
 )
 
 set(LIBS
@@ -54,8 +57,14 @@ set(LIBS
         uberarchive
         SDL2-static
         Luau.Compiler
-        Luau.VM
+        Luau.VM    
+        embed-resources
+        gltf-demo-resources
 )
+
+ if (FILAMENT_ENABLE_MATDBG OR IS_HOST_PLATFORM)
+        set(LIBS ${LIBS} matdbg)
+ endif()
 
 set(MATERIAL_SRCS
         materials/aiDefaultMat.mat

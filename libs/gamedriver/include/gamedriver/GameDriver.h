@@ -1,21 +1,6 @@
-/*
- * Copyright (C) 2015 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 
-#ifndef TNT_FILAMENT_SAMPLE_FILAMENTAPP_H
-#define TNT_FILAMENT_SAMPLE_FILAMENTAPP_H
+#ifndef GAMEDRIVER_H
+#define GAMEDRIVER_H
 
 #include <functional>
 #include <memory>
@@ -27,7 +12,17 @@
 
 #include <filament/Engine.h>
 #include <filament/Viewport.h>
-
+#include <filament/Camera.h>
+#include <filament/Engine.h>
+#include <filament/IndexBuffer.h>
+#include <filament/Material.h>
+#include <filament/MaterialInstance.h>
+#include <filament/RenderableManager.h>
+#include <filament/Scene.h>
+#include <filament/Skybox.h>
+#include <filament/TransformManager.h>
+#include <filament/VertexBuffer.h>
+#include <filament/View.h>
 #include <camutils/Manipulator.h>
 
 #include <utils/Path.h>
@@ -35,6 +30,7 @@
 
 #include "Config.h"
 #include "IBL.h"
+#include <utils/EntityManager.h>
 
 namespace filament {
 class Renderer;
@@ -243,4 +239,7 @@ private:
     float mCameraFocalLength = 28.0f;
 };
 
-#endif // TNT_FILAMENT_SAMPLE_FILAMENTAPP_H
+
+int entry(int argc, char** argv);
+
+#endif // GAMEDRIVER_H
