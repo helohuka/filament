@@ -127,4 +127,4 @@ private:
 
 };
 
-#endif // TNT_FILAMENT_SAMPLE_MESH_ASSIMP_H
+#endif // __MESH_ASSIMP_H

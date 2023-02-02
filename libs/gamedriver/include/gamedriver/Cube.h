@@ -45,4 +45,4 @@ private:
 };
 
 
-#endif // TNT_FILAMENT_SAMPLE_CUBE_H
+#endif // __CUBE_H

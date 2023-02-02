@@ -50,4 +50,4 @@ private:
 
 };
 
-#endif //TNT_FILAMENT_SAMPLE_SPHERE_H
+#endif //__SPHERE_H

@@ -21,4 +21,4 @@ struct Config {
     bool headless = false;
 };
 
-#endif // TNT_FILAMENT_SAMPLE_CONFIG_H
+#endif // __CONFIG_H

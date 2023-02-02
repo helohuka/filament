@@ -64,4 +64,4 @@ private:
     filament::Skybox* mSkybox = nullptr;
 };
 
-#endif // TNT_FILAMENT_SAMPLE_IBL_H
+#endif // __IBL_H

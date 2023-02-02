@@ -18,4 +18,4 @@ extern "C" void prepareNativeWindow(SDL_Window* sdlWindow);
 extern "C" void* resizeMetalLayer(void* nativeView);
 #endif
 
-#endif // TNT_FILAMENT_NATIVE_WINDOW_HELPER_H
+#endif // __WINDOW_HELPER_H

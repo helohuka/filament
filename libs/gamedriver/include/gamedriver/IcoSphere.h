@@ -38,4 +38,4 @@ private:
     IndexedMesh mMesh;
 };
 
-#endif //TNT_FILAMENT_SAMPLE_ICOSPHERE_H
+#endif //__ICOSPHERE_H

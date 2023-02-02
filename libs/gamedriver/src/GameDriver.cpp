@@ -45,8 +45,8 @@ using namespace filament::math;
 using namespace utils;
 
 GameDriver& GameDriver::get() {
-    static GameDriver filamentApp;
-    return filamentApp;
+    static GameDriver gd;
+    return gd;
 }
 
 GameDriver::GameDriver() {
