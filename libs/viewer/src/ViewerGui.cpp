@@ -368,7 +368,7 @@ ViewerGui::ViewerGui(filament::Engine* engine, filament::Scene* scene, filament:
     mSettings.view.vsmShadowOptions.anisotropy = 0;
     mSettings.view.dithering = Dithering::TEMPORAL;
     mSettings.view.antiAliasing = AntiAliasing::FXAA;
-    mSettings.view.msaa = { .enabled = true, .sampleCount = 4 };
+    mSettings.view.msaa = { .enabled = false, .sampleCount = 4 }; //A57 必须关闭
     mSettings.view.ssao.enabled = true;
     mSettings.view.bloom.enabled = true;
 

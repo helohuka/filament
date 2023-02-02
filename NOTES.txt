@@ -1,0 +1,2 @@
+1. Adreno (TM) 505 [A57] 和 PowerVR 8300 不支持 JITShader
+2. Adreno (TM) 505 [A57] 不支持 MSAA

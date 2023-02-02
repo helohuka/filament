@@ -68,7 +68,7 @@ buildscript {
             "-DANDROID=1",
             "-DEGL=ON",
             "-DANDROID_PLATFORM=21",
-            //"-DANDROID_STL=c++_static",
+            "-DANDROID_STL=c++_static",
             "-DFILAMENT_DIST_DIR=${filamentPath}".toString(),
             "-DFILAMENT_SUPPORTS_VULKAN=${excludeVulkan ? 'OFF' : 'ON'}".toString(),
             "-DFILAMENT_ENABLE_MATDBG=${matdbg ? 'ON' : 'OFF'}".toString(),
