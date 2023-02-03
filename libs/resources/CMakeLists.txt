@@ -13,49 +13,49 @@ set(RESOURCE_BINS)
 # Build materials
 # ==================================================================================================
 
-set(MATERIAL_SRCS
-        materials/bakedColor.mat
-        materials/bakedTexture.mat
-        materials/pointSprites.mat
-        materials/aoPreview.mat
-        materials/groundShadow.mat
-        materials/heightfield.mat
-        materials/image.mat
-        materials/mirror.mat
-        materials/overdraw.mat
-        materials/sandboxCloth.mat
-        materials/sandboxLit.mat
-        materials/sandboxLitFade.mat
-        materials/sandboxLitTransparent.mat
-        materials/sandboxLitThinRefraction.mat
-        materials/sandboxLitThinRefractionSsr.mat
-        materials/sandboxLitSolidRefraction.mat
-        materials/sandboxLitSolidRefractionSsr.mat
-        materials/sandboxSpecGloss.mat
-        materials/sandboxSubsurface.mat
-        materials/sandboxUnlit.mat
-        materials/texturedLit.mat
-)
+#set(MATERIAL_SRCS
+#        materials/bakedColor.mat
+#        materials/bakedTexture.mat
+#        materials/pointSprites.mat
+#        materials/aoPreview.mat
+#        materials/groundShadow.mat
+#        materials/heightfield.mat
+#        materials/image.mat
+#        materials/mirror.mat
+#        materials/overdraw.mat
+#        materials/sandboxCloth.mat
+#        materials/sandboxLit.mat
+#        materials/sandboxLitFade.mat
+#        materials/sandboxLitTransparent.mat
+#        materials/sandboxLitThinRefraction.mat
+#        materials/sandboxLitThinRefractionSsr.mat
+#        materials/sandboxLitSolidRefraction.mat
+#        materials/sandboxLitSolidRefractionSsr.mat
+#        materials/sandboxSpecGloss.mat
+#        materials/sandboxSubsurface.mat
+#        materials/sandboxUnlit.mat
+#        materials/texturedLit.mat
+#)
 
 if (CMAKE_CROSSCOMPILING)
     include(${IMPORT_EXECUTABLES})
 endif()
 
-file(MAKE_DIRECTORY ${MATERIAL_DIR})
-
-foreach (mat_src ${MATERIAL_SRCS})
-    get_filename_component(localname "${mat_src}" NAME_WE)
-    get_filename_component(fullname "${mat_src}" ABSOLUTE)
-    set(output_path "${MATERIAL_DIR}/${localname}.filamat")
-    add_custom_command(
-            OUTPUT ${output_path}
-            COMMAND matc ${MATC_BASE_FLAGS} -o ${output_path} ${fullname}
-            MAIN_DEPENDENCY ${mat_src}
-            DEPENDS matc
-            COMMENT "Compiling material [ ${MATC_BASE_FLAGS} ] ${mat_src} to ${output_path}"
-    )
-    list(APPEND RESOURCE_BINS ${output_path})
-endforeach()
+#file(MAKE_DIRECTORY ${MATERIAL_DIR})
+#
+#foreach (mat_src ${MATERIAL_SRCS})
+#    get_filename_component(localname "${mat_src}" NAME_WE)
+#    get_filename_component(fullname "${mat_src}" ABSOLUTE)
+#    set(output_path "${MATERIAL_DIR}/${localname}.filamat")
+#    add_custom_command(
+#            OUTPUT ${output_path}
+#            COMMAND matc ${MATC_BASE_FLAGS} -o ${output_path} ${fullname}
+#            MAIN_DEPENDENCY ${mat_src}
+#            DEPENDS matc
+#            COMMENT "Compiling material [ ${MATC_BASE_FLAGS} ] ${mat_src} to ${output_path}"
+#    )
+#    list(APPEND RESOURCE_BINS ${output_path})
+#endforeach()
 # ==================================================================================================
 # Build embed resources
 # ==================================================================================================

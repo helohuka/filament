@@ -56,9 +56,8 @@ set(LIBS
         SDL2-static
         Luau.Compiler
         Luau.VM    
-        embed-resources
-        gltf-demo-resources
-)
+        gamedriver-resources
+      )
 
  if (FILAMENT_ENABLE_MATDBG OR IS_HOST_PLATFORM)
         set(LIBS ${LIBS} matdbg)
@@ -69,6 +68,27 @@ set(MATERIAL_SRCS
         materials/aiDefaultTrans.mat
         materials/depthVisualizer.mat
         materials/transparentColor.mat
+        materials/bakedColor.mat
+        materials/bakedTexture.mat
+        materials/pointSprites.mat
+        materials/aoPreview.mat
+        materials/groundShadow.mat
+        materials/heightfield.mat
+        materials/image.mat
+        materials/mirror.mat
+        materials/overdraw.mat
+        materials/sandboxCloth.mat
+        materials/sandboxLit.mat
+        materials/sandboxLitFade.mat
+        materials/sandboxLitTransparent.mat
+        materials/sandboxLitThinRefraction.mat
+        materials/sandboxLitThinRefractionSsr.mat
+        materials/sandboxLitSolidRefraction.mat
+        materials/sandboxLitSolidRefractionSsr.mat
+        materials/sandboxSpecGloss.mat
+        materials/sandboxSubsurface.mat
+        materials/sandboxUnlit.mat
+        materials/texturedLit.mat
 )
 
 if (APPLE)
