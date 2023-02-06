@@ -40,6 +40,7 @@ set(DIST_HDRS
         ${PUBLIC_HDR_DIR}/${TARGET}/SpinLock.h
         ${PUBLIC_HDR_DIR}/${TARGET}/StructureOfArrays.h
         ${PUBLIC_HDR_DIR}/${TARGET}/unwindows.h
+        ${PUBLIC_HDR_DIR}/${TARGET}/FileUtils.h
 )
 
 # Use our custom mutex/condition only on ANDROID
@@ -72,6 +73,7 @@ set(SRCS
         src/sstream.cpp
         src/string.cpp
         src/ThreadUtils.cpp
+        src/FileUtils.cpp
 )
 
 if (WIN32)

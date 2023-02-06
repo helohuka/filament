@@ -23,6 +23,8 @@ set(PUBLIC_HDRS
         include/gamedriver/MeshAssimp.h
         include/gamedriver/NativeWindowHelper.h
         include/gamedriver/Sphere.h
+
+        include/gamedriver/ScriptVM.h
 )
 
 set(SRCS
@@ -33,6 +35,12 @@ set(SRCS
         src/MeshAssimp.cpp
         src/Sphere.cpp
         src/AppEntry.cpp
+
+        src/Window.cpp
+        src/View.cpp
+
+       
+        src/ScriptVM.cpp
 )
 
 set(LIBS
