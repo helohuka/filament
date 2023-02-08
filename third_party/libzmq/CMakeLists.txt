@@ -7,6 +7,10 @@ else()
   cmake_minimum_required(VERSION 2.8.12)
 endif()
 
+macro(HIDE_OPTION KEY DESC OPT)
+    set(${KEY} ${OPT})
+endmacro()
+
 include(CheckIncludeFiles)
 include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)
@@ -29,7 +33,7 @@ include(TestZMQVersion)
 include(ZMQSourceRunChecks)
 include(ZMQSupportMacros)
 
-find_package(PkgConfig)
+#find_package(PkgConfig)
 
 # Set lists to empty beforehand as to not accidentally take values from parent
 set(sources)
@@ -37,7 +41,7 @@ set(cxx-sources)
 set(html-docs)
 set(target_outputs)
 
-option(ENABLE_ASAN "Build with address sanitizer" OFF)
+HIDE_OPTION(ENABLE_ASAN "Build with address sanitizer" OFF)
 if(ENABLE_ASAN)
   message(STATUS "Instrumenting with Address Sanitizer")
   set(CMAKE_BUILD_TYPE "RelWithDebInfo")
@@ -53,7 +57,7 @@ endif()
 # restrictions, so TSAN generates a lot of (presumably) false positives from libzmq.
 # The settings below are intended to enable libzmq to be built with minimal support for TSAN
 # such that it can be used along with other code that is also built with TSAN.
-option(ENABLE_TSAN "Build with thread sanitizer" OFF)
+HIDE_OPTION(ENABLE_TSAN "Build with thread sanitizer" OFF)  #
 if(ENABLE_TSAN)
   message(STATUS "Instrumenting with Thread Sanitizer")
   set(CMAKE_BUILD_TYPE "RelWithDebInfo")
@@ -67,7 +71,7 @@ if(ENABLE_TSAN)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${TSAN_FLAGS} -pie -Qunused-arguments")
 endif()
 
-option(ENABLE_UBSAN "Build with undefined behavior sanitizer" OFF)
+HIDE_OPTION(ENABLE_UBSAN "Build with undefined behavior sanitizer" OFF)
 if(ENABLE_UBSAN)
   message(STATUS "Instrumenting with Undefined Behavior Sanitizer")
   set(CMAKE_BUILD_TYPE "RelWithDebInfo")
@@ -84,15 +88,15 @@ if(ENABLE_UBSAN)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${UBSAN_FLAGS}")
 endif()
 
-option(ENABLE_INTRINSICS "Build using compiler intrinsics for atomic ops" OFF)
+HIDE_OPTION(ENABLE_INTRINSICS "Build using compiler intrinsics for atomic ops" OFF)
 if(ENABLE_INTRINSICS)
   message(STATUS "Using compiler intrinsics for atomic ops")
   add_definitions(-DZMQ_HAVE_ATOMIC_INTRINSICS)
 endif()
 
 set(ZMQ_OUTPUT_BASENAME
-    "zmq"
-    CACHE STRING "Output zmq library base name")
+    "zmq")
+    #CACHE STRING "Output zmq library base name")
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   # Find more information: https://cmake.org/Wiki/CMake_RPATH_handling
@@ -142,30 +146,30 @@ endif()
 set(pkg_config_libs_private "")
 set(pkg_config_names_private "")
 
-option(WITH_OPENPGM "Build with support for OpenPGM" OFF)
-option(WITH_NORM "Build with support for NORM" OFF)
-option(WITH_VMCI "Build with support for VMware VMCI socket" OFF)
+HIDE_OPTION(WITH_OPENPGM "Build with support for OpenPGM" OFF)
+HIDE_OPTION(WITH_NORM "Build with support for NORM" OFF)
+HIDE_OPTION(WITH_VMCI "Build with support for VMware VMCI socket" OFF)
 
 if(APPLE)
-  option(ZMQ_BUILD_FRAMEWORK "Build as OS X framework" OFF)
+  HIDE_OPTION(ZMQ_BUILD_FRAMEWORK "Build as OS X framework" OFF)
 endif()
 
 if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
   message(STATUS "Build and install draft classes and methods")
-  option(ENABLE_DRAFTS "Build and install draft classes and methods" ON)
+  HIDE_OPTION(ENABLE_DRAFTS "Build and install draft classes and methods" ON)
 else()
   message(STATUS "Not building draft classes and methods")
-  option(ENABLE_DRAFTS "Build and install draft classes and methods" OFF)
+  HIDE_OPTION(ENABLE_DRAFTS "Build and install draft classes and methods" OFF)
 endif()
 
 # Enable WebSocket transport and RadixTree
 if(ENABLE_DRAFTS)
   set(ZMQ_BUILD_DRAFT_API 1)
-  option(ENABLE_WS "Enable WebSocket transport" ON)
-  option(ENABLE_RADIX_TREE "Use radix tree implementation to manage subscriptions" ON)
+  HIDE_OPTION(ENABLE_WS "Enable WebSocket transport" ON)
+  HIDE_OPTION(ENABLE_RADIX_TREE "Use radix tree implementation to manage subscriptions" ON)
 else()
-  option(ENABLE_WS "Enable WebSocket transport" OFF)
-  option(ENABLE_RADIX_TREE "Use radix tree implementation to manage subscriptions" OFF)
+  HIDE_OPTION(ENABLE_WS "Enable WebSocket transport" OFF)
+  HIDE_OPTION(ENABLE_RADIX_TREE "Use radix tree implementation to manage subscriptions" OFF)
 endif()
 
 if(ENABLE_RADIX_TREE)
@@ -194,8 +198,8 @@ if(ENABLE_WS)
 
   message(STATUS "Enable WebSocket transport")
 
-  option(WITH_TLS "Use TLS for WSS support" OFF)
-  option(WITH_NSS "Use NSS instead of builtin sha1" OFF)
+  HIDE_OPTION(WITH_TLS "Use TLS for WSS support" OFF)
+  HIDE_OPTION(WITH_NSS "Use NSS instead of builtin sha1" OFF)
 
   if(WITH_TLS)
     find_package("GnuTLS" 3.6.7)
@@ -241,7 +245,7 @@ if(NOT ZMQ_USE_GNUTLS)
 endif()
 
 if(NOT MSVC)
-  option(WITH_LIBBSD "Use libbsd instead of builtin strlcpy" ON)
+  HIDE_OPTION(WITH_LIBBSD "Use libbsd instead of builtin strlcpy" ON)
   if(WITH_LIBBSD)
     pkg_check_modules(LIBBSD "libbsd")
     if(LIBBSD_FOUND)
@@ -256,9 +260,9 @@ endif()
 # Select curve encryption library, defaults to tweetnacl To use libsodium instead, use --with-libsodium(must be
 # installed) To disable curve, use --disable-curve
 
-option(WITH_LIBSODIUM "Use libsodium instead of built-in tweetnacl" OFF)
-option(WITH_LIBSODIUM_STATIC "Use static libsodium library" OFF)
-option(ENABLE_CURVE "Enable CURVE security" ON)
+HIDE_OPTION(WITH_LIBSODIUM "Use libsodium instead of built-in tweetnacl" OFF)
+HIDE_OPTION(WITH_LIBSODIUM_STATIC "Use static libsodium library" OFF)
+HIDE_OPTION(ENABLE_CURVE "Enable CURVE security" ON)
 
 if(ENABLE_CURVE)
   if(WITH_LIBSODIUM)
@@ -290,7 +294,7 @@ endif()
 
 set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-option(WITH_MILITANT "Enable militant assertions" OFF)
+HIDE_OPTION(WITH_MILITANT "Enable militant assertions" OFF)
 if(WITH_MILITANT)
   add_definitions(-DZMQ_ACT_MILITANT)
 endif()
@@ -362,8 +366,8 @@ if(WIN32)
   endif()
 
   set(ZMQ_WIN32_WINNT
-      "${ZMQ_WIN32_WINNT_DEFAULT}"
-      CACHE STRING "Value to set _WIN32_WINNT to for building [default=autodetect from build environment]")
+      "${ZMQ_WIN32_WINNT_DEFAULT}")
+      #CACHE STRING "Value to set _WIN32_WINNT to for building [default=autodetect from build environment]")
 
   # On Windows Vista or greater, with MSVC 2013 or greater, default to epoll (which is required on Win 10 for ipc
   # support)
@@ -508,9 +512,9 @@ if(NOT ZMQ_CV_IMPL)
 
   # TODO a vxworks implementation also exists, but vxworks is not currently supported with cmake at all
   set(ZMQ_CV_IMPL
-      "${ZMQ_CV_IMPL_DEFAULT}"
-      CACHE STRING "Choose condition_variable_t implementation. Valid values are
-       stl11, win32api, pthreads, none [default=autodetect]")
+      "${ZMQ_CV_IMPL_DEFAULT}")
+      #CACHE STRING "Choose condition_variable_t implementation. Valid values are
+       #stl11, win32api, pthreads, none [default=autodetect]")
 endif()
 
 message(STATUS "Using condition_variable_t implementation: ${ZMQ_CV_IMPL}")
@@ -597,7 +601,7 @@ endif()
 add_definitions(-D_REENTRANT -D_THREAD_SAFE)
 add_definitions(-DZMQ_CUSTOM_PLATFORM_HPP)
 
-option(ENABLE_EVENTFD "Enable/disable eventfd" ZMQ_HAVE_EVENTFD)
+HIDE_OPTION(ENABLE_EVENTFD "Enable/disable eventfd" ZMQ_HAVE_EVENTFD)
 
 macro(zmq_check_cxx_flag_prepend flag)
   check_cxx_compiler_flag("${flag}" HAVE_FLAG_${flag})
@@ -607,7 +611,7 @@ macro(zmq_check_cxx_flag_prepend flag)
   endif()
 endmacro()
 
-option(ENABLE_ANALYSIS "Build with static analysis(make take very long)" OFF)
+HIDE_OPTION(ENABLE_ANALYSIS "Build with static analysis(make take very long)" OFF)
 
 if(MSVC)
   if(ENABLE_ANALYSIS)
@@ -651,8 +655,8 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   zmq_check_cxx_flag_prepend("-Wextra")
 endif()
 
-option(LIBZMQ_PEDANTIC "" ON)
-option(LIBZMQ_WERROR "" OFF)
+HIDE_OPTION(LIBZMQ_PEDANTIC "" ON)
+HIDE_OPTION(LIBZMQ_WERROR "" OFF)
 
 # TODO: why is -Wno-long-long defined differently than in configure.ac?
 if(NOT MSVC)
@@ -1241,7 +1245,7 @@ if(MSVC)
     DEPENDS ${nsis-template})
 endif()
 
-option(WITH_DOCS "Build html docs" ON)
+HIDE_OPTION(WITH_DOCS "Build html docs" OFF)
 if(WITH_DOCS)
   file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/doc)
   file(
@@ -1275,7 +1279,7 @@ if(ZMQ_BUILD_FRAMEWORK)
     COMMENT "Perf tools")
 endif()
 
-option(ENABLE_PRECOMPILED "Enable precompiled headers, if possible" ON)
+HIDE_OPTION(ENABLE_PRECOMPILED "Enable precompiled headers, if possible" OFF)
 if(MSVC AND ENABLE_PRECOMPILED)
   # default for all sources is to use precompiled headers
   foreach(source ${sources})
@@ -1292,8 +1296,8 @@ endif()
 
 # -----------------------------------------------------------------------------
 # output
-option(BUILD_SHARED "Whether or not to build the shared object" OFF)
-option(BUILD_STATIC "Whether or not to build the static archive" ON)
+HIDE_OPTION(BUILD_SHARED "Whether or not to build the shared object" OFF)
+HIDE_OPTION(BUILD_STATIC "Whether or not to build the static archive" ON)
 
 if(MSVC)
   # Suppress linker warnings caused by #ifdef omission of file content.
@@ -1530,9 +1534,9 @@ if(BUILD_SHARED)
       proxy_thr)
 
   if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug") # Why?
-    option(WITH_PERF_TOOL "Build with perf-tools" ON)
+    HIDE_OPTION(WITH_PERF_TOOL "Build with perf-tools" ON)
   else()
-    option(WITH_PERF_TOOL "Build with perf-tools" OFF)
+    HIDE_OPTION(WITH_PERF_TOOL "Build with perf-tools" OFF)
   endif()
 
   if(WITH_PERF_TOOL)
@@ -1589,11 +1593,11 @@ endif()
 # -----------------------------------------------------------------------------
 # tests
 
-option(BUILD_TESTS "Whether or not to build the tests" OFF)
+HIDE_OPTION(BUILD_TESTS "Whether or not to build the tests" OFF)
 
 set(ZMQ_BUILD_TESTS
-    ${BUILD_TESTS}
-    CACHE BOOL "Build the tests for ZeroMQ")
+    ${BUILD_TESTS})
+    #CACHE BOOL "Build the tests for ZeroMQ")
 
 if(ZMQ_BUILD_TESTS)
   enable_testing() # Enable testing only works in root scope
@@ -1665,8 +1669,8 @@ endif()
 
 if(WIN32)
   set(ZEROMQ_CMAKECONFIG_INSTALL_DIR
-      "CMake"
-      CACHE STRING "install path for ZeroMQConfig.cmake")
+      "CMake")
+      #CACHE STRING "install path for ZeroMQConfig.cmake")
 else()
   # CMake search path wants either "share" (AKA GNUInstallDirs DATAROOTDIR) for arch-independent, or LIBDIR for arch-
   # dependent, plus "cmake" as prefix
@@ -1695,7 +1699,7 @@ if(BUILD_SHARED OR BUILD_STATIC)
           DESTINATION ${ZEROMQ_CMAKECONFIG_INSTALL_DIR})
 endif()
 
-option(ENABLE_CPACK "Enables cpack rules" ON)
+HIDE_OPTION(ENABLE_CPACK "Enables cpack rules" OFF)
 if(MSVC AND ENABLE_CPACK)
   if(${CMAKE_BUILD_TYPE} MATCHES "Debug")
     set(CMAKE_INSTALL_DEBUG_LIBRARIES_ONLY TRUE)
@@ -1789,8 +1793,8 @@ endif()
 
 # Export this for library to help build this as a sub-project
 set(ZEROMQ_LIBRARY
-    libzmq
-    CACHE STRING "ZeroMQ library")
+    libzmq)
+    #CACHE STRING "ZeroMQ library")
 
 # Workaround for MSVS10 to avoid the Dialog Hell FIXME: This could be removed with future version of CMake.
 if(MSVC_VERSION EQUAL 1600)
@@ -1801,7 +1805,7 @@ if(MSVC_VERSION EQUAL 1600)
 endif()
 
 # this cannot be moved, as it does not only contain function/macro definitions
-option(ENABLE_CLANG "Include Clang" OFF)
+HIDE_OPTION(ENABLE_CLANG "Include Clang" OFF)
 if (ENABLE_CLANG)
   include(ClangFormat)
 endif()

@@ -6,13 +6,13 @@ endif()
 
 cmake_minimum_required(VERSION 3.0)
 
-option(LUAU_BUILD_CLI "Build CLI" OFF)
-option(LUAU_BUILD_TESTS "Build tests" OFF)
-option(LUAU_BUILD_WEB "Build Web module" OFF)
-option(LUAU_WERROR "Warnings as errors" OFF)
-option(LUAU_STATIC_CRT "Link with the static CRT (/MT)" OFF)
-option(LUAU_EXTERN_C "Use extern C for all APIs" OFF)
-option(LUAU_NATIVE "Enable support for native code generation" OFF)
+set(LUAU_BUILD_CLI OFF)
+set(LUAU_BUILD_TESTS OFF)
+set(LUAU_BUILD_WEB OFF)
+set(LUAU_WERROR OFF)
+set(LUAU_STATIC_CRT OFF)
+set(LUAU_EXTERN_C OFF)
+set(LUAU_NATIVE OFF)
 
 if(LUAU_STATIC_CRT)
     cmake_minimum_required(VERSION 3.15)
@@ -230,3 +230,17 @@ if(LUAU_BUILD_WEB)
     # the output is a single .js file with an embedded wasm blob
     target_link_options(Luau.Web PRIVATE -sSINGLE_FILE=1)
 endif()
+
+set_target_properties(Luau.Common   PROPERTIES FOLDER ThirdParty/luau)
+set_target_properties(Luau.Ast      PROPERTIES FOLDER ThirdParty/luau)
+set_target_properties(Luau.Compiler PROPERTIES FOLDER ThirdParty/luau)
+set_target_properties(Luau.Analysis PROPERTIES FOLDER ThirdParty/luau)
+set_target_properties(Luau.CodeGen  PROPERTIES FOLDER ThirdParty/luau)
+set_target_properties(Luau.VM       PROPERTIES FOLDER ThirdParty/luau)
+set_target_properties(isocline      PROPERTIES FOLDER ThirdParty/luau)
+
+#set_target_properties(Luau.Repl.CLI PROPERTIES FOLDER Tools/luau)
+#set_target_properties(Luau.Analyze.CLI PROPERTIES FOLDER Tools/luau)
+#set_target_properties(Luau.Ast.CLI PROPERTIES FOLDER Tools/luau)
+#set_target_properties(Luau.Reduce.CLI PROPERTIES FOLDER Tools/luau)
+

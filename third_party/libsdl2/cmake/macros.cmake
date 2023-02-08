@@ -13,7 +13,11 @@ macro(SET_OPTION _NAME _DESC)
   else()
     set(_DEFLT OFF)
   endif()
-  option(${_NAME} ${_DESC} ${_DEFLT})
+  set(${_NAME} ${_DEFLT})
+endmacro()
+
+macro(HIDE_OPTION _NAME _DESC _OPT)
+  set(${_NAME} ${_OPT})
 endmacro()
 
 macro(DEP_OPTION _NAME _DESC _DEFLT _DEPTEST _FAILDFLT)

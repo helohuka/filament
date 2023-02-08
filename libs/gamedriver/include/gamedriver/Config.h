@@ -4,6 +4,8 @@
 
 #include "gamedriver/BaseLibs.h"
 
+
+
 struct Config {
     std::string title;
     std::string iblDirectory;

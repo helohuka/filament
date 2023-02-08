@@ -276,7 +276,7 @@ if(USE_GCC OR USE_CLANG)
   set(OPT_DEF_GCC_ATOMICS ON)
 endif()
 
-# Default option knobs
+# Default HIDE_OPTION knobs
 if(APPLE OR ARCH_64 OR MSVC_CLANG)
   if(NOT "${CMAKE_OSX_ARCHITECTURES}" MATCHES "arm")
     set(OPT_DEF_SSEMATH ON)
@@ -295,7 +295,7 @@ if(NOT ("$ENV{CFLAGS}" STREQUAL ""))
 endif()
 
 if(MSVC)
-  option(SDL_FORCE_STATIC_VCRT "Force /MT for static VC runtimes" OFF)
+  HIDE_OPTION(SDL_FORCE_STATIC_VCRT "Force /MT for static VC runtimes" OFF)
   if(SDL_FORCE_STATIC_VCRT)
     foreach(flag_var
         CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
@@ -359,7 +359,7 @@ endif()
 # General includes
 target_compile_definitions(sdl-build-options INTERFACE "-DUSING_GENERATED_CONFIG_H")
 target_include_directories(sdl-build-options BEFORE INTERFACE "${SDL2_BINARY_DIR}/include" "${SDL2_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>")
-# Note: The clang toolset for Visual Studio does not support the '-idirafter' option.
+# Note: The clang toolset for Visual Studio does not support the '-idirafter' HIDE_OPTION.
 if(USE_GCC OR (USE_CLANG AND NOT MSVC_CLANG))
   # !!! FIXME: do we _need_ to mess with CMAKE_C_FLAGS here?
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -idirafter \"${SDL2_SOURCE_DIR}/src/video/khronos\"")
@@ -423,7 +423,7 @@ foreach(_SUB ${SDL_SUBSYSTEMS})
   if (NOT DEFINED SDL_${_OPT}_ENABLED_BY_DEFAULT)
     set(SDL_${_OPT}_ENABLED_BY_DEFAULT ON)
   endif()
-  option(SDL_${_OPT} "Enable the ${_SUB} subsystem" ${SDL_${_OPT}_ENABLED_BY_DEFAULT})
+  HIDE_OPTION(SDL_${_OPT} "Enable the ${_SUB} subsystem" ${SDL_${_OPT}_ENABLED_BY_DEFAULT})
 endforeach()
 
 # Allow some projects to be built conditionally.
@@ -515,11 +515,11 @@ set_option(SDL_ASAN                "Use AddressSanitizer to detect memory errors
 option_string(SDL_VENDOR_INFO      "Vendor name and/or version to add to SDL_REVISION" "")
 set_option(SDL_CCACHE              "Use Ccache to speed up build" ON)
 
-option(SDL_WERROR "Enable -Werror" OFF)
+HIDE_OPTION(SDL_WERROR "Enable -Werror" OFF)
 
-option(SDL_SHARED "Build a shared version of the library" OFF)
-option(SDL_STATIC "Build a static version of the library" ON)
-option(SDL_TEST   "Build the SDL2_test library" OFF)
+HIDE_OPTION(SDL_SHARED "Build a shared version of the library" OFF)
+HIDE_OPTION(SDL_STATIC "Build a static version of the library" ON)
+HIDE_OPTION(SDL_TEST   "Build the SDL2_test library" OFF)
 
 dep_option(SDL_STATIC_PIC      "Static version of the library should be built with Position Independent Code" "${CMAKE_POSITION_INDEPENDENT_CODE}" "SDL_STATIC" OFF)
 dep_option(SDL_TESTS           "Build the test directory" OFF SDL_TEST OFF)
@@ -612,7 +612,7 @@ if(NOT SDL_FOREGROUNDING_SIGNAL STREQUAL "OFF")
   target_compile_definitions(sdl-build-options INTERFACE "-DSDL_FOREGROUNDING_SIGNAL=${SDL_FOREGROUNDING_SIGNAL}")
 endif()
 
-# Compiler option evaluation
+# Compiler HIDE_OPTION evaluation
 if(USE_GCC OR USE_CLANG)
   # Check for -Wall first, so later things can override pieces of it.
   # Note: clang-cl treats -Wall as -Weverything (which is very loud),
@@ -1212,7 +1212,7 @@ if(ANDROID)
   # SDL_spinlock.c Needs to be compiled in ARM mode.
   # There seems to be no better way currently to set the ARM mode.
   # see: https://issuetracker.google.com/issues/62264618
-  # Another option would be to set ARM mode to all compiled files
+  # Another HIDE_OPTION would be to set ARM mode to all compiled files
   cmake_push_check_state(RESET)
   set(CMAKE_REQUIRED_FLAGS "-Werror=unused-command-line-argument")
   check_c_compiler_flag(-marm HAVE_ARM_MODE)
@@ -3564,3 +3564,12 @@ set(CMAKE_OBJC_FLAGS "${CMAKE_OBJC_FLAGS} ${CMAKE_C_FLAGS}")
 if(TARGET SDL2::SDL2-static AND NOT TARGET SDL2::SDL2)
   add_library(SDL2::SDL2 ALIAS SDL2-static)
 endif()
+
+
+
+
+
+#set_target_properties(SDL2 PROPERTIES FOLDER ThirdParty/libsdl2)
+set_target_properties(SDL2main PROPERTIES FOLDER ThirdParty/libsdl2)
+set_target_properties(SDL2-static PROPERTIES FOLDER ThirdParty/libsdl2)
+set_target_properties(sdl_headers_copy PROPERTIES FOLDER ThirdParty/libsdl2)

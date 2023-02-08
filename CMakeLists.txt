@@ -9,6 +9,8 @@ cmake_minimum_required(VERSION 3.19)
 #project(TNT) 更换项目根名
 project(GameDriver)
 
+include(cmake/Utilities.cmake)
+
 # ==================================================================================================
 # Options
 # ==================================================================================================
@@ -699,29 +701,15 @@ add_subdirectory(${EXTERNAL}/getopt)
 
 #使用SDL2作为平台抽象层 | 排除 OPENGLES
 add_subdirectory(${EXTERNAL}/libsdl2)
-#set_target_properties(SDL2 PROPERTIES FOLDER ThirdParty/libsdl2)
-set_target_properties(SDL2main PROPERTIES FOLDER ThirdParty/libsdl2)
-set_target_properties(SDL2-static PROPERTIES FOLDER ThirdParty/libsdl2)
-set_target_properties(sdl_headers_copy PROPERTIES FOLDER ThirdParty/libsdl2)
 
 #引入Roblox Luau
 add_subdirectory(${EXTERNAL}/luau)
-set_target_properties(Luau.Common   PROPERTIES FOLDER ThirdParty/luau)
-set_target_properties(Luau.Ast      PROPERTIES FOLDER ThirdParty/luau)
-set_target_properties(Luau.Compiler PROPERTIES FOLDER ThirdParty/luau)
-set_target_properties(Luau.Analysis PROPERTIES FOLDER ThirdParty/luau)
-set_target_properties(Luau.CodeGen  PROPERTIES FOLDER ThirdParty/luau)
-set_target_properties(Luau.VM       PROPERTIES FOLDER ThirdParty/luau)
-set_target_properties(isocline      PROPERTIES FOLDER ThirdParty/luau)
-
-#set_target_properties(Luau.Repl.CLI PROPERTIES FOLDER Tools/luau)
-#set_target_properties(Luau.Analyze.CLI PROPERTIES FOLDER Tools/luau)
-#set_target_properties(Luau.Ast.CLI PROPERTIES FOLDER Tools/luau)
-#set_target_properties(Luau.Reduce.CLI PROPERTIES FOLDER Tools/luau)
 
 #引入ZMQ -4.3.4
-#add_subdirectory(${EXTERNAL}/libzmq)
+add_subdirectory(${EXTERNAL}/libzmq)
 
+#引入flatbuffers 
+add_subdirectory(${EXTERNAL}/flatbuffers)
 
 if (FILAMENT_BUILD_FILAMAT OR IS_HOST_PLATFORM)
     # spirv-tools must come before filamat, as filamat relies on the presence of the
