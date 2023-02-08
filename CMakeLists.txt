@@ -719,6 +719,10 @@ set_target_properties(isocline      PROPERTIES FOLDER ThirdParty/luau)
 #set_target_properties(Luau.Ast.CLI PROPERTIES FOLDER Tools/luau)
 #set_target_properties(Luau.Reduce.CLI PROPERTIES FOLDER Tools/luau)
 
+#引入ZMQ -4.3.4
+#add_subdirectory(${EXTERNAL}/libzmq)
+
+
 if (FILAMENT_BUILD_FILAMAT OR IS_HOST_PLATFORM)
     # spirv-tools must come before filamat, as filamat relies on the presence of the
     # spirv-tools_SOURCE_DIR variable.

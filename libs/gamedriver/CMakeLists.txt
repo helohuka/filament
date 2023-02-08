@@ -15,6 +15,7 @@ set(MATERIAL_DIR  "${GENERATION_ROOT}/generated/material")
 # ==================================================================================================
 
 set(PUBLIC_HDRS
+        include/gamedriver/BaseLibs.h
         include/gamedriver/Config.h
         include/gamedriver/Cube.h
         include/gamedriver/GameDriver.h
@@ -23,7 +24,8 @@ set(PUBLIC_HDRS
         include/gamedriver/MeshAssimp.h
         include/gamedriver/NativeWindowHelper.h
         include/gamedriver/Sphere.h
-
+        
+        include/gamedriver/Resource.h
         include/gamedriver/ScriptVM.h
 )
 

@@ -1,56 +1,12 @@
 
-#include <cmath>
+#include "gamedriver/BaseLibs.h"
+#include "gamedriver/GameDriver.h"
 
 #include "generated/resources/gamedriver.h"
 
 #include <gamedriver/Config.h>
-#include <gamedriver/GameDriver.h>
 #include <gamedriver/IBL.h>
 
-#include <filament/Camera.h>
-#include <filament/ColorGrading.h>
-#include <filament/Engine.h>
-#include <filament/IndexBuffer.h>
-#include <filament/RenderableManager.h>
-#include <filament/Renderer.h>
-#include <filament/Scene.h>
-#include <filament/Skybox.h>
-#include <filament/TransformManager.h>
-#include <filament/VertexBuffer.h>
-#include <filament/View.h>
-
-#include <gltfio/AssetLoader.h>
-#include <gltfio/FilamentAsset.h>
-#include <gltfio/ResourceLoader.h>
-#include <gltfio/TextureProvider.h>
-
-#include <viewer/AutomationEngine.h>
-#include <viewer/AutomationSpec.h>
-#include <viewer/ViewerGui.h>
-
-#include <camutils/Manipulator.h>
-
-#include <getopt/getopt.h>
-
-#include <utils/NameComponentManager.h>
-
-#include <math/vec3.h>
-#include <math/vec4.h>
-#include <math/mat3.h>
-#include <math/norm.h>
-
-#include <imgui.h>
-#include <filagui/ImGuiExtensions.h>
-
-#include <array>
-#include <fstream>
-#include <iostream>
-#include <string>
-
-#include "gamedriver/ScriptVM.h"
-
-//#include "generated/resources/gltf_demo.h"
-#include "materials/uberarchive.h"
 
 using namespace filament;
 using namespace filament::math;

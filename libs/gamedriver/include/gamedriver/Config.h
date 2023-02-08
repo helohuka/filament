@@ -1,12 +1,8 @@
 
-#ifndef __CONFIG_H
-#define __CONFIG_H
+#ifndef __CONFIG_H__
+#define __CONFIG_H__ 1
 
-#include <string>
-
-#include <filament/Engine.h>
-
-#include <camutils/Manipulator.h>
+#include "gamedriver/BaseLibs.h"
 
 struct Config {
     std::string title;

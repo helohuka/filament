@@ -1,36 +1,10 @@
 
-#ifndef GAMEDRIVER_H
-#define GAMEDRIVER_H
+#ifndef __GAMEDRIVER_H__
+#define __GAMEDRIVER_H__ 1
 
-#include <functional>
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <vector>
-
-#include <SDL.h>
-
-#include <filament/Engine.h>
-#include <filament/Viewport.h>
-#include <filament/Camera.h>
-#include <filament/Engine.h>
-#include <filament/IndexBuffer.h>
-#include <filament/Material.h>
-#include <filament/MaterialInstance.h>
-#include <filament/RenderableManager.h>
-#include <filament/Scene.h>
-#include <filament/Skybox.h>
-#include <filament/TransformManager.h>
-#include <filament/VertexBuffer.h>
-#include <filament/View.h>
-#include <camutils/Manipulator.h>
-
-#include <utils/Path.h>
-#include <utils/Entity.h>
-
-#include "Config.h"
-#include "IBL.h"
-#include <utils/EntityManager.h>
+#include "gamedriver/BaseLibs.h"
+#include "gamedriver/Config.h"
+#include "gamedriver/IBL.h"
 
 namespace filament {
 class Renderer;
@@ -72,7 +46,7 @@ public:
     void run(const Config& config, SetupCallback setup, CleanupCallback cleanup,
             ImGuiCallback imgui = ImGuiCallback(), PreRenderCallback preRender = PreRenderCallback(),
             PostRenderCallback postRender = PostRenderCallback(),
-            size_t width = 1024, size_t height = 768);
+            size_t width = 1280, size_t height = 720);
 
     filament::Material const* getDefaultMaterial() const noexcept { return mDefaultMaterial; }
     filament::Material const* getTransparentMaterial() const noexcept { return mTransparentMaterial; }

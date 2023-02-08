@@ -1,45 +1,7 @@
 
-#include <memory>
-
-
-
-#include <gamedriver/GameDriver.h>
-
-#if defined(WIN32)
-#    include <SDL_syswm.h>
-#    include <utils/unwindows.h>
-#endif
-
-#include <iostream>
-
-#include <imgui.h>
-
-#include <utils/EntityManager.h>
-#include <utils/Panic.h>
-#include <utils/Path.h>
-
-#include <filament/Camera.h>
-#include <filament/Material.h>
-#include <filament/MaterialInstance.h>
-#include <filament/Renderer.h>
-#include <filament/RenderableManager.h>
-#include <filament/Scene.h>
-#include <filament/Skybox.h>
-#include <filament/View.h>
-
-#ifndef NDEBUG
-#include <filament/DebugRegistry.h>
-#endif
-
-#include <filagui/ImGuiHelper.h>
-
-#include <gamedriver/Cube.h>
-#include <gamedriver/NativeWindowHelper.h>
-
-#include <stb_image.h>
-
-#include "generated/resources/gamedriver.h"
-
+#include "gamedriver/BaseLibs.h"
+#include "gamedriver/GameDriver.h"
+#include "gamedriver/NativeWindowHelper.h"
 
 using namespace filament;
 using namespace filagui;

@@ -1,7 +1,5 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
-
-
 buildscript {
     def path = providers
             .gradleProperty("com.google.android.filament.dist-dir")
@@ -68,7 +66,7 @@ buildscript {
             "-DANDROID=1",
             "-DEGL=ON",
             "-DANDROID_PLATFORM=21",
-            "-DANDROID_STL=c++_static",
+            //"-DANDROID_STL=c++_static",
             "-DFILAMENT_DIST_DIR=${filamentPath}".toString(),
             "-DFILAMENT_SUPPORTS_VULKAN=${excludeVulkan ? 'OFF' : 'ON'}".toString(),
             "-DFILAMENT_ENABLE_MATDBG=${matdbg ? 'ON' : 'OFF'}".toString(),
@@ -104,8 +102,3 @@ buildscript {
         google()
     }
 }
-
-//plugins {
-//    id 'com.android.application' version '7.3.1' apply false
-//    id 'com.android.library' version '7.3.1' apply false
-//}

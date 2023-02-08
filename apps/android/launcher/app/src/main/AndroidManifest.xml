@@ -37,8 +37,8 @@
             <!--
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="*/*" />
+                <category android:name="android.intencategory.DEFAULT" />
+                <data android:mimeType="*/*" />t.
             </intent-filter>
             -->
         </activity>

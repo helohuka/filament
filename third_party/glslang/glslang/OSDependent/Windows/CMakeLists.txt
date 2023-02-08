@@ -34,7 +34,7 @@
 set(SOURCES ossource.cpp ../osinclude.h)
 
 add_library(OSDependent STATIC ${SOURCES})
-set_property(TARGET OSDependent PROPERTY FOLDER glslang)
+set_property(TARGET OSDependent PROPERTY FOLDER ThirdParty/glslang)
 set_property(TARGET OSDependent PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 # MinGW GCC complains about function pointer casts to void*.
@@ -62,3 +62,4 @@ if(ENABLE_GLSLANG_INSTALL)
     ")
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/OSDependentTargets.cmake" DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
 endif()
+
