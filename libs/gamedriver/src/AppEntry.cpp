@@ -2,6 +2,9 @@
 #include "gamedriver/BaseLibs.h"
 #include "gamedriver/GameDriver.h"
 
+#include "gamedriver/ScriptVM.h"
+#include "gamedriver/Resource.h"
+
 #include "generated/resources/gamedriver.h"
 
 #include <gamedriver/Config.h>
@@ -427,7 +430,7 @@ int entry(int argc, char** argv) {
     App app;
 
     app.config.title = "GameDriver";
-    app.config.iblDirectory = GameDriver::getRootAssetsPath() + DEFAULT_IBL;
+    app.config.iblDirectory = Resource::get().getRootPath() + DEFAULT_IBL;
 
     int optionIndex = handleCommandLineArguments(argc, argv, &app);
 

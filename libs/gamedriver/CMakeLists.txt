@@ -9,7 +9,7 @@ set(ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
 set(GENERATION_ROOT ${CMAKE_CURRENT_BINARY_DIR})
 set(RESOURCE_DIR  "${GENERATION_ROOT}/generated/resources")
 set(MATERIAL_DIR  "${GENERATION_ROOT}/generated/material")
-
+set(FLATBUFFERS_DIR  "${GENERATION_ROOT}/generated/schemas")
 # ==================================================================================================
 # Headers, sources, libraries, and resources.
 # ==================================================================================================
@@ -43,6 +43,7 @@ set(SRCS
 
        
         src/ScriptVM.cpp
+        src/Resource.cpp
 )
 
 set(LIBS
@@ -65,7 +66,9 @@ set(LIBS
         uberarchive
         SDL2-static
         Luau.Compiler
-        Luau.VM    
+        Luau.VM
+        rapidxml
+        flatbuffers
         gamedriver-resources
       )
 
@@ -101,6 +104,10 @@ set(MATERIAL_SRCS
         materials/texturedLit.mat
 )
 
+set(SCHEMA_SRCS
+		schemas/Config.fbs
+)
+
 if (APPLE)
     list(APPEND SRCS src/NativeWindowHelperCocoa.mm)
     list(APPEND LIBS "-framework Cocoa -framework QuartzCore")
@@ -119,13 +126,33 @@ if (ANDROID)
     list(APPEND SRCS src/NativeWindowHelperAndroid.cpp)
 endif()
 
+if (CMAKE_CROSSCOMPILING)
+    include(${IMPORT_EXECUTABLES})
+endif()
+
+# ==================================================================================================
+# Compile flatbuffers
+# ==================================================================================================
+file(MAKE_DIRECTORY ${FLATBUFFERS_DIR})
+
+foreach (fbs_src ${SCHEMA_SRCS})
+    get_filename_component(localname "${fbs_src}" NAME_WE)
+    get_filename_component(fullname "${fbs_src}" ABSOLUTE)
+	set(output_path "${FLATBUFFERS_DIR}/")
+    add_custom_command(
+            OUTPUT ${FLATBUFFERS_DIR}
+            COMMAND flatc --gen-object-api --schema  -c -o ${output_path} ${fullname}
+            MAIN_DEPENDENCY ${fbs_src}
+            DEPENDS flatc
+            COMMENT "Compiling flatbuffers ${fbs_src} to ${output_path}"
+    )
+endforeach()
+
 # ==================================================================================================
 # Compile resources
 # ==================================================================================================
 
-if (CMAKE_CROSSCOMPILING)
-    include(${IMPORT_EXECUTABLES})
-endif()
+
 
 file(MAKE_DIRECTORY ${MATERIAL_DIR})
 file(MAKE_DIRECTORY ${RESOURCE_DIR})
@@ -165,14 +192,18 @@ add_custom_command(OUTPUT ${DUMMY_SRC} COMMAND echo "//" > ${DUMMY_SRC})
 add_library(gamedriver-resources ${DUMMY_SRC} ${RESGEN_SOURCE})
 set_target_properties(gamedriver-resources PROPERTIES FOLDER Libs/Resources)
 
+
+
 # ==================================================================================================
 # Include and target definitions
 # ==================================================================================================
 
 include_directories(${PUBLIC_HDR_DIR})
+include_directories(${FLATBUFFERS_DIR})
 
-add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS})
-
+add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS} ${MATERIAL_SRCS} ${SCHEMA_SRCS} ${FLATBUFFERS_SRC})
+source_group(Materials ${MATERIAL_SRCS})
+source_group(Schemas ${SCHEMA_SRCS})
 target_link_libraries(${TARGET} PUBLIC ${LIBS} gamedriver-resources)
 
 target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})

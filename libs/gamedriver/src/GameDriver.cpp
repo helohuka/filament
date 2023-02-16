@@ -2,6 +2,9 @@
 #include "gamedriver/BaseLibs.h"
 #include "gamedriver/GameDriver.h"
 
+#include "gamedriver/ScriptVM.h"
+#include "gamedriver/Resource.h"
+
 #include "gamedriver/Cube.h"
 #include "gamedriver/NativeWindowHelper.h"
 #include "generated/resources/gamedriver.h"
@@ -11,10 +14,6 @@ using namespace filagui;
 using namespace filament::math;
 using namespace utils;
 
-GameDriver& GameDriver::get() {
-    static GameDriver gd;
-    return gd;
-}
 
 GameDriver::GameDriver() {
     initSDL();
@@ -28,7 +27,7 @@ View* GameDriver::getGuiView() const noexcept {
     return mImGuiHelper->getView();
 }
 
-void GameDriver::run(const Config& config, SetupCallback setupCallback,
+void GameDriver::run(Config& config, SetupCallback setupCallback,
         CleanupCallback cleanupCallback, ImGuiCallback imguiCallback,
         PreRenderCallback preRender, PostRenderCallback postRender,
         size_t width, size_t height) {
@@ -105,7 +104,7 @@ void GameDriver::run(const Config& config, SetupCallback setupCallback,
 
     if (imguiCallback) {
         mImGuiHelper = std::make_unique<ImGuiHelper>(mEngine, window->mUiView->getView(),
-            getRootAssetsPath() + "assets/fonts/Roboto-Medium.ttf");
+            Resource::get().getRootPath() + "assets/fonts/Roboto-Medium.ttf");
         ImGuiIO& io = ImGui::GetIO();
         #ifdef WIN32
             SDL_SysWMinfo wmInfo;
@@ -400,16 +399,7 @@ void GameDriver::run(const Config& config, SetupCallback setupCallback,
     mEngine = nullptr;
 }
 
-// RELATIVE_ASSET_PATH is set inside samples/CMakeLists.txt and used to support multi-configuration
-// generators, like Visual Studio or Xcode.
-#ifndef RELATIVE_ASSET_PATH
-#define RELATIVE_ASSET_PATH "."
-#endif
 
-const utils::Path& GameDriver::getRootAssetsPath() {
-    static const utils::Path root = utils::Path::getCurrentExecutable().getParent() + RELATIVE_ASSET_PATH;
-    return root;
-}
 
 void GameDriver::loadIBL(const Config& config) {
     if (!config.iblDirectory.empty()) {

@@ -9,7 +9,6 @@ cmake_minimum_required(VERSION 3.19)
 #project(TNT) 更换项目根名
 project(GameDriver)
 
-include(cmake/Utilities.cmake)
 
 # ==================================================================================================
 # Options
@@ -695,6 +694,7 @@ add_subdirectory(${EXTERNAL}/civetweb/tnt)
 add_subdirectory(${EXTERNAL}/hat-trie/tnt)
 add_subdirectory(${EXTERNAL}/imgui/tnt)
 add_subdirectory(${EXTERNAL}/robin-map/tnt)
+add_subdirectory(${EXTERNAL}/rapidxml/tnt)
 add_subdirectory(${EXTERNAL}/smol-v/tnt)
 add_subdirectory(${EXTERNAL}/benchmark/tnt)
 add_subdirectory(${EXTERNAL}/meshoptimizer/tnt)
@@ -703,7 +703,7 @@ add_subdirectory(${EXTERNAL}/draco/tnt)
 add_subdirectory(${EXTERNAL}/jsmn/tnt)
 add_subdirectory(${EXTERNAL}/stb/tnt)
 add_subdirectory(${EXTERNAL}/getopt)
-
+add_subdirectory(${EXTERNAL}/libassimp/tnt)
 #使用SDL2作为平台抽象层 | 排除 OPENGLES
 add_subdirectory(${EXTERNAL}/libsdl2)
 
@@ -753,7 +753,7 @@ if (IS_HOST_PLATFORM)
 
     #add_subdirectory(${FILAMENT}/samples)
 
-    add_subdirectory(${EXTERNAL}/libassimp/tnt)
+    #add_subdirectory(${EXTERNAL}/libassimp/tnt)
     add_subdirectory(${EXTERNAL}/libpng/tnt)
     #add_subdirectory(${EXTERNAL}/libsdl2/tnt)
     add_subdirectory(${EXTERNAL}/libz/tnt)
@@ -774,20 +774,15 @@ if (IS_HOST_PLATFORM)
     add_subdirectory(${TOOLS}/uberz)
 endif()
 
-if(ANDROID)
+add_subdirectory(${LIBRARIES}/gamedriver)
 
-    add_subdirectory(${EXTERNAL}/libassimp/tnt)
+if(ANDROID)
 	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/apps/android/gamedriver)
-    add_subdirectory(${LIBRARIES}/gamedriver)
-    add_subdirectory(${LIBRARIES}/resources)
 elseif(WIN32)
-    #add_subdirectory(${EXTERNAL}/libsdl2)
-	add_subdirectory(${LIBRARIES}/gamedriver)
-	add_subdirectory(${LIBRARIES}/resources)
 	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/apps/windows/launcher)
 endif()
 
 # Generate exported executables for cross-compiled builds (Android, WebGL, and iOS)
 if (NOT CMAKE_CROSSCOMPILING)
-    export(TARGETS matc cmgen filamesh mipgen resgen uberz glslminifier FILE ${IMPORT_EXECUTABLES})
+    export(TARGETS matc cmgen filamesh mipgen resgen uberz glslminifier flatc FILE ${IMPORT_EXECUTABLES})
 endif()

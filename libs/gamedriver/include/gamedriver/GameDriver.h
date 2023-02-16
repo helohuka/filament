@@ -33,9 +33,9 @@ public:
     using ResizeCallback = std::function<void(filament::Engine*, filament::View*)>;
     using DropCallback = std::function<void(std::string)>;
 
-    static GameDriver& get();
+    SINGLE_INSTANCE_FLAG(GameDriver)
 
-    ~GameDriver();
+public:
 
     void animate(AnimCallback animation) { mAnimation = animation; }
 
@@ -43,7 +43,7 @@ public:
 
     void setDropHandler(DropCallback handler) { mDropHandler = handler; }
 
-    void run(const Config& config, SetupCallback setup, CleanupCallback cleanup,
+    void run(Config& config, SetupCallback setup, CleanupCallback cleanup,
             ImGuiCallback imgui = ImGuiCallback(), PreRenderCallback preRender = PreRenderCallback(),
             PostRenderCallback postRender = PostRenderCallback(),
             size_t width = 1280, size_t height = 720);
@@ -64,23 +64,9 @@ public:
 
     size_t getSkippedFrameCount() const { return mSkippedFrames; }
 
-    GameDriver(const GameDriver& rhs) = delete;
-    GameDriver(GameDriver&& rhs) = delete;
-    GameDriver& operator=(const GameDriver& rhs) = delete;
-    GameDriver& operator=(GameDriver&& rhs) = delete;
-
-    /**
-     * Returns the path to the Filament root for loading assets. This is determined from the
-     * executable folder, which allows users to launch samples from any folder.
-     *
-     * This takes into account multi-configuration CMake generators, like Visual Studio or Xcode,
-     * that have different executable paths compared to single-configuration generators, like Ninja.
-     */
-    static const utils::Path& getRootAssetsPath();
 
 private:
-    GameDriver();
-
+ 
     using CameraManipulator = filament::camutils::Manipulator<float>;
 
     static bool manipulatorKeyFromKeycode(SDL_Scancode scancode, CameraManipulator::Key& key);
@@ -127,7 +113,7 @@ private:
     class Window {
         friend class GameDriver;
     public:
-        Window(GameDriver* filamentApp, const Config& config,
+        Window(GameDriver* filamentApp,  Config& config,
                std::string title, size_t w, size_t h);
         virtual ~Window();
 

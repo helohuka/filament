@@ -10,7 +10,7 @@ using namespace utils;
 // ------------------------------------------------------------------------------------------------
 
 GameDriver::Window::Window(GameDriver* filamentApp,
-        const Config& config, std::string title, size_t w, size_t h)
+         Config& config, std::string title, size_t w, size_t h)
         : mGameDriver(filamentApp), mIsHeadless(config.headless) {
     const int x = SDL_WINDOWPOS_CENTERED;
     const int y = SDL_WINDOWPOS_CENTERED;

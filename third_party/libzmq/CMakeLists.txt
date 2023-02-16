@@ -33,7 +33,7 @@ include(TestZMQVersion)
 include(ZMQSourceRunChecks)
 include(ZMQSupportMacros)
 
-#find_package(PkgConfig)
+find_package(PkgConfig)
 
 # Set lists to empty beforehand as to not accidentally take values from parent
 set(sources)
