@@ -43,16 +43,17 @@ struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
     // Values that can be accessed in both surface and post-process materials
     // --------------------------------------------------------------------------------------------
 
-    math::mat4f viewFromWorldMatrix;
-    math::mat4f worldFromViewMatrix;
-    math::mat4f clipFromViewMatrix;
-    math::mat4f viewFromClipMatrix;
-    math::mat4f clipFromWorldMatrix;
-    math::mat4f worldFromClipMatrix;
-    math::float4 clipTransform;     // [sx, sy, tx, ty] only used by VERTEX_DOMAIN_DEVICE
+    math::mat4f viewFromWorldMatrix;    // clip    view <- world    : view matrix
+    math::mat4f worldFromViewMatrix;    // clip    view -> world    : model matrix
+    math::mat4f clipFromViewMatrix;     // clip <- view    world    : projection matrix
+    math::mat4f viewFromClipMatrix;     // clip -> view    world    : inverse projection matrix
+    math::mat4f clipFromWorldMatrix;    // clip <- view <- world
+    math::mat4f worldFromClipMatrix;    // clip -> view -> world
+    math::mat4f userWorldFromWorldMatrix;   // userWorld <- world
+    math::float4 clipTransform;             // [sx, sy, tx, ty] only used by VERTEX_DOMAIN_DEVICE
 
     math::float2 clipControl;       // clip control
-    float time;                     // time in seconds, with a 1 second period
+    float time;                     // time in seconds, with a 1-second period
     float temporalNoise;            // noise [0,1] when TAA is used, 0 otherwise
     math::float4 userTime;          // time(s), (double)time - (float)time, 0, 0
 
@@ -67,14 +68,9 @@ struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
 
     float lodBias;                  // load bias to apply to user materials
     float refractionLodOffset;
-    float padding1;
-    float padding2;
 
     // camera position in view space (when camera_at_origin is enabled), i.e. it's (0,0,0).
-    // Always add worldOffset in the shader to get the true world-space position of the camera.
-    math::float3 cameraPosition;
     float oneOverFarMinusNear;      // 1 / (f-n), always positive
-    math::float3 worldOffset;       // this is (0,0,0) when camera_at_origin is disabled
     float nearOverFarMinusNear;     // n / (f-n), always positive
     float cameraFar;                // camera *culling* far-plane distance, always positive (projection far is at +inf)
     float exposure;
@@ -140,16 +136,18 @@ struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
     // --------------------------------------------------------------------------------------------
     // Fog [variant: FOG]
     // --------------------------------------------------------------------------------------------
+    math::float3 fogDensity;        // { density, -falloff * yc, density * exp(-fallof * yc) }
     float fogStart;
     float fogMaxOpacity;
     float fogHeight;
-    float fogHeightFalloff;         // falloff * 1.44269
+    float fogHeightFalloff;
+    float fogReserved0;
     math::float3 fogColor;
-    float fogDensity;               // (density/falloff)*exp(-falloff*(camera.y - fogHeight))
+    float fogColorFromIbl;
     float fogInscatteringStart;
     float fogInscatteringSize;
-    float fogColorFromIbl;
-    float fogReserved0;
+    float fogReserved1;
+    float fogReserved2;
 
     // --------------------------------------------------------------------------------------------
     // Screen-space reflections [variant: SSR (i.e.: VSM | SRE)]
@@ -162,7 +160,7 @@ struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
     float ssrStride;                    // ssr texel stride, >= 1.0
 
     // bring PerViewUib to 2 KiB
-    math::float4 reserved[63];
+    math::float4 reserved[60];
 };
 
 // 2 KiB == 128 float4s
@@ -175,6 +173,7 @@ static_assert(sizeof(PerViewUib) == sizeof(math::float4) * 128,
 struct PerRenderableData {
 
     struct alignas(16) vec3_std140 : public std::array<float, 3> { };
+    struct alignas(16) vec4_std140 : public std::array<float, 4> { };
     struct mat33_std140 : public std::array<vec3_std140, 3> {
         mat33_std140& operator=(math::mat3f const& rhs) noexcept {
             for (int i = 0; i < 3; i++) {
@@ -185,8 +184,19 @@ struct PerRenderableData {
             return *this;
         }
     };
+    struct mat44_std140 : public std::array<vec4_std140, 4> {
+        mat44_std140& operator=(math::mat4f const& rhs) noexcept {
+            for (int i = 0; i < 4; i++) {
+                (*this)[i][0] = rhs[i][0];
+                (*this)[i][1] = rhs[i][1];
+                (*this)[i][2] = rhs[i][2];
+                (*this)[i][3] = rhs[i][3];
+            }
+            return *this;
+        }
+    };
 
-    math::mat4f worldFromModelMatrix;
+    mat44_std140 worldFromModelMatrix;
     mat33_std140 worldFromModelNormalMatrix;
     uint32_t morphTargetCount;
     uint32_t flagsChannels;                   // see packFlags() below (0x00000fll)
@@ -204,6 +214,13 @@ struct PerRenderableData {
                channels;
     }
 };
+
+#ifndef _MSC_VER
+// not sure why this static_assert fails on MSVC
+static_assert(std::is_trivially_default_constructible_v<PerRenderableData>,
+        "make sure PerRenderableData stays trivially_default_constructible");
+#endif
+
 static_assert(sizeof(PerRenderableData) == 256,
         "sizeof(PerRenderableData) must be 256 bytes");
 

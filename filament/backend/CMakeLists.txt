@@ -114,7 +114,7 @@ endif()
 # ==================================================================================================
 
 if (FILAMENT_SUPPORTS_METAL)
-    set(METAL_SRCS
+    set(METAL_OBJC_SRCS
             src/metal/MetalBlitter.mm
             src/metal/MetalBuffer.mm
             src/metal/MetalBufferPool.mm
@@ -124,18 +124,21 @@ if (FILAMENT_SUPPORTS_METAL)
             src/metal/MetalExternalImage.mm
             src/metal/MetalHandles.mm
             src/metal/MetalPlatform.mm
-            src/metal/MetalResourceTracker.cpp
             src/metal/MetalState.mm
             src/metal/MetalTimerQuery.mm
             src/metal/MetalUtils.mm
     )
 
-    list(APPEND SRCS ${METAL_SRCS})
+    set(METAL_CPP_SRCS
+            src/metal/MetalResourceTracker.cpp
+    )
+
+    list(APPEND SRCS ${METAL_OBJC_SRCS} ${METAL_CPP_SRCS})
 
     if (IOS)
         # Objective-C++ sources need an additional compiler flag on iOS to disable exceptions.
         set_property(SOURCE
-            ${METAL_SRCS}
+            ${METAL_OBJC_SRCS}
                 src/opengl/platforms/PlatformCocoaTouchGL.mm
                 src/opengl/platforms/CocoaTouchExternalImage.mm
                 src/opengl/platforms/PlatformCocoaGL.mm
@@ -176,12 +179,15 @@ if (FILAMENT_SUPPORTS_VULKAN)
             src/vulkan/VulkanPipelineCache.cpp
             src/vulkan/VulkanPipelineCache.h
             src/vulkan/VulkanPlatform.cpp
+            src/vulkan/VulkanReadPixels.cpp
+            src/vulkan/VulkanReadPixels.h
             src/vulkan/VulkanSamplerCache.cpp
             src/vulkan/VulkanSamplerCache.h
             src/vulkan/VulkanStagePool.cpp
             src/vulkan/VulkanStagePool.h
             src/vulkan/VulkanSwapChain.cpp
             src/vulkan/VulkanSwapChain.h
+            src/vulkan/VulkanTaskHandler.h
             src/vulkan/VulkanTexture.cpp
             src/vulkan/VulkanTexture.h
             src/vulkan/VulkanUtility.cpp
@@ -350,6 +356,7 @@ else()
             -Wgnu-conditional-omitted-operand
             -Wweak-vtables -Wnon-virtual-dtor -Wclass-varargs -Wimplicit-fallthrough
             -Wover-aligned
+            -Werror
     )
 endif()
 

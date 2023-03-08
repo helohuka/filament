@@ -20,7 +20,6 @@
 #include <math/quat.h>
 #include <math/vec3.h>
 #include <math/vec4.h>
-#include <utils/compiler.h>
 
 namespace filament {
 namespace geometry {
@@ -28,8 +27,7 @@ namespace geometry {
 struct TangentSpaceMeshInput;
 struct TangentSpaceMeshOutput;
 
- /* WARNING: WORK-IN-PROGRESS, PLEASE DO NOT USE */
-/**
+ /**
  * This class builds Filament-style TANGENTS buffers given an input mesh.
  *
  * This class enables the client to chose between several algorithms. The client can retrieve the
@@ -56,7 +54,6 @@ public:
          *   -----------------------------------------------------------
          *   normals                                FRISVAD
          *   positions + indices                    FLAT_SHADING
-         *   normals + tangents                     SIGN_OF_W
          *   normals + uvs + positions + indices    MIKKTSPACE
          * </pre>
          */
@@ -88,8 +85,14 @@ public:
          * Hughes-Moller method
          *
          * **Requires**: `normals` <br/>
-         * **Reference**: Möller, T. and Hughes, J.F., 1999. Efficiently building a matrix to rotate one
-         *     vector to another. Journal of graphics tools, 4(4), pp.1-4.
+         * **Reference**:
+         *     - Hughes, J.F. and Moller, T., 1999. Building an orthonormal basis from a unit
+         *       vector. journal of graphics tools, 4(4), pp.33-35.
+         *     - Parker, S.G., Bigler, J., Dietrich, A., Friedrich, H., Hoberock, J., Luebke, D.,
+         *       McAllister, D., McGuire, M., Morley, K., Robison, A. and Stich, M., 2010.
+         *       Optix: a general purpose ray tracing engine. Acm transactions on graphics (tog),
+         *       29(4), pp.1-13.
+         * **Note**: We implement the Optix variant, which is documented in the second reference above.
          */
         HUGHES_MOLLER = 3,
 
@@ -110,15 +113,7 @@ public:
          * **Requires**: `positions + indices` <br/>
          * **Note**: Will remesh
          */
-        FLAT_SHADING = 5,
-
-        /**
-         * Sign of W
-         *
-         * **Requires**: `normals + tangents` <br/>
-         * **Note**: The sign of W determines the orientation of the bitangent.
-         */
-        SIGN_OF_W = 6
+        FLAT_SHADING = 5
     };
 
     /**
@@ -143,8 +138,8 @@ public:
          */
         Builder& operator=(Builder&& that) noexcept;
 
-        Builder(const Builder&) = delete;
-        Builder& operator=(const Builder&) = delete;
+        Builder(Builder const&) = delete;
+        Builder& operator=(Builder const&) = delete;
 
         /**
          * Client must provide this parameter
@@ -158,7 +153,7 @@ public:
          * @param stride The stride for iterating through `normals`
          * @return Builder
          */
-        Builder& normals(const filament::math::float3* normals, size_t stride = 0) noexcept;
+        Builder& normals(filament::math::float3 const* normals, size_t stride = 0) noexcept;
 
         /**
          * @param tangents The input tangents. The `w` component is for use with
@@ -166,30 +161,35 @@ public:
          * @param stride The stride for iterating through `tangents`
          * @return Builder
          */
-        Builder& tangents(const filament::math::float4* tangents, size_t stride = 0) noexcept;
+        Builder& tangents(filament::math::float4 const* tangents, size_t stride = 0) noexcept;
 
         /**
          * @param uvs The input uvs
          * @param stride The stride for iterating through `uvs`
          * @return Builder
          */
-        Builder& uvs(const filament::math::float2* uvs, size_t stride = 0) noexcept;
+        Builder& uvs(filament::math::float2 const* uvs, size_t stride = 0) noexcept;
 
         /**
          * @param positions The input positions
          * @param stride The stride for iterating through `positions`
          * @return Builder
          */
-        Builder& positions(const filament::math::float3* positions, size_t stride = 0) noexcept;
+        Builder& positions(filament::math::float3 const* positions, size_t stride = 0) noexcept;
 
         Builder& triangleCount(size_t triangleCount) noexcept;
-        Builder& triangles(const filament::math::uint3* triangles) noexcept;
-        Builder& triangles(const filament::math::ushort3* triangles) noexcept;
+        Builder& triangles(filament::math::uint3 const* triangles) noexcept;
+        Builder& triangles(filament::math::ushort3 const* triangles) noexcept;
 
         Builder& algorithm(Algorithm algorithm) noexcept;
 
         /**
-         * Computes the tangent space mesh.
+         * Computes the tangent space mesh. The resulting mesh object is owned by the callee. The
+         * callee must call TangentSpaceMesh::destroy on the object once they are finished with it.
+         *
+         * The state of the Builder will be reset after each call to build(). The client needs to
+         * populate the builder with parameters again if they choose to re-use it.
+         *
          * @return A TangentSpaceMesh
          */
         TangentSpaceMesh* build();
@@ -198,7 +198,11 @@ public:
         TangentSpaceMesh* mMesh = nullptr;
     };
 
-    ~TangentSpaceMesh() noexcept;
+    /**
+     * Destory the mesh object
+     * @param mesh A pointer to a TangentSpaceMesh ready to be destroyed
+     */
+     static void destroy(TangentSpaceMesh* mesh) noexcept;
 
     /**
      * Move constructor
@@ -209,6 +213,9 @@ public:
      * Move constructor
      */
     TangentSpaceMesh& operator=(TangentSpaceMesh&& that) noexcept;
+
+    TangentSpaceMesh(TangentSpaceMesh const&) = delete;
+    TangentSpaceMesh& operator=(TangentSpaceMesh const&) = delete;
 
     /**
      * Number of output vertices
@@ -313,9 +320,8 @@ public:
     Algorithm getAlgorithm() const noexcept;
 
 private:
+    ~TangentSpaceMesh() noexcept;
     TangentSpaceMesh() noexcept;
-    TangentSpaceMesh(const TangentSpaceMesh&) = delete;
-    TangentSpaceMesh& operator=(const TangentSpaceMesh&) = delete;
     TangentSpaceMeshInput* mInput;
     TangentSpaceMeshOutput* mOutput;
 

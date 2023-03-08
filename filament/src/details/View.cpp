@@ -268,9 +268,8 @@ bool FView::isSkyboxVisible() const noexcept {
     return skybox != nullptr && (skybox->getLayerMask() & mVisibleLayers);
 }
 
-void FView::prepareShadowing(FEngine& engine, DriverApi& driver,
-        FScene::RenderableSoa& renderableData, FScene::LightSoa& lightData,
-        CameraInfo const& cameraInfo) noexcept {
+void FView::prepareShadowing(FEngine& engine, FScene::RenderableSoa& renderableData,
+        FScene::LightSoa& lightData, CameraInfo const& cameraInfo) noexcept {
     SYSTRACE_CALL();
 
     mHasShadowing = false;
@@ -284,7 +283,7 @@ void FView::prepareShadowing(FEngine& engine, DriverApi& driver,
     auto& lcm = engine.getLightManager();
 
     // dominant directional light is always as index 0
-    FLightManager::Instance directionalLight = lightData.elementAt<FScene::LIGHT_INSTANCE>(0);
+    FLightManager::Instance const directionalLight = lightData.elementAt<FScene::LIGHT_INSTANCE>(0);
     const bool hasDirectionalShadows = directionalLight && lcm.isShadowCaster(directionalLight);
     if (UTILS_UNLIKELY(hasDirectionalShadows)) {
         const auto& shadowOptions = lcm.getShadowOptions(directionalLight);
@@ -338,6 +337,7 @@ void FView::prepareShadowing(FEngine& engine, DriverApi& driver,
 void FView::prepareLighting(FEngine& engine, FEngine::DriverApi& driver, ArenaScope& arena,
         filament::Viewport const& viewport, CameraInfo const& cameraInfo) noexcept {
     SYSTRACE_CALL();
+    SYSTRACE_CONTEXT();
 
     FScene* const scene = mScene;
     auto const& lightData = scene->getLightData();
@@ -390,7 +390,7 @@ void FView::prepareLighting(FEngine& engine, FEngine::DriverApi& driver, ArenaSc
      * Directional light (always at index 0)
      */
 
-    FLightManager::Instance directionalLight = lightData.elementAt<FScene::LIGHT_INSTANCE>(0);
+    FLightManager::Instance const directionalLight = lightData.elementAt<FScene::LIGHT_INSTANCE>(0);
     const float3 sceneSpaceDirection = lightData.elementAt<FScene::DIRECTION>(0); // guaranteed normalized
     mPerViewUniforms.prepareDirectionalLight(engine, exposure, sceneSpaceDirection, directionalLight);
     mHasDirectionalLight = directionalLight.isValid();
@@ -401,37 +401,39 @@ CameraInfo FView::computeCameraInfo(FEngine& engine) const noexcept {
 
     /*
      * We apply a "world origin" to "everything" in order to implement the IBL rotation.
-     * The "world origin" could also be useful for other things, like keeping the origin
-     * close to the camera position to improve fp precision in the shader for large scenes.
+     * The "world origin" is also be used to kee the origin close to the camera position to
+     * improve fp precision in the shader for large scenes.
      */
-    mat4 worldOriginScene;
-    FIndirectLight const* const ibl = scene->getIndirectLight();
-    if (ibl) {
-        // the IBL transformation must be a rigid transform
-        mat3f rotation{ scene->getIndirectLight()->getRotation() };
-        // for a rigid-body transform, the inverse is the transpose
-        worldOriginScene = mat4{ transpose(rotation) };
-    }
+    mat4 translation;
+    mat4 rotation;
 
     /*
      * Calculate all camera parameters needed to render this View for this frame.
      */
     FCamera const* const camera = mViewingCamera ? mViewingCamera : mCullingCamera;
-
     if (engine.debug.view.camera_at_origin) {
         // this moves the camera to the origin, effectively doing all shader computations in
         // view-space, which improves floating point precision in the shader by staying around
         // zero, where fp precision is highest. This also ensures that when the camera is placed
         // very far from the origin, objects are still rendered and lit properly.
-        worldOriginScene[3].xyz -= camera->getPosition();
+        translation = mat4::translation( -camera->getPosition() );
     }
 
-    return { *camera, worldOriginScene };
+    FIndirectLight const* const ibl = scene->getIndirectLight();
+    if (ibl) {
+        // the IBL transformation must be a rigid transform
+        rotation = mat4{ transpose(scene->getIndirectLight()->getRotation()) };
+    }
+
+    return { *camera, rotation * translation };
 }
 
 void FView::prepare(FEngine& engine, DriverApi& driver, ArenaScope& arena,
         filament::Viewport const& viewport, CameraInfo const& cameraInfo,
         float4 const& userTime, bool needsAlphaChannel) noexcept {
+
+        SYSTRACE_CALL();
+        SYSTRACE_CONTEXT();
 
     JobSystem& js = engine.getJobSystem();
 
@@ -444,7 +446,7 @@ void FView::prepare(FEngine& engine, DriverApi& driver, ArenaScope& arena,
         if (UTILS_LIKELY(mViewingCamera == nullptr)) {
             // In the common case when we don't have a viewing camera, cameraInfo.view is
             // already the culling view matrix
-            return Frustum{ mat4f{ highPrecisionMultiply(cameraInfo.projection, cameraInfo.view) }};
+            return Frustum{ mat4f{ highPrecisionMultiply(cameraInfo.cullingProjection, cameraInfo.view) }};
         } else {
             // Otherwise, we need to recalculate it from the culling camera.
             // Note: it is correct to always do the math from mCullingCamera, but it hides the
@@ -464,7 +466,7 @@ void FView::prepare(FEngine& engine, DriverApi& driver, ArenaScope& arena,
      * Gather all information needed to render this scene. Apply the world origin to all
      * objects in the scene.
      */
-    scene->prepare(cameraInfo.worldOrigin, hasVSM());
+    scene->prepare(js, arena.getAllocator(), cameraInfo.worldOrigin, hasVSM());
 
     /*
      * Light culling: runs in parallel with Renderable culling (below)
@@ -504,7 +506,7 @@ void FView::prepare(FEngine& engine, DriverApi& driver, ArenaScope& arena,
         if (prepareVisibleLightsJob) {
             js.waitAndRelease(prepareVisibleLightsJob);
         }
-        prepareShadowing(engine, driver, renderableData, scene->getLightData(), cameraInfo);
+        prepareShadowing(engine, renderableData, scene->getLightData(), cameraInfo);
 
         /*
          * Partition the SoA so that renderables are partitioned w.r.t their visibility into the
@@ -527,6 +529,8 @@ void FView::prepare(FEngine& engine, DriverApi& driver, ArenaScope& arena,
 
         // TODO: we need to compare performance of doing this partitioning vs not doing it.
         //       and rely on checking visibility in the loops
+
+        SYSTRACE_NAME_BEGIN("Partitioning");
 
         // calculate the sorting key for all elements, based on their visibility
         uint8_t const* layers = renderableData.data<FScene::LAYERS>();
@@ -568,6 +572,8 @@ void FView::prepare(FEngine& engine, DriverApi& driver, ArenaScope& arena,
 
         mSpotLightShadowCasters = merged;
 
+        SYSTRACE_NAME_END();
+
         // TODO: when any spotlight is used, `merged` ends-up being the whole list. However,
         //       some of the items will end-up not being visible by any light. Can we do better?
         //       e.g. could we deffer some of the prepareVisibleRenderables() to later?
@@ -603,8 +609,10 @@ void FView::prepare(FEngine& engine, DriverApi& driver, ArenaScope& arena,
      * Update driver state
      */
 
+    auto const userModelMatrix = inverse(cameraInfo.getUserViewMatrix());
+    auto const userCameraPosition = userModelMatrix[3].xyz;
     mPerViewUniforms.prepareTime(engine, userTime);
-    mPerViewUniforms.prepareFog(cameraInfo.getPosition(), mFogOptions);
+    mPerViewUniforms.prepareFog(userCameraPosition, mFogOptions);
     mPerViewUniforms.prepareTemporalNoise(engine, mTemporalAntiAliasingOptions);
     mPerViewUniforms.prepareBlending(needsAlphaChannel);
 }

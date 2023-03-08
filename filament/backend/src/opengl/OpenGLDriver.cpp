@@ -69,7 +69,9 @@ using namespace utils;
 namespace filament::backend {
 
 Driver* OpenGLDriverFactory::create(
-        OpenGLPlatform* const platform, void* const sharedGLContext, const Platform::DriverConfig& driverConfig) noexcept {
+        OpenGLPlatform* const platform,
+        void* const sharedGLContext,
+        const Platform::DriverConfig& driverConfig) noexcept {
     return OpenGLDriver::create(platform, sharedGLContext, driverConfig);
 }
 
@@ -129,18 +131,18 @@ Driver* OpenGLDriver::create(OpenGLPlatform* const platform,
         return {};
     }
 
-    if constexpr (BACKEND_OPENGL_VERSION == BACKEND_OPENGL_VERSION_GLES) {
-        if (UTILS_UNLIKELY(!(major >= 3 && minor >= 0))) {
-            PANIC_LOG("OpenGL ES 3.0 minimum needed (current %d.%d)", major, minor);
-            goto cleanup;
-        }
-    } else if constexpr (BACKEND_OPENGL_VERSION == BACKEND_OPENGL_VERSION_GL) {
-        // we require GL 4.1 headers and minimum version
-        if (UTILS_UNLIKELY(!((major == 4 && minor >= 1) || major > 4))) {
-            PANIC_LOG("OpenGL 4.1 minimum needed (current %d.%d)", major, minor);
-            goto cleanup;
-        }
+#if defined(BACKEND_OPENGL_VERSION_GLES)
+    if (UTILS_UNLIKELY(!(major >= 3 && minor >= 0))) {
+        PANIC_LOG("OpenGL ES 3.0 minimum needed (current %d.%d)", major, minor);
+        goto cleanup;
     }
+#else
+    // we require GL 4.1 headers and minimum version
+    if (UTILS_UNLIKELY(!((major == 4 && minor >= 1) || major > 4))) {
+        PANIC_LOG("OpenGL 4.1 minimum needed (current %d.%d)", major, minor);
+        goto cleanup;
+    }
+#endif
 
     size_t const defaultSize = FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB * 1024U * 1024U;
     Platform::DriverConfig const validConfig {
@@ -177,8 +179,16 @@ OpenGLDriver::OpenGLDriver(OpenGLPlatform* platform, const Platform::DriverConfi
     slog.i << "OS version: " << mPlatform.getOSVersion() << io::endl;
 #endif
 
-    if (mContext.ext.EXT_disjoint_timer_query ||
-            BACKEND_OPENGL_VERSION == BACKEND_OPENGL_VERSION_GL) {
+    // Timer queries are core in GL 3.3, otherwise we need EXT_disjoint_timer_query
+    // iOS headers don't define GL_EXT_disjoint_timer_query, so make absolutely sure
+    // we won't use it.
+
+#if defined(BACKEND_OPENGL_VERSION_GL)
+    assert_invariant(mContext.ext.EXT_disjoint_timer_query);
+#endif
+
+#if defined(BACKEND_OPENGL_VERSION_GL) || defined(GL_EXT_disjoint_timer_query)
+    if (mContext.ext.EXT_disjoint_timer_query) {
         // timer queries are available
         if (mContext.bugs.dont_use_timer_query && mPlatform.canCreateFence()) {
             // however, they don't work well, revert to using fences if we can.
@@ -187,7 +197,9 @@ OpenGLDriver::OpenGLDriver(OpenGLPlatform* platform, const Platform::DriverConfi
             mTimerQueryImpl = new TimerQueryNative(mContext);
         }
         mFrameTimeSupported = true;
-    } else if (mPlatform.canCreateFence()) {
+    } else
+#endif
+    if (mPlatform.canCreateFence()) {
         // no timer queries, but we can use fences
         mTimerQueryImpl = new OpenGLTimerQueryFence(mPlatform);
         mFrameTimeSupported = true;
@@ -537,23 +549,29 @@ void OpenGLDriver::textureStorage(OpenGLDriver::GLTexture* t,
                     GLsizei(width), GLsizei(height), GLsizei(depth) * 6);
             break;
         }
+#ifdef BACKEND_OPENGL_LEVEL_GLES31
         case GL_TEXTURE_2D_MULTISAMPLE:
             if constexpr (TEXTURE_2D_MULTISAMPLE_SUPPORTED) {
                 // NOTE: if there is a mix of texture and renderbuffers, "fixed_sample_locations" must be true
                 // NOTE: what's the benefit of setting "fixed_sample_locations" to false?
-#if BACKEND_OPENGL_LEVEL >= BACKEND_OPENGL_LEVEL_GLES31
-                // only supported from GL 4.3 and GLES 3.1 headers
-                glTexStorage2DMultisample(t->gl.target, t->samples, t->gl.internalFormat,
-                        GLsizei(width), GLsizei(height), GL_TRUE);
-#elif defined(GL_VERSION_4_1)
-                // only supported in GL (GL4.1 doesn't support glTexStorage2DMultisample)
-                glTexImage2DMultisample(t->gl.target, t->samples, t->gl.internalFormat,
-                        GLsizei(width), GLsizei(height), GL_TRUE);
+
+                if (mContext.isAtLeastGL(4, 3) || mContext.isAtLeastGLES(3, 1)) {
+                    // only supported from GL 4.3 and GLES 3.1 headers
+                    glTexStorage2DMultisample(t->gl.target, t->samples, t->gl.internalFormat,
+                            GLsizei(width), GLsizei(height), GL_TRUE);
+                }
+#ifdef BACKEND_OPENGL_VERSION_GL
+                else {
+                    // only supported in GL (GL4.1 doesn't support glTexStorage2DMultisample)
+                    glTexImage2DMultisample(t->gl.target, t->samples, t->gl.internalFormat,
+                            GLsizei(width), GLsizei(height), GL_TRUE);
+                }
 #endif
             } else {
                 PANIC_LOG("GL_TEXTURE_2D_MULTISAMPLE is not supported");
             }
             break;
+#endif // BACKEND_OPENGL_LEVEL_GLES31
         default: // cannot happen
             break;
     }
@@ -621,6 +639,7 @@ void OpenGLDriver::createTextureR(Handle<HwTexture> th, SamplerType target, uint
             if (t->samples > 1) {
                 // Note: we can't be here in practice because filament's user API doesn't
                 // allow the creation of multi-sampled textures.
+#if defined(BACKEND_OPENGL_LEVEL_GLES31)
                 if (gl.features.multisample_texture) {
                     // multi-sample texture on GL 3.2 / GLES 3.1 and above
                     t->gl.target = GL_TEXTURE_2D_MULTISAMPLE;
@@ -629,6 +648,7 @@ void OpenGLDriver::createTextureR(Handle<HwTexture> th, SamplerType target, uint
                 } else {
                     // Turn off multi-sampling for that texture. It's just not supported.
                 }
+#endif
             }
             textureStorage(t, w, h, depth);
         }
@@ -721,6 +741,7 @@ void OpenGLDriver::importTextureR(Handle<HwTexture> th, intptr_t id,
     if (t->samples > 1) {
         // Note: we can't be here in practice because filament's user API doesn't
         // allow the creation of multi-sampled textures.
+#if defined(BACKEND_OPENGL_LEVEL_GLES31)
         if (gl.features.multisample_texture) {
             // multi-sample texture on GL 3.2 / GLES 3.1 and above
             t->gl.target = GL_TEXTURE_2D_MULTISAMPLE;
@@ -728,6 +749,7 @@ void OpenGLDriver::importTextureR(Handle<HwTexture> th, intptr_t id,
         } else {
             // Turn off multi-sampling for that texture. It's just not supported.
         }
+#endif
     }
 
     CHECK_GL_ERROR(utils::slog.e)
@@ -800,6 +822,7 @@ void OpenGLDriver::framebufferTexture(TargetBufferInfo const& binfo,
 
     GLTexture* t = handle_cast<GLTexture*>(binfo.handle);
 
+    assert_invariant(t);
     assert_invariant(t->target != SamplerType::SAMPLER_EXTERNAL);
     assert_invariant(rt->width  <= valueForLevel(binfo.level, t->width) &&
            rt->height <= valueForLevel(binfo.level, t->height));
@@ -907,7 +930,9 @@ void OpenGLDriver::framebufferTexture(TargetBufferInfo const& binfo,
             case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
             case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
             case GL_TEXTURE_2D:
+#if defined(BACKEND_OPENGL_LEVEL_GLES31)
             case GL_TEXTURE_2D_MULTISAMPLE:
+#endif
                 if (any(t->usage & TextureUsage::SAMPLEABLE)) {
                     glFramebufferTexture2D(GL_FRAMEBUFFER, attachment,
                             target, t->gl.id, binfo.level);
@@ -1135,21 +1160,26 @@ void OpenGLDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
     rt->gl.samples = samples;
     rt->targets = targets;
 
-    UTILS_UNUSED_IN_RELEASE math::vec2<uint32_t> tmin = {std::numeric_limits<uint32_t>::max()};
-    UTILS_UNUSED_IN_RELEASE math::vec2<uint32_t> tmax = {0};
+    UTILS_UNUSED_IN_RELEASE math::vec2<uint32_t> tmin = { std::numeric_limits<uint32_t>::max() };
+    UTILS_UNUSED_IN_RELEASE math::vec2<uint32_t> tmax = { 0 };
+    auto checkDimensions = [&tmin, &tmax](GLTexture* t, uint8_t level) {
+        const auto twidth = std::max(1u, t->width >> level);
+        const auto theight = std::max(1u, t->height >> level);
+        tmin = { std::min(tmin.x, twidth), std::min(tmin.y, theight) };
+        tmax = { std::max(tmax.x, twidth), std::max(tmax.y, theight) };
+    };
+
 
     if (any(targets & TargetBufferFlags::COLOR_ALL)) {
         GLenum bufs[MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT] = { GL_NONE };
         const size_t maxDrawBuffers = getMaxDrawBuffers();
         for (size_t i = 0; i < maxDrawBuffers; i++) {
             if (any(targets & getTargetBufferFlagsAt(i))) {
-                auto t = rt->gl.color[i] = handle_cast<GLTexture*>(color[i].handle);
-                const auto twidth = std::max(1u, t->width >> color[i].level);
-                const auto theight = std::max(1u, t->height >> color[i].level);
-                tmin = { std::min(tmin.x, twidth), std::min(tmin.y, theight) };
-                tmax = { std::max(tmax.x, twidth), std::max(tmax.y, theight) };
+                assert_invariant(color[i].handle);
+                rt->gl.color[i] = handle_cast<GLTexture*>(color[i].handle);
                 framebufferTexture(color[i], rt, GL_COLOR_ATTACHMENT0 + i);
                 bufs[i] = GL_COLOR_ATTACHMENT0 + i;
+                checkDimensions(rt->gl.color[i], color[i].level);
             }
         }
         glDrawBuffers((GLsizei)maxDrawBuffers, bufs);
@@ -1159,37 +1189,28 @@ void OpenGLDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
     // handle special cases first (where depth/stencil are packed)
     bool specialCased = false;
     if ((targets & TargetBufferFlags::DEPTH_AND_STENCIL) == TargetBufferFlags::DEPTH_AND_STENCIL) {
-        assert_invariant(!stencil.handle || stencil.handle == depth.handle);
-        auto t = rt->gl.depth = handle_cast<GLTexture*>(depth.handle);
-        const auto twidth = std::max(1u, t->width >> depth.level);
-        const auto theight = std::max(1u, t->height >> depth.level);
-        tmin = { std::min(tmin.x, twidth), std::min(tmin.y, theight) };
-        tmax = { std::max(tmax.x, twidth), std::max(tmax.y, theight) };
-        if (any(rt->gl.depth->usage & TextureUsage::SAMPLEABLE) ||
-            (!depth.handle && !stencil.handle)) {
-            // special case: depth & stencil requested, and both provided as the same texture
-            // special case: depth & stencil requested, but both not provided
-            specialCased = true;
+        assert_invariant(depth.handle);
+        // either we supplied only the depth handle or both depth/stencil are identical and not null
+        if (depth.handle && (stencil.handle == depth.handle || !stencil.handle)) {
+            rt->gl.depth = handle_cast<GLTexture*>(depth.handle);
             framebufferTexture(depth, rt, GL_DEPTH_STENCIL_ATTACHMENT);
+            specialCased = true;
+            checkDimensions(rt->gl.depth, depth.level);
         }
     }
 
     if (!specialCased) {
         if (any(targets & TargetBufferFlags::DEPTH)) {
-            auto t = rt->gl.depth = handle_cast<GLTexture*>(depth.handle);
-            const auto twidth = std::max(1u, t->width >> depth.level);
-            const auto theight = std::max(1u, t->height >> depth.level);
-            tmin = { std::min(tmin.x, twidth), std::min(tmin.y, theight) };
-            tmax = { std::max(tmax.x, twidth), std::max(tmax.y, theight) };
+            assert_invariant(depth.handle);
+            rt->gl.depth = handle_cast<GLTexture*>(depth.handle);
             framebufferTexture(depth, rt, GL_DEPTH_ATTACHMENT);
+            checkDimensions(rt->gl.depth, depth.level);
         }
         if (any(targets & TargetBufferFlags::STENCIL)) {
-            auto t = rt->gl.stencil = handle_cast<GLTexture*>(stencil.handle);
-            const auto twidth = std::max(1u, t->width >> stencil.level);
-            const auto theight = std::max(1u, t->height >> stencil.level);
-            tmin = { std::min(tmin.x, twidth), std::min(tmin.y, theight) };
-            tmax = { std::max(tmax.x, twidth), std::max(tmax.y, theight) };
+            assert_invariant(stencil.handle);
+            rt->gl.stencil = handle_cast<GLTexture*>(stencil.handle);
             framebufferTexture(stencil, rt, GL_STENCIL_ATTACHMENT);
+            checkDimensions(rt->gl.stencil, stencil.level);
         }
     }
 
@@ -1211,19 +1232,19 @@ void OpenGLDriver::createSyncR(Handle<HwSync> fh, int) {
     DEBUG_MARKER()
 
     GLSync* f = handle_cast<GLSync *>(fh);
-    f->gl.sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-    CHECK_GL_ERROR(utils::slog.e)
+    f->handle = mContext.createFenceSync(mPlatform);
 
     // check the status of the sync once a frame, since we must do this from our thread
     std::weak_ptr<GLSync::State> const weak = f->result;
-    runEveryNowAndThen([sync = f->gl.sync, weak]() -> bool {
+    runEveryNowAndThen(
+            [&platform = mPlatform, context = mContext, handle = f->handle, weak]() -> bool {
         auto result = weak.lock();
         if (result) {
-            GLenum const status = glClientWaitSync(sync, 0, 0u);
+            auto const status = context.clientWaitSync(platform, handle);
             result->status.store(status, std::memory_order_relaxed);
-            return (status != GL_TIMEOUT_EXPIRED);
+            return (status != OpenGLContext::FenceSync::Status::TIMEOUT_EXPIRED);
         }
-        return true; // we're done
+        return true;
     });
 }
 
@@ -1244,6 +1265,11 @@ void OpenGLDriver::createSwapChainHeadlessR(Handle<HwSwapChain> sch,
 
 void OpenGLDriver::createTimerQueryR(Handle<HwTimerQuery> tqh, int) {
     DEBUG_MARKER()
+
+#if defined(GL_EXT_disjoint_timer_query) && defined(FILAMENT_IMPORT_ENTRY_POINTS)
+    // glGenQueries exists in core ES 3.0 and since GL 3.3
+    using glext::glGenQueries;
+#endif
 
     GLTimerQuery* tq = handle_cast<GLTimerQuery*>(tqh);
     glGenQueries(1u, &tq->gl.query);
@@ -1332,9 +1358,6 @@ void OpenGLDriver::destroyTexture(Handle<HwTexture> th) {
                 assert_invariant(t->gl.target == GL_RENDERBUFFER);
                 glDeleteRenderbuffers(1, &t->gl.id);
             }
-            if (t->gl.fence) {
-                glDeleteSync(t->gl.fence);
-            }
             if (t->gl.sidecarRenderBufferMS) {
                 glDeleteRenderbuffers(1, &t->gl.sidecarRenderBufferMS);
             }
@@ -1404,6 +1427,11 @@ void OpenGLDriver::destroyStream(Handle<HwStream> sh) {
 void OpenGLDriver::destroyTimerQuery(Handle<HwTimerQuery> tqh) {
     DEBUG_MARKER()
 
+#if defined(GL_EXT_disjoint_timer_query) && defined(FILAMENT_IMPORT_ENTRY_POINTS)
+    // glDeleteQueries exists in core ES 3.0 and since GL 3.3
+    using glext::glDeleteQueries;
+#endif
+
     if (tqh) {
         GLTimerQuery* tq = handle_cast<GLTimerQuery*>(tqh);
         glDeleteQueries(1u, &tq->gl.query);
@@ -1413,10 +1441,9 @@ void OpenGLDriver::destroyTimerQuery(Handle<HwTimerQuery> tqh) {
 
 void OpenGLDriver::destroySync(Handle<HwSync> sh) {
     DEBUG_MARKER()
-
     if (sh) {
         GLSync* s = handle_cast<GLSync*>(sh);
-        glDeleteSync(s->gl.sync);
+        mContext.destroyFenceSync(mPlatform, s->handle);
         destruct(sh, s);
     }
 }
@@ -1640,7 +1667,7 @@ bool OpenGLDriver::isRenderTargetFormatSupported(TextureFormat format) {
 
         // Three-component SRGB is a color-renderable texture format in core OpenGL on desktop.
         case TextureFormat::SRGB8:
-            return BACKEND_OPENGL_VERSION == BACKEND_OPENGL_VERSION_GL;
+            return mContext.isAtLeastGL(4, 5);
 
         // Half-float formats, requires extension.
         case TextureFormat::R16F:
@@ -1976,7 +2003,9 @@ void OpenGLDriver::generateMipmaps(Handle<HwTexture> th) {
 
     auto& gl = mContext;
     GLTexture* t = handle_cast<GLTexture *>(th);
+#if defined(BACKEND_OPENGL_LEVEL_GLES31)
     assert_invariant(t->gl.target != GL_TEXTURE_2D_MULTISAMPLE);
+#endif
     // Note: glGenerateMimap can also fail if the internal format is not both
     // color-renderable and filterable (i.e.: doesn't work for depth)
     bindTexture(OpenGLContext::DUMMY_TEXTURE_BINDING, t);
@@ -2017,8 +2046,13 @@ void OpenGLDriver::setTextureData(GLTexture* t, uint32_t level,
 
     gl.pixelStore(GL_UNPACK_ROW_LENGTH, GLint(p.stride));
     gl.pixelStore(GL_UNPACK_ALIGNMENT, GLint(p.alignment));
-    gl.pixelStore(GL_UNPACK_SKIP_PIXELS, GLint(p.left));
-    gl.pixelStore(GL_UNPACK_SKIP_ROWS, GLint(p.top));
+
+    // This is equivalent to using GL_UNPACK_SKIP_PIXELS and GL_UNPACK_SKIP_ROWS
+    using PBD = PixelBufferDescriptor;
+    size_t const stride = p.stride ? p.stride : width;
+    size_t const bpp = PBD::computeDataSize(p.format, p.type, 1, 1, 1);
+    size_t const bpr = PBD::computeDataSize(p.format, p.type, stride, 1, p.alignment);
+    void const* const buffer = static_cast<char const*>(p.buffer) + p.left * bpp + bpr * p.top;
 
     switch (t->target) {
         case SamplerType::SAMPLER_EXTERNAL:
@@ -2032,7 +2066,7 @@ void OpenGLDriver::setTextureData(GLTexture* t, uint32_t level,
             assert_invariant(t->gl.target == GL_TEXTURE_2D);
             glTexSubImage2D(t->gl.target, GLint(level),
                     GLint(xoffset), GLint(yoffset),
-                    GLsizei(width), GLsizei(height), glFormat, glType, p.buffer);
+                    GLsizei(width), GLsizei(height), glFormat, glType, buffer);
             break;
         case SamplerType::SAMPLER_3D:
             assert_invariant(zoffset + depth <= std::max(1u, t->depth >> level));
@@ -2041,7 +2075,7 @@ void OpenGLDriver::setTextureData(GLTexture* t, uint32_t level,
             assert_invariant(t->gl.target == GL_TEXTURE_3D);
             glTexSubImage3D(t->gl.target, GLint(level),
                     GLint(xoffset), GLint(yoffset), GLint(zoffset),
-                    GLsizei(width), GLsizei(height), GLsizei(depth), glFormat, glType, p.buffer);
+                    GLsizei(width), GLsizei(height), GLsizei(depth), glFormat, glType, buffer);
             break;
         case SamplerType::SAMPLER_2D_ARRAY:
         case SamplerType::SAMPLER_CUBEMAP_ARRAY:
@@ -2053,7 +2087,7 @@ void OpenGLDriver::setTextureData(GLTexture* t, uint32_t level,
                     t->gl.target == GL_TEXTURE_CUBE_MAP_ARRAY);
             glTexSubImage3D(t->gl.target, GLint(level),
                     GLint(xoffset), GLint(yoffset), GLint(zoffset),
-                    GLsizei(width), GLsizei(height), GLsizei(depth), glFormat, glType, p.buffer);
+                    GLsizei(width), GLsizei(height), GLsizei(depth), glFormat, glType, buffer);
             break;
         case SamplerType::SAMPLER_CUBEMAP: {
             assert_invariant(t->gl.target == GL_TEXTURE_CUBE_MAP);
@@ -2069,7 +2103,7 @@ void OpenGLDriver::setTextureData(GLTexture* t, uint32_t level,
                 GLenum const target = getCubemapTarget(zoffset + face);
                 glTexSubImage2D(target, GLint(level), GLint(xoffset), GLint(yoffset),
                         GLsizei(width), GLsizei(height), glFormat, glType,
-                        static_cast<uint8_t const*>(p.buffer) + faceSize * face);
+                        static_cast<uint8_t const*>(buffer) + faceSize * face);
             }
             break;
         }
@@ -2343,13 +2377,14 @@ SyncStatus OpenGLDriver::getSyncStatus(Handle<HwSync> sh) {
         return SyncStatus::NOT_SIGNALED;
     }
     auto status = s->result->status.load(std::memory_order_relaxed);
+    using Status = OpenGLContext::FenceSync::Status;
     switch (status) {
-        case GL_CONDITION_SATISFIED:
-        case GL_ALREADY_SIGNALED:
+        case Status::CONDITION_SATISFIED:
+        case Status::ALREADY_SIGNALED:
             return SyncStatus::SIGNALED;
-        case GL_TIMEOUT_EXPIRED:
+        case Status::TIMEOUT_EXPIRED:
             return SyncStatus::NOT_SIGNALED;
-        case GL_WAIT_FAILED:
+        case Status::FAILURE:
         default:
             return SyncStatus::ERROR;
     }
@@ -2374,21 +2409,20 @@ void OpenGLDriver::beginRenderPass(Handle<HwRenderTarget> rth,
     gl.bindFramebuffer(GL_FRAMEBUFFER, rt->gl.fbo);
     CHECK_GL_FRAMEBUFFER_STATUS(utils::slog.e, GL_FRAMEBUFFER)
 
-    // glInvalidateFramebuffer appeared on GLES 3.0 and GL4.3, for simplicity we just
-    // ignore it on GL (rather than having to do a runtime check).
-    if (BACKEND_OPENGL_VERSION == BACKEND_OPENGL_VERSION_GLES &&
-            BACKEND_OPENGL_LEVEL >= BACKEND_OPENGL_LEVEL_GLES30) {
-        if (!gl.bugs.disable_invalidate_framebuffer) {
-            AttachmentArray attachments; // NOLINT
-            GLsizei const attachmentCount = getAttachments(attachments, rt, discardFlags);
-            if (attachmentCount) {
-                glInvalidateFramebuffer(GL_FRAMEBUFFER, attachmentCount, attachments.data());
-            }
-            CHECK_GL_ERROR(utils::slog.e)
+    // glInvalidateFramebuffer appeared on GLES 3.0 and GL4.3
+#if defined(BACKEND_OPENGL_LEVEL_GLES30) || defined(BACKEND_OPENGL_VERSION_GL)
+    if ((mContext.isAtLeastGLES(3, 0) || mContext.isAtLeastGL(4, 3))
+            && !gl.bugs.disable_invalidate_framebuffer) {
+        AttachmentArray attachments; // NOLINT
+        GLsizei const attachmentCount = getAttachments(attachments, rt, discardFlags);
+        if (attachmentCount) {
+            glInvalidateFramebuffer(GL_FRAMEBUFFER, attachmentCount, attachments.data());
         }
-    } else {
-        // on GL desktop we assume we don't have glInvalidateFramebuffer, but even if the GPU is
-        // not a tiler, it's important to clear the framebuffer before drawing, as it resets
+        CHECK_GL_ERROR(utils::slog.e)
+    } else
+#endif
+    {
+        // It's important to clear the framebuffer before drawing, as it resets
         // the fb to a known state (resets fb compression and possibly other things).
         // So we use glClear instead of glInvalidateFramebuffer
         gl.disable(GL_SCISSOR_TEST);
@@ -2460,8 +2494,8 @@ void OpenGLDriver::endRenderPass(int) {
 
     // glInvalidateFramebuffer appeared on GLES 3.0 and GL4.3, for simplicity we just
     // ignore it on GL (rather than having to do a runtime check).
-    if (BACKEND_OPENGL_VERSION == BACKEND_OPENGL_VERSION_GLES &&
-            BACKEND_OPENGL_LEVEL >= BACKEND_OPENGL_LEVEL_GLES30) {
+#if defined(BACKEND_OPENGL_LEVEL_GLES30) || defined(BACKEND_OPENGL_VERSION_GL)
+    if (mContext.isAtLeastGLES(3, 0) || mContext.isAtLeastGL(4, 3)) {
         auto effectiveDiscardFlags = discardFlags;
         if (gl.bugs.invalidate_end_only_if_invalidate_start) {
             effectiveDiscardFlags &= mRenderPassParams.flags.discardStart;
@@ -2477,6 +2511,7 @@ void OpenGLDriver::endRenderPass(int) {
            CHECK_GL_ERROR(utils::slog.e)
         }
     }
+#endif
 
 #ifndef NDEBUG
     // clear the discarded buffers in debug builds
@@ -2720,10 +2755,7 @@ void OpenGLDriver::readPixels(Handle<HwRenderTarget> src,
     GLenum const glFormat = getFormat(p.format);
     GLenum const glType = getType(p.type);
 
-    gl.pixelStore(GL_PACK_ROW_LENGTH,   (GLint)p.stride);
-    gl.pixelStore(GL_PACK_ALIGNMENT,    (GLint)p.alignment);
-    gl.pixelStore(GL_PACK_SKIP_PIXELS,  (GLint)p.left);
-    gl.pixelStore(GL_PACK_SKIP_ROWS,    (GLint)p.top);
+    gl.pixelStore(GL_PACK_ALIGNMENT, (GLint)p.alignment);
 
     /*
      * glReadPixel() operation...
@@ -2751,44 +2783,54 @@ void OpenGLDriver::readPixels(Handle<HwRenderTarget> src,
      */
 
     GLRenderTarget const* s = handle_cast<GLRenderTarget const*>(src);
-    gl.bindFramebuffer(GL_READ_FRAMEBUFFER, s->gl.fbo);
+
+    // glReadPixel doesn't resolve automatically, but it does with the auto-resolve extension,
+    // which we're always emulating. So if we have a resolved fbo (fbo_read), use that instead.
+    gl.bindFramebuffer(GL_READ_FRAMEBUFFER, s->gl.fbo_read ? s->gl.fbo_read : s->gl.fbo);
+
+    using PBD = PixelBufferDescriptor;
+
+    // The PBO only needs to accommodate the area we're reading, with alignment.
+    auto const pboSize = (GLsizeiptr)PBD::computeDataSize(
+            p.format, p.type, width, height, p.alignment);
 
     GLuint pbo;
     glGenBuffers(1, &pbo);
     gl.bindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
-    glBufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)p.size, nullptr, GL_STATIC_DRAW);
+    glBufferData(GL_PIXEL_PACK_BUFFER, pboSize, nullptr, GL_STATIC_DRAW);
     glReadPixels(GLint(x), GLint(y), GLint(width), GLint(height), glFormat, glType, nullptr);
     gl.bindBuffer(GL_PIXEL_PACK_BUFFER, 0);
     CHECK_GL_ERROR(utils::slog.e)
 
     // we're forced to make a copy on the heap because otherwise it deletes std::function<> copy
     // constructor.
-    auto* pUserBuffer = new PixelBufferDescriptor(std::move(p));
-    whenGpuCommandsComplete([this, width, height, pbo, pUserBuffer]() mutable {
+    auto* const pUserBuffer = new PixelBufferDescriptor(std::move(p));
+    whenGpuCommandsComplete([this, width, height, pbo, pboSize, pUserBuffer]() mutable {
         PixelBufferDescriptor& p = *pUserBuffer;
         auto& gl = mContext;
         gl.bindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
         void* vaddr = nullptr;
 #if defined(__EMSCRIPTEN__)
-        std::unique_ptr<uint8_t> clientBuffer = std::make_unique<uint8_t>(p.size);
-        glGetBufferSubData(GL_PIXEL_PACK_BUFFER, 0, p.size, clientBuffer.get());
+        std::unique_ptr<uint8_t> clientBuffer = std::make_unique<uint8_t>(pboSize);
+        glGetBufferSubData(GL_PIXEL_PACK_BUFFER, 0, pboSize, clientBuffer.get());
         vaddr = clientBuffer.get();
 #else
-        vaddr = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0,  (GLsizeiptr)p.size, GL_MAP_READ_BIT);
+        vaddr = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, pboSize, GL_MAP_READ_BIT);
 #endif
         if (vaddr) {
             // now we need to flip the buffer vertically to match our API
             size_t const stride = p.stride ? p.stride : width;
-            size_t const bpp = PixelBufferDescriptor::computeDataSize(
-                    p.format, p.type, 1, 1, 1);
-            size_t const bpr = PixelBufferDescriptor::computeDataSize(
-                    p.format, p.type, stride, 1, p.alignment);
-            char const* head = (char const*)vaddr + p.left * bpp + bpr * p.top;
-            char* tail = (char*)p.buffer + p.left * bpp + bpr * (p.top + height - 1);
+            size_t const bpp = PBD::computeDataSize(p.format, p.type, 1, 1, 1);
+            size_t const dstBpr = PBD::computeDataSize(p.format, p.type, stride, 1, p.alignment);
+            char* pDst = (char*)p.buffer + p.left * bpp + dstBpr * (p.top + height - 1);
+
+            size_t const srcBpr = PBD::computeDataSize(p.format, p.type, width, 1, p.alignment);
+            char const* pSrc = (char const*)vaddr;
+
             for (size_t i = 0; i < height; ++i) {
-                memcpy(tail, head, bpp * width);
-                head += bpr;
-                tail -= bpr;
+                memcpy(pDst, pSrc, bpp * width);
+                pSrc += srcBpr;
+                pDst -= dstBpr;
             }
 #if !defined(__EMSCRIPTEN__)
             glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
@@ -2855,7 +2897,7 @@ void OpenGLDriver::readBufferSubData(backend::BufferObjectHandle boh,
 }
 
 void OpenGLDriver::whenGpuCommandsComplete(std::function<void()> fn) noexcept {
-    GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    OpenGLContext::FenceSync sync = mContext.createFenceSync(mPlatform);
     mGpuCommandCompleteOps.emplace_back(sync, std::move(fn));
     CHECK_GL_ERROR(utils::slog.e)
 }
@@ -2868,15 +2910,16 @@ void OpenGLDriver::executeGpuCommandsCompleteOps() noexcept {
     auto& v = mGpuCommandCompleteOps;
     auto it = v.begin();
     while (it != v.end()) {
-        GLenum const status = glClientWaitSync(it->first, 0, 0);
-        if (status == GL_ALREADY_SIGNALED || status == GL_CONDITION_SATISFIED) {
+        using Status = OpenGLContext::FenceSync::Status;
+        auto const status = mContext.clientWaitSync(mPlatform, it->first);
+        if (status == Status::ALREADY_SIGNALED || status == Status::CONDITION_SATISFIED) {
             it->second();
-            glDeleteSync(it->first);
+            mContext.destroyFenceSync(mPlatform, it->first);
             it = v.erase(it);
-        } else if (UTILS_UNLIKELY(status == GL_WAIT_FAILED)) {
+        } else if (UTILS_UNLIKELY(status == Status::FAILURE)) {
             // This should never happen, but is very problematic if it does, as we might leak
             // some data depending on what the callback does. However, we clean up our own state.
-            glDeleteSync(it->first);
+            mContext.destroyFenceSync(mPlatform, it->first);
             it = v.erase(it);
         } else {
             ++it;
@@ -3213,7 +3256,7 @@ void OpenGLDriver::dispatchCompute(Handle<HwProgram> program, math::uint3 workGr
 
     useProgram(p);
 
-#if defined(GL_ES_VERSION_3_1) || defined(GL_VERSION_4_3)
+#if defined(BACKEND_OPENGL_LEVEL_GLES31)
 
 #if defined(__ANDROID__)
     // on Android, GLES3.1 and above entry-points are defined in glext
@@ -3222,7 +3265,7 @@ void OpenGLDriver::dispatchCompute(Handle<HwProgram> program, math::uint3 workGr
 #endif
 
     glDispatchCompute(workGroupCount.x, workGroupCount.y, workGroupCount.z);
-#endif
+#endif // BACKEND_OPENGL_LEVEL_GLES31
 
 #ifdef FILAMENT_ENABLE_MATDBG
     CHECK_GL_ERROR_NON_FATAL(utils::slog.e)

@@ -418,12 +418,12 @@ static void onClick(App& app, View* view, ImVec2 pos) {
 int entry(int argc, char** argv) {
 
  
-    LuaVM::get().doString(" print(123,432,\"abcd\") ");
-    std::string error;
-    if (LuaVM::get().getLastError())
-    {
-       error = LuaVM::get().getLastError();
-    }
+    //LuaVM::get().doString(" print(123,432,\"abcd\") ");
+    //std::string error;
+    //if (LuaVM::get().getLastError())
+    //{
+    //  error = LuaVM::get().getLastError();
+    //}
 
     App app;
 

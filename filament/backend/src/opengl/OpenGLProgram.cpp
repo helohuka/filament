@@ -121,11 +121,21 @@ void OpenGLProgram::compileShaders(OpenGLContext& context,
     UTILS_NOUNROLL
     for (size_t i = 0; i < Program::SHADER_TYPE_COUNT; i++) {
         const ShaderStage stage = static_cast<ShaderStage>(i);
-        GLenum glShaderType;
+        GLenum glShaderType{};
         switch (stage) {
-            case ShaderStage::VERTEX:    glShaderType = GL_VERTEX_SHADER;    break;
-            case ShaderStage::FRAGMENT:  glShaderType = GL_FRAGMENT_SHADER;  break;
-            case ShaderStage::COMPUTE:   glShaderType = GL_COMPUTE_SHADER;   break;
+            case ShaderStage::VERTEX:
+                glShaderType = GL_VERTEX_SHADER;
+                break;
+            case ShaderStage::FRAGMENT:
+                glShaderType = GL_FRAGMENT_SHADER;
+                break;
+            case ShaderStage::COMPUTE:
+#if defined(BACKEND_OPENGL_LEVEL_GLES31)
+                glShaderType = GL_COMPUTE_SHADER;
+#else
+                utils::panic(__func__, __FILE__, __LINE__, "ShaderStage::COMPUTE not supported");
+#endif
+                break;
         }
 
         if (UTILS_LIKELY(!shadersSource[i].empty())) {
@@ -182,13 +192,12 @@ std::string_view OpenGLProgram::process_GOOGLE_cpp_style_line_directive(OpenGLCo
     return { source, len };
 }
 
-// Tragically, OpenGL 4.1 doesn't support unpackHalf2x16 and
+// Tragically, OpenGL 4.1 doesn't support unpackHalf2x16 (appeared in 4.2) and
 // macOS doesn't support GL_ARB_shading_language_packing
 std::string_view OpenGLProgram::process_ARB_shading_language_packing(OpenGLContext& context) noexcept {
     using namespace std::literals;
-    if constexpr (BACKEND_OPENGL_VERSION == BACKEND_OPENGL_VERSION_GL) {
-        if (context.state.major == 4 && context.state.minor == 1 &&
-            !context.ext.ARB_shading_language_packing) {
+#ifdef BACKEND_OPENGL_VERSION_GL
+        if (!context.isAtLeastGL(4, 2) && !context.ext.ARB_shading_language_packing) {
             return R"(
 
 // these don't handle denormals, NaNs or inf
@@ -226,7 +235,7 @@ highp uint packHalf2x16(vec2 v) {
 }
 )"sv;
         }
-    }
+#endif // BACKEND_OPENGL_VERSION_GL
     return ""sv;
 }
 
@@ -406,11 +415,6 @@ void OpenGLProgram::updateSamplers(OpenGLDriver* gld) const noexcept {
             const GLTexture* const t = sb->textureUnitEntries[j].texture;
             GLuint const s = sb->textureUnitEntries[j].sampler;
             if (t) { // program may not use all samplers of sampler group
-                if (UTILS_UNLIKELY(t->gl.fence)) {
-                    glWaitSync(t->gl.fence, 0, GL_TIMEOUT_IGNORED);
-                    glDeleteSync(t->gl.fence);
-                    t->gl.fence = nullptr;
-                }
                 gld->bindTexture(tmu, t);
                 gld->bindSampler(tmu, s);
             }

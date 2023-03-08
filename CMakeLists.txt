@@ -39,6 +39,8 @@ option(FILAMENT_ENABLE_BUILD_TEST "Build test" OFF)
 
 option(FILAMENT_ENABLE_BUILD_BENCHMARK "Build benchmark" OFF)
 
+option(FILAMENT_ENABLE_ASAN_UBSAN "Enable Address and Undefined Behavior Sanitizers" OFF)
+
 set(FILAMENT_NDK_VERSION "" CACHE STRING
     "Android NDK version or version prefix to be used when building for Android."
 )
@@ -81,25 +83,30 @@ endif()
 # ==================================================================================================
 find_program(CCACHE_PROGRAM ccache)
 if (CCACHE_PROGRAM)
-    set(C_LAUNCHER   "${CCACHE_PROGRAM}")
-    set(CXX_LAUNCHER "${CCACHE_PROGRAM}")
-
-    configure_file(build/launch-c.in   launch-c)
-    configure_file(build/launch-cxx.in launch-cxx)
-
-    execute_process(COMMAND chmod a+rx
-        "${CMAKE_CURRENT_BINARY_DIR}/launch-c"
-        "${CMAKE_CURRENT_BINARY_DIR}/launch-cxx"
-    )
-
-    if (CMAKE_GENERATOR STREQUAL "Xcode")
-        set(CMAKE_XCODE_ATTRIBUTE_CC         "${CMAKE_CURRENT_BINARY_DIR}/launch-c")
-        set(CMAKE_XCODE_ATTRIBUTE_CXX        "${CMAKE_CURRENT_BINARY_DIR}/launch-cxx")
-        set(CMAKE_XCODE_ATTRIBUTE_LD         "${CMAKE_CURRENT_BINARY_DIR}/launch-c")
-        set(CMAKE_XCODE_ATTRIBUTE_LDPLUSPLUS "${CMAKE_CURRENT_BINARY_DIR}/launch-cxx")
+    if (WIN32)
+        set(CMAKE_C_COMPILER_LAUNCHER   "${CCACHE_PROGRAM}")
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
     else()
-        set(CMAKE_C_COMPILER_LAUNCHER        "${CMAKE_CURRENT_BINARY_DIR}/launch-c")
-        set(CMAKE_CXX_COMPILER_LAUNCHER      "${CMAKE_CURRENT_BINARY_DIR}/launch-cxx")
+        set(C_LAUNCHER   "${CCACHE_PROGRAM}")
+        set(CXX_LAUNCHER "${CCACHE_PROGRAM}")
+
+        configure_file(build/launch-c.in   launch-c)
+        configure_file(build/launch-cxx.in launch-cxx)
+
+        execute_process(COMMAND chmod a+rx
+            "${CMAKE_CURRENT_BINARY_DIR}/launch-c"
+            "${CMAKE_CURRENT_BINARY_DIR}/launch-cxx"
+        )
+
+        if (CMAKE_GENERATOR STREQUAL "Xcode")
+            set(CMAKE_XCODE_ATTRIBUTE_CC         "${CMAKE_CURRENT_BINARY_DIR}/launch-c")
+            set(CMAKE_XCODE_ATTRIBUTE_CXX        "${CMAKE_CURRENT_BINARY_DIR}/launch-cxx")
+            set(CMAKE_XCODE_ATTRIBUTE_LD         "${CMAKE_CURRENT_BINARY_DIR}/launch-c")
+            set(CMAKE_XCODE_ATTRIBUTE_LDPLUSPLUS "${CMAKE_CURRENT_BINARY_DIR}/launch-cxx")
+        else()
+            set(CMAKE_C_COMPILER_LAUNCHER        "${CMAKE_CURRENT_BINARY_DIR}/launch-c")
+            set(CMAKE_CXX_COMPILER_LAUNCHER      "${CMAKE_CURRENT_BINARY_DIR}/launch-cxx")
+        endif()
     endif()
 endif()
 
@@ -388,10 +395,10 @@ endif()
 # ==================================================================================================
 # Debug compiler flags
 # ==================================================================================================
-# ASAN is deactivated for now because:
-#  -fsanitize=undefined causes extremely long link times
-#  -fsanitize=address causes a crash with assimp, which we can't explain for now
-#set(EXTRA_SANITIZE_OPTIONS "-fsanitize=undefined -fsanitize=address")
+if (FILAMENT_ENABLE_ASAN_UBSAN)
+   set(EXTRA_SANITIZE_OPTIONS "-fsanitize=address -fsanitize=undefined")
+endif()
+
 if (NOT MSVC AND NOT WEBGL)
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fstack-protector")
 endif()
@@ -698,6 +705,7 @@ add_subdirectory(${EXTERNAL}/rapidxml/tnt)
 add_subdirectory(${EXTERNAL}/smol-v/tnt)
 add_subdirectory(${EXTERNAL}/benchmark/tnt)
 add_subdirectory(${EXTERNAL}/meshoptimizer/tnt)
+add_subdirectory(${EXTERNAL}/mikktspace)
 add_subdirectory(${EXTERNAL}/cgltf/tnt)
 add_subdirectory(${EXTERNAL}/draco/tnt)
 add_subdirectory(${EXTERNAL}/jsmn/tnt)
