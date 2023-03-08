@@ -3,7 +3,7 @@
 #define __GAMEDRIVER_H__ 1
 
 #include "gamedriver/BaseLibs.h"
-#include "gamedriver/Config.h"
+#include "gamedriver/Configure.h"
 #include "gamedriver/IBL.h"
 
 namespace filament {

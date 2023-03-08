@@ -1,9 +1,9 @@
 
-#ifndef __CONFIG_H__
-#define __CONFIG_H__ 1
+#ifndef __CONFIGURE_H__
+#define __CONFIGURE_H__ 1
 
 #include "gamedriver/BaseLibs.h"
-#include "Config_generated.h"
+#include "Configure_generated.h"
 
 struct Config {
 

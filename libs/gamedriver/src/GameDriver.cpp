@@ -32,9 +32,7 @@ void GameDriver::run(Config& config, SetupCallback setupCallback,
         PreRenderCallback preRender, PostRenderCallback postRender,
         size_t width, size_t height) {
 
-    
-
-
+  
     mWindowTitle = config.title;
     std::unique_ptr<GameDriver::Window> window(
             new GameDriver::Window(this, config, config.title, width, height));

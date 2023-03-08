@@ -16,7 +16,7 @@ set(FLATBUFFERS_DIR  "${GENERATION_ROOT}/generated/schemas")
 
 set(PUBLIC_HDRS
         include/gamedriver/BaseLibs.h
-        include/gamedriver/Config.h
+        include/gamedriver/Configure.h
         include/gamedriver/Cube.h
         include/gamedriver/GameDriver.h
         include/gamedriver/IBL.h
@@ -41,7 +41,8 @@ set(SRCS
         src/Window.cpp
         src/View.cpp
 
-       
+        
+        src/Configure.cpp
         src/ScriptVM.cpp
         src/Resource.cpp
 )
@@ -105,7 +106,7 @@ set(MATERIAL_SRCS
 )
 
 set(SCHEMA_SRCS
-		schemas/Config.fbs
+		schemas/Configure.fbs
 )
 
 if (APPLE)
@@ -141,7 +142,7 @@ foreach (fbs_src ${SCHEMA_SRCS})
 	set(output_path "${FLATBUFFERS_DIR}/")
     add_custom_command(
             OUTPUT ${FLATBUFFERS_DIR}
-            COMMAND flatc --gen-object-api --schema  -c -o ${output_path} ${fullname}
+            COMMAND flatc -b -t -c -o ${output_path} ${fullname}
             MAIN_DEPENDENCY ${fbs_src}
             DEPENDS flatc
             COMMENT "Compiling flatbuffers ${fbs_src} to ${output_path}"
@@ -204,9 +205,9 @@ include_directories(${FLATBUFFERS_DIR})
 add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS} ${MATERIAL_SRCS} ${SCHEMA_SRCS} ${FLATBUFFERS_SRC})
 source_group(Materials ${MATERIAL_SRCS})
 source_group(Schemas ${SCHEMA_SRCS})
-target_link_libraries(${TARGET} PUBLIC ${LIBS} gamedriver-resources)
+target_link_libraries(${TARGET} PUBLIC ${LIBS} )
 
-target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
+target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR} ${FLATBUFFERS_DIR})
 set_target_properties(${TARGET} PROPERTIES FOLDER Libs)
 target_include_directories(${TARGET} PRIVATE ${GENERATION_ROOT})
 

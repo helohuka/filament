@@ -7,7 +7,6 @@
 
 #include "generated/resources/gamedriver.h"
 
-#include <gamedriver/Config.h>
 #include <gamedriver/IBL.h>
 
 
@@ -418,13 +417,12 @@ static void onClick(App& app, View* view, ImVec2 pos) {
 
 int entry(int argc, char** argv) {
 
-    ScriptVM::get().setup();
-
-    ScriptVM::get().doString(" print(123,432,\"abcd\") ");
+ 
+    LuaVM::get().doString(" print(123,432,\"abcd\") ");
     std::string error;
-    if (ScriptVM::get().getLastError())
+    if (LuaVM::get().getLastError())
     {
-       error = ScriptVM::get().getLastError();
+       error = LuaVM::get().getLastError();
     }
 
     App app;

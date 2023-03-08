@@ -1,0 +1,66 @@
+// example IDL file
+
+namespace Core;
+
+///版本号，主版本.中间版本.发布版本.补丁版本
+struct Version
+{
+	major	:int;
+	minor	:int;
+	revision:int;
+	patch	:int;
+}
+
+///渲染后台 filament::Engine::Backend
+enum RenderBackend : byte 
+{
+	/// Automatically selects an appropriate driver for the platform.
+	DEFAULT = 0,  
+	/// Selects the OpenGL/ES driver (default on Android)
+    OPENGL  = 1,  
+	/// Selects the Vulkan driver if the platform supports it (default on Linux/Windows)
+    VULKAN	= 2,
+	/// Selects the Metal driver if the platform supports it (default on MacOS/iOS).
+    METAL	= 3,   
+	/// Selects the no-op driver for testing purposes.
+    NOOP	= 4,   
+}
+
+///渲染后台特征等级 filament::backend::FeatureLevel 
+enum RenderFeatureLevel : byte 
+{
+	///Dummy 
+	FEATURE_LEVEL_NONE = 0,
+	/// OpenGL ES 3.0 features (default)
+	FEATURE_LEVEL_1 = 1,  
+	/// OpenGL ES 3.1 features + 16 textures units + cubemap arrays
+    FEATURE_LEVEL_2, 
+	/// OpenGL ES 3.1 features + 31 textures units + cubemap arrays
+    FEATURE_LEVEL_3       
+}
+
+///渲染后台配置
+struct RenderConfigure {
+	backend	: RenderBackend; 
+	feature : RenderFeatureLevel ;
+}
+
+///摄像机配置 filament::camutils::Mode
+enum CameraMode : byte { ORBIT, MAP, FREE_FLIGHT }
+
+///根配置文件，优先级最高
+table RootConfigure{
+	title			:string;
+	version			:Version;
+	resizeable		:bool	= true;
+	headless		:bool   = false;
+	splitview		:bool	= false;
+	scale			:float	= 1;
+    rootpath		:string;
+
+
+	///渲染配置
+	render_config	:RenderConfigure;
+}
+
+root_type RootConfigure;

@@ -6,38 +6,42 @@
 #include <lua.h>
 #include <luacode.h>
 
-class ScriptVM {
+class LuauVM {
 public:
 	//Inside apis ;
 
 
 public:
-	~ScriptVM();
-	static ScriptVM& get();
+	~LuauVM();
+	static LuauVM& get();
 
-	ScriptVM(const ScriptVM& rhs) = delete;
-	ScriptVM(ScriptVM&& rhs) = delete;
-	ScriptVM& operator=(const ScriptVM& rhs) = delete;
-	ScriptVM& operator=(ScriptVM&& rhs) = delete;
-	
-	//
-	void setup();
-	void shutdown();
-
+	LuauVM(const LuauVM& rhs) = delete;
+	LuauVM(LuauVM&& rhs) = delete;
+	LuauVM& operator=(const LuauVM& rhs) = delete;
+	LuauVM& operator=(LuauVM&& rhs) = delete;
 
 	//Inside apis
 	const char* getLastError();
 
-	bool loadString(std::string& code, const char* chunkname = "ScriptVM");
-	bool loadString(const char* code, const char* chunkname = "ScriptVM");
+	bool loadString(std::string& code, const char* chunkname = "LuauVM");
+	bool loadString(const char* code, const char* chunkname = "LuauVM");
 	bool doString(std::string& code);
 	bool doString(const char* code);
 		
 private:
-	ScriptVM();
+	LuauVM();
+	
+	typedef std::unique_ptr<lua_State, void (*)(lua_State*) >	LuaStatePtr;
+	
+	LuaStatePtr			mL;
+	std::string			mLastError;
+};
 
-	std::unique_ptr< lua_State, void (*)(lua_State*) > mGlobalState;
-	std::string mLastError;
+
+class LuauManager
+{
+	
+
 };
 
 

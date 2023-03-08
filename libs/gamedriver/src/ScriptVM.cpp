@@ -216,14 +216,14 @@ int lua_log(lua_State* L)
 
 //-----------------------------------------------------------------------
 
-const char* ScriptVM::getLastError()
+const char* LuauVM::getLastError()
 {   
     return mLastError.empty() ? nullptr : mLastError.c_str();
 }
 
-bool ScriptVM::loadString(std::string& source, const char* chunkname)
+bool LuauVM::loadString(std::string& source, const char* chunkname)
 {
-    lua_State* L = mGlobalState.get();
+    lua_State* L = mL.get();
 
     std::string bytecode = Luau::compile(source, copts());
     if (luau_load(L, chunkname, bytecode.data(), bytecode.size(), 0) == 0)
@@ -234,15 +234,15 @@ bool ScriptVM::loadString(std::string& source, const char* chunkname)
     return false;
 }
 
-bool ScriptVM::loadString(const char* code, const char* chunkname)
+bool LuauVM::loadString(const char* code, const char* chunkname)
 {
     std::string source(code);
     return loadString(source, chunkname);
 }
 
-bool ScriptVM::doString(std::string& source)
+bool LuauVM::doString(std::string& source)
 {
-    lua_State* L = mGlobalState.get();
+    lua_State* L = mL.get();
 
     std::string bytecode = Luau::compile(source, copts());
     
@@ -304,34 +304,23 @@ bool ScriptVM::doString(std::string& source)
     return true;
 }
 
-bool ScriptVM::doString(const char* code)
+bool LuauVM::doString(const char* code)
 {
     std::string source(code);
     return doString(source);
 }
 
 //-----------------------------------------------------------------------
-ScriptVM::~ScriptVM()
+LuauVM::~LuauVM()
 {
 
 }
 
-ScriptVM::ScriptVM()
-    :mGlobalState(luaL_newstate(), lua_close)
-{
-}
-
-ScriptVM& ScriptVM::get()
-{
-	static ScriptVM vm;
-	return vm;
-}
-
-void ScriptVM::setup()
-{
-	
-	lua_State* L = mGlobalState.get();
-	luaL_openlibs(L);
+LuauVM::LuauVM()
+    :mL(luaL_newstate(), lua_close)
+{  
+    lua_State* L = mL.get();
+    luaL_openlibs(L);
 
     static const luaL_Reg funcs[] = {
     {"loadstring", lua_loadstring},
@@ -352,7 +341,9 @@ void ScriptVM::setup()
     luaL_sandbox(L);
 }
 
-void  ScriptVM::shutdown()
+LuauVM& LuauVM::get()
 {
-
+	static LuauVM vm;
+	return vm;
 }
+

@@ -17,3 +17,6 @@ test*.png
 test*.json
 results
 /apps/android/build
+/apps/out
+/apps/windows/build
+/installed
