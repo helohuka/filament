@@ -66,6 +66,7 @@ set(LIBS
         viewer
         uberarchive
         SDL2-static
+        SDL2main
         Luau.Compiler
         Luau.VM
         rapidxml

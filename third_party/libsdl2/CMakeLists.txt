@@ -3567,8 +3567,6 @@ endif()
 
 
 
-
-
 #set_target_properties(SDL2 PROPERTIES FOLDER ThirdParty/libsdl2)
 set_target_properties(SDL2main PROPERTIES FOLDER ThirdParty/libsdl2)
 set_target_properties(SDL2-static PROPERTIES FOLDER ThirdParty/libsdl2)

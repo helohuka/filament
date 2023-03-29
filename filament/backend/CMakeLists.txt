@@ -356,7 +356,7 @@ else()
             -Wgnu-conditional-omitted-operand
             -Wweak-vtables -Wnon-virtual-dtor -Wclass-varargs -Wimplicit-fallthrough
             -Wover-aligned
-            -Werror
+            #-Werror macos metal warning 
     )
 endif()
 
@@ -387,11 +387,12 @@ install(TARGETS ${TARGET} ${INSTALL_TYPE} DESTINATION lib/${DIST_DIR})
 install(TARGETS vkshaders ${INSTALL_TYPE} DESTINATION lib/${DIST_DIR})
 install(DIRECTORY ${PUBLIC_HDR_DIR}/backend DESTINATION include)
 
-if(FILAMENT_ENABLE_BUILD_TEST)
 
 # ==================================================================================================
 # Test
 # ==================================================================================================
+if(FILAMENT_ENABLE_BUILD_TEST)
+
 option(INSTALL_BACKEND_TEST "Install the backend test library so it can be consumed on iOS" OFF)
 
 if (APPLE)

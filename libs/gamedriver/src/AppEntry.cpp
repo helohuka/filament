@@ -432,7 +432,7 @@ int entry(int argc, char** argv) {
 
     int optionIndex = handleCommandLineArguments(argc, argv, &app);
 
-    utils::Path filename("E:/1/filament/third_party/models/Breakdancer.glb");
+    utils::Path filename("/Users/huka/Source/filament/third_party/models/Breakdancer.glb");
     int num_args = argc - optionIndex;
     if (num_args >= 1) {
         filename = argv[optionIndex];
