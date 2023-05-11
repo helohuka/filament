@@ -17,7 +17,6 @@
 
 #include <vector>
 #include "source/opt/module.h"
-#include "gtest/gtest.h"
 
 namespace spvtest {
 

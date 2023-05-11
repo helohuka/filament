@@ -408,7 +408,14 @@ uint32_t InstBuffAddrCheckPass::GenSearchAndTest(Instruction* ref_inst,
                                                  InstructionBuilder* builder,
                                                  uint32_t* ref_uptr_id) {
   // Enable Int64 if necessary
-  context()->AddCapability(spv::Capability::Int64);
+  if (!get_feature_mgr()->HasCapability(spv::Capability::Int64)) {
+    std::unique_ptr<Instruction> cap_int64_inst(new Instruction(
+        context(), spv::Op::OpCapability, 0, 0,
+        std::initializer_list<Operand>{{SPV_OPERAND_TYPE_CAPABILITY,
+                                        {uint32_t(spv::Capability::Int64)}}}));
+    get_def_use_mgr()->AnalyzeInstDefUse(&*cap_int64_inst);
+    context()->AddCapability(std::move(cap_int64_inst));
+  }
   // Convert reference pointer to uint64
   uint32_t ref_ptr_id = ref_inst->GetSingleWordInOperand(0);
   Instruction* ref_uptr_inst =

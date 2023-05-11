@@ -35,11 +35,14 @@ target_link_libraries(SPIRV-Tools-diff
 target_link_libraries(SPIRV-Tools-diff
   PUBLIC SPIRV-Tools-opt)
 
-set_property(TARGET SPIRV-Tools-diff PROPERTY FOLDER "ThirdParty/SPIRV-Tools libraries")
+set_property(TARGET SPIRV-Tools-diff PROPERTY FOLDER "SPIRV-Tools libraries")
 spvtools_check_symbol_exports(SPIRV-Tools-diff)
 
 if(ENABLE_SPIRV_TOOLS_INSTALL)
-  install(TARGETS SPIRV-Tools-diff EXPORT SPIRV-Tools-diffTargets)
+  install(TARGETS SPIRV-Tools-diff EXPORT SPIRV-Tools-diffTargets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
   export(EXPORT SPIRV-Tools-diffTargets FILE SPIRV-Tools-diffTargets.cmake)
 
   spvtools_config_package_dir(SPIRV-Tools-diff PACKAGE_DIR)

@@ -42,11 +42,14 @@ target_link_libraries(SPIRV-Tools-lint
 target_link_libraries(SPIRV-Tools-lint
   PUBLIC SPIRV-Tools-opt)
 
-set_property(TARGET SPIRV-Tools-lint PROPERTY FOLDER "ThirdParty/SPIRV-Tools libraries")
+set_property(TARGET SPIRV-Tools-lint PROPERTY FOLDER "SPIRV-Tools libraries")
 spvtools_check_symbol_exports(SPIRV-Tools-lint)
 
 if(ENABLE_SPIRV_TOOLS_INSTALL)
-  install(TARGETS SPIRV-Tools-lint EXPORT SPIRV-Tools-lintTargets)
+  install(TARGETS SPIRV-Tools-lint EXPORT SPIRV-Tools-lintTargets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
   export(EXPORT SPIRV-Tools-lintTargets FILE SPIRV-Tools-lintTargets.cmake)
 
   spvtools_config_package_dir(SPIRV-Tools-lint PACKAGE_DIR)
