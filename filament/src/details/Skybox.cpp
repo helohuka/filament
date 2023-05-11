@@ -94,7 +94,7 @@ FSkybox::FSkybox(FEngine& engine, const Builder& builder) noexcept
     FMaterial const* material = engine.getSkyboxMaterial();
     mSkyboxMaterialInstance = material->createInstance("Skybox");
 
-    TextureSampler sampler(TextureSampler::MagFilter::LINEAR, TextureSampler::WrapMode::REPEAT);
+    TextureSampler const sampler(TextureSampler::MagFilter::LINEAR, TextureSampler::WrapMode::REPEAT);
     auto *pInstance = static_cast<MaterialInstance*>(mSkyboxMaterialInstance);
     FTexture const* texture = mSkyboxTexture ? mSkyboxTexture : engine.getDummyCubemap();
     pInstance->setParameter("skybox", texture, sampler);
@@ -117,9 +117,17 @@ FSkybox::FSkybox(FEngine& engine, const Builder& builder) noexcept
 }
 
 FMaterial const* FSkybox::createMaterial(FEngine& engine) {
-    FMaterial const* material = downcast(Material::Builder().package(
-            MATERIALS_SKYBOX_DATA, MATERIALS_SKYBOX_SIZE).build(engine));
-    return material;
+    Material::Builder builder;
+#ifdef FILAMENT_TARGET_MOBILE
+    if (UTILS_UNLIKELY(engine.getActiveFeatureLevel() == Engine::FeatureLevel::FEATURE_LEVEL_0)) {
+        builder.package(MATERIALS_SKYBOX0_DATA, MATERIALS_SKYBOX0_SIZE);
+    } else
+#endif
+    {
+        builder.package(MATERIALS_SKYBOX_DATA, MATERIALS_SKYBOX_SIZE);
+    }
+    auto material = builder.build(engine);
+    return downcast(material);
 }
 
 void FSkybox::terminate(FEngine& engine) noexcept {

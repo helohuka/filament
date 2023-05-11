@@ -334,9 +334,9 @@ void RenderPass::setupColorCommand(Command& cmdDraw, Variant variant,
     keyBlending |= uint64_t(Pass::BLENDED);
     keyBlending |= uint64_t(CustomCommand::PASS);
 
-    BlendingMode blendingMode = ma->getBlendingMode();
-    bool hasScreenSpaceRefraction = ma->getRefractionMode() == RefractionMode::SCREEN_SPACE;
-    bool isBlendingCommand = !hasScreenSpaceRefraction &&
+    BlendingMode const blendingMode = ma->getBlendingMode();
+    bool const hasScreenSpaceRefraction = ma->getRefractionMode() == RefractionMode::SCREEN_SPACE;
+    bool const isBlendingCommand = !hasScreenSpaceRefraction &&
             (blendingMode != BlendingMode::OPAQUE && blendingMode != BlendingMode::MASKED);
 
     uint64_t keyDraw = cmdDraw.key;
@@ -448,13 +448,13 @@ RenderPass::Command* RenderPass::generateCommandsImpl(uint32_t extraFlags,
     const bool depthFilterAlphaMaskedObjects    = bool(extraFlags & CommandTypeFlags::DEPTH_FILTER_ALPHA_MASKED_OBJECTS);
     const bool filterTranslucentObjects         = bool(extraFlags & CommandTypeFlags::FILTER_TRANSLUCENT_OBJECTS);
 
-    auto const* const UTILS_RESTRICT soaWorldAABBCenter = soa.data<FScene::WORLD_AABB_CENTER>();
-    auto const* const UTILS_RESTRICT soaVisibility      = soa.data<FScene::VISIBILITY_STATE>();
-    auto const* const UTILS_RESTRICT soaPrimitives      = soa.data<FScene::PRIMITIVES>();
-    auto const* const UTILS_RESTRICT soaSkinning        = soa.data<FScene::SKINNING_BUFFER>();
-    auto const* const UTILS_RESTRICT soaMorphing        = soa.data<FScene::MORPHING_BUFFER>();
-    auto const* const UTILS_RESTRICT soaVisibilityMask  = soa.data<FScene::VISIBLE_MASK>();
-    auto const* const UTILS_RESTRICT soaInstanceCount   = soa.data<FScene::INSTANCE_COUNT>();
+    auto const* const UTILS_RESTRICT soaWorldAABBCenter     = soa.data<FScene::WORLD_AABB_CENTER>();
+    auto const* const UTILS_RESTRICT soaVisibility          = soa.data<FScene::VISIBILITY_STATE>();
+    auto const* const UTILS_RESTRICT soaPrimitives          = soa.data<FScene::PRIMITIVES>();
+    auto const* const UTILS_RESTRICT soaSkinning            = soa.data<FScene::SKINNING_BUFFER>();
+    auto const* const UTILS_RESTRICT soaMorphing            = soa.data<FScene::MORPHING_BUFFER>();
+    auto const* const UTILS_RESTRICT soaVisibilityMask      = soa.data<FScene::VISIBLE_MASK>();
+    auto const* const UTILS_RESTRICT soaInstanceInfo        = soa.data<FScene::INSTANCES>();
 
     const bool hasShadowing = renderFlags & HAS_SHADOWING;
     const bool viewInverseFrontFaces = renderFlags & HAS_INVERSE_FRONT_FACES;
@@ -516,7 +516,9 @@ RenderPass::Command* RenderPass::generateCommandsImpl(uint32_t extraFlags,
         cmdColor.key = makeField(soaVisibility[i].priority, PRIORITY_MASK, PRIORITY_SHIFT);
         cmdColor.key |= makeField(soaVisibility[i].channel, CHANNEL_MASK, CHANNEL_SHIFT);
         cmdColor.primitive.index = (uint16_t)i;
-        cmdColor.primitive.instanceCount = soaInstanceCount[i];
+        cmdColor.primitive.instanceCount =
+                soaInstanceInfo[i].count | PrimitiveInfo::USER_INSTANCE_MASK;
+        cmdColor.primitive.instanceBufferHandle = soaInstanceInfo[i].handle;
 
         // if we are already an SSR variant, the SRE bit is already set,
         // there is no harm setting it again
@@ -532,7 +534,9 @@ RenderPass::Command* RenderPass::generateCommandsImpl(uint32_t extraFlags,
             cmdDepth.key |= makeField(soaVisibility[i].channel, CHANNEL_MASK, CHANNEL_SHIFT);
             cmdDepth.key |= makeField(distanceBits >> 22u, Z_BUCKET_MASK, Z_BUCKET_SHIFT);
             cmdDepth.primitive.index = (uint16_t)i;
-            cmdDepth.primitive.instanceCount = soaInstanceCount[i];
+            cmdDepth.primitive.instanceCount =
+                    soaInstanceInfo[i].count | PrimitiveInfo::USER_INSTANCE_MASK;
+            cmdDepth.primitive.instanceBufferHandle = soaInstanceInfo[i].handle;
             cmdDepth.primitive.materialVariant.setSkinning(hasSkinningOrMorphing);
             cmdDepth.primitive.rasterState.inverseFrontFaces = inverseFrontFaces;
         }
@@ -691,7 +695,7 @@ void RenderPass::updateSummedPrimitiveCounts(
     auto const* const UTILS_RESTRICT primitives = renderableData.data<FScene::PRIMITIVES>();
     uint32_t* const UTILS_RESTRICT summedPrimitiveCount = renderableData.data<FScene::SUMMED_PRIMITIVE_COUNT>();
     uint32_t count = 0;
-    for (uint32_t i : vr) {
+    for (uint32_t const i : vr) {
         summedPrimitiveCount[i] = count;
         count += primitives[i].size();
     }
@@ -718,7 +722,7 @@ void RenderPass::Executor::overrideScissor(backend::Viewport const& scissor) noe
     mScissor = scissor;
 }
 
-void RenderPass::Executor::execute(FEngine& engine, const char* name) const noexcept {
+void RenderPass::Executor::execute(FEngine& engine, const char*) const noexcept {
     execute(engine.getDriverApi(), mCommands.begin(), mCommands.end());
 }
 
@@ -742,7 +746,6 @@ void RenderPass::Executor::execute(backend::DriverApi& driver,
         auto* const pScissor =
                 mScissorOverride ? &dummyPipeline.scissor : &pipeline.scissor;
 
-        Handle<HwBufferObject> uboHandle = mUboHandle;
         FMaterialInstance const* UTILS_RESTRICT mi = nullptr;
         FMaterial const* UTILS_RESTRICT ma = nullptr;
         auto const* UTILS_RESTRICT pCustomCommands = mCustomCommands.data();
@@ -756,7 +759,7 @@ void RenderPass::Executor::execute(backend::DriverApi& driver,
              */
 
             if (UTILS_UNLIKELY((first->key & CUSTOM_MASK) != uint64_t(CustomCommand::PASS))) {
-                uint32_t index = (first->key & CUSTOM_INDEX_MASK) >> CUSTOM_INDEX_SHIFT;
+                uint32_t const index = (first->key & CUSTOM_INDEX_MASK) >> CUSTOM_INDEX_SHIFT;
                 assert_invariant(index < mCustomCommands.size());
                 pCustomCommands[index]();
                 continue;
@@ -810,12 +813,32 @@ void RenderPass::Executor::execute(backend::DriverApi& driver,
 
             pipeline.program = ma->getProgram(info.materialVariant);
 
+            uint16_t const instanceCount = info.instanceCount & PrimitiveInfo::INSTANCE_COUNT_MASK;
+            auto getPerObjectUboHandle =
+                    [this, &info, &instanceCount]() -> std::pair<Handle<backend::HwBufferObject>, uint32_t> {
+                if (info.instanceBufferHandle) {
+                    // "hybrid" instancing -- instanceBufferHandle takes the place of the UBO
+                    return { info.instanceBufferHandle, 0 };
+                }
+                bool const userInstancing =
+                        (info.instanceCount & PrimitiveInfo::USER_INSTANCE_MASK) != 0u;
+                if (!userInstancing && instanceCount > 1) {
+                    // automatic instancing
+                    return { mInstancedUboHandle, info.index * sizeof(PerRenderableData) };
+                } else {
+                    // manual instancing
+                    return { mUboHandle, info.index * sizeof(PerRenderableData) };
+                }
+            };
+
             // bind per-renderable uniform block. there is no need to attempt to skip this command
             // because the backends already do this.
+            auto const [perObjectUboHandle, offset] = getPerObjectUboHandle();
+            assert_invariant(perObjectUboHandle);
             driver.bindBufferRange(BufferObjectBinding::UNIFORM,
                     +UniformBindingPoints::PER_RENDERABLE,
-                    (info.instanceCount > 1) ? mInstancedUboHandle : uboHandle,
-                    info.index * sizeof(PerRenderableData),
+                    perObjectUboHandle,
+                    offset,
                     sizeof(PerRenderableUib));
 
             if (UTILS_UNLIKELY(info.skinningHandle)) {
@@ -839,7 +862,7 @@ void RenderPass::Executor::execute(backend::DriverApi& driver,
                         info.morphTargetBuffer);
             }
 
-            driver.draw(pipeline, info.primitiveHandle, info.instanceCount);
+            driver.draw(pipeline, info.primitiveHandle, instanceCount);
         }
     }
 

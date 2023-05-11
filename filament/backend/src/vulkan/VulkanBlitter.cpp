@@ -32,10 +32,83 @@ using namespace utils;
 
 namespace filament::backend {
 
+using ImgUtil = VulkanImageUtility;
+
+namespace {
+
+inline void blitFast(const VkCommandBuffer cmdbuffer, VkImageAspectFlags aspect, VkFilter filter,
+        const VkExtent2D srcExtent, VulkanAttachment src, VulkanAttachment dst,
+        const VkOffset3D srcRect[2], const VkOffset3D dstRect[2]) {
+    const VkImageBlit blitRegions[1] = {{.srcSubresource = {aspect, src.level, src.layer, 1},
+            .srcOffsets = {srcRect[0], srcRect[1]},
+            .dstSubresource = {aspect, dst.level, dst.layer, 1},
+            .dstOffsets = {dstRect[0], dstRect[1]}}};
+
+    const VkImageResolve resolveRegions[1] = {{.srcSubresource = {aspect, src.level, src.layer, 1},
+            .srcOffset = srcRect[0],
+            .dstSubresource = {aspect, dst.level, dst.layer, 1},
+            .dstOffset = dstRect[0],
+            .extent = {srcExtent.width, srcExtent.height, 1}}};
+
+    const VkImageSubresourceRange srcRange = {
+            .aspectMask = aspect,
+            .baseMipLevel = src.level,
+            .levelCount = 1,
+            .baseArrayLayer = src.layer,
+            .layerCount = 1,
+    };
+
+    const VkImageSubresourceRange dstRange = {
+            .aspectMask = aspect,
+            .baseMipLevel = dst.level,
+            .levelCount = 1,
+            .baseArrayLayer = dst.layer,
+            .layerCount = 1,
+    };
+
+    if constexpr (FILAMENT_VULKAN_VERBOSE) {
+        utils::slog.d << "Fast blit from=" << src.texture->getVkImage() << ",level=" << (int) src.level
+                      << "layout=" << src.getLayout()
+                      << " to=" << dst.texture->getVkImage() << ",level=" << (int) dst.level
+                      << "layout=" << dst.getLayout() << utils::io::endl;
+    }
+
+    src.texture->transitionLayout(cmdbuffer, srcRange, VulkanLayout::TRANSFER_SRC);
+    dst.texture->transitionLayout(cmdbuffer, dstRange, VulkanLayout::TRANSFER_DST);
+
+    if (src.texture->samples > 1 && dst.texture->samples == 1) {
+        assert_invariant(
+                aspect != VK_IMAGE_ASPECT_DEPTH_BIT && "Resolve with depth is not yet supported.");
+        vkCmdResolveImage(cmdbuffer,
+                src.getImage(), ImgUtil::getVkLayout(VulkanLayout::TRANSFER_SRC),
+                dst.getImage(), ImgUtil::getVkLayout(VulkanLayout::TRANSFER_DST),
+                1, resolveRegions);
+    } else {
+        vkCmdBlitImage(cmdbuffer,
+                src.getImage(), ImgUtil::getVkLayout(VulkanLayout::TRANSFER_SRC),
+                dst.getImage(), ImgUtil::getVkLayout(VulkanLayout::TRANSFER_DST),
+                1, blitRegions, filter);
+    }
+
+    VulkanLayout newSrcLayout = ImgUtil::getDefaultLayout(src.texture->usage);
+    VulkanLayout const newDstLayout = ImgUtil::getDefaultLayout(dst.texture->usage);
+
+    // In the case of blitting the depth attachment, we transition the source into GENERAL (for
+    // sampling) and set the copy as ATTACHMENT_OPTIMAL (to be set as the attachment).
+    if (any(src.texture->usage & TextureUsage::DEPTH_ATTACHMENT)) {
+        newSrcLayout = VulkanLayout::DEPTH_SAMPLER;
+    }
+
+    src.texture->transitionLayout(cmdbuffer, srcRange, newSrcLayout);
+    dst.texture->transitionLayout(cmdbuffer, dstRange, newDstLayout);
+}
+
 struct BlitterUniforms {
     int sampleCount;
     float inverseSampleCount;
 };
+
+}// anonymous namespace
 
 void VulkanBlitter::blitColor(BlitArgs args) {
     const VulkanAttachment src = args.srcTarget->getColor(args.targetIndex);
@@ -56,8 +129,8 @@ void VulkanBlitter::blitColor(BlitArgs args) {
         return;
     }
 #endif
-
-    blitFast(aspect, args.filter, args.srcTarget->getExtent(), src, dst,
+    VkCommandBuffer const cmdbuffer = mContext.commands->get().cmdbuffer;
+    blitFast(cmdbuffer, aspect, args.filter, args.srcTarget->getExtent(), src, dst,
             args.srcRectPair, args.dstRectPair);
 }
 
@@ -88,90 +161,11 @@ void VulkanBlitter::blitDepth(BlitArgs args) {
                 args.dstRectPair);
         return;
     }
-
-    blitFast(aspect, args.filter, args.srcTarget->getExtent(), src, dst, args.srcRectPair,
+    VkCommandBuffer const cmdbuffer = mContext.commands->get().cmdbuffer;
+    blitFast(cmdbuffer, aspect, args.filter, args.srcTarget->getExtent(), src, dst, args.srcRectPair,
             args.dstRectPair);
 }
 
-void VulkanBlitter::blitFast(VkImageAspectFlags aspect, VkFilter filter,
-    const VkExtent2D srcExtent, VulkanAttachment src, VulkanAttachment dst,
-    const VkOffset3D srcRect[2], const VkOffset3D dstRect[2]) {
-    const VkImageBlit blitRegions[1] = {{
-        .srcSubresource = { aspect, src.level, src.layer, 1 },
-        .srcOffsets = { srcRect[0], srcRect[1] },
-        .dstSubresource = { aspect, dst.level, dst.layer, 1 },
-        .dstOffsets = { dstRect[0], dstRect[1] }
-    }};
-
-    const VkImageResolve resolveRegions[1] = {{
-        .srcSubresource = { aspect, src.level, src.layer, 1 },
-        .srcOffset = srcRect[0],
-        .dstSubresource = { aspect, dst.level, dst.layer, 1 },
-        .dstOffset = dstRect[0],
-        .extent = { srcExtent.width, srcExtent.height, 1 }
-    }};
-
-    const VkImageSubresourceRange srcRange = {
-        .aspectMask = aspect,
-        .baseMipLevel = src.level,
-        .levelCount = 1,
-        .baseArrayLayer = src.layer,
-        .layerCount = 1,
-    };
-
-    const VkImageSubresourceRange dstRange = {
-        .aspectMask = aspect,
-        .baseMipLevel = dst.level,
-        .levelCount = 1,
-        .baseArrayLayer = dst.layer,
-        .layerCount = 1,
-    };
-
-    const VkCommandBuffer cmdbuffer = mContext.commands->get().cmdbuffer;
-
-    const VkImageLayout srcLayout = getDefaultImageLayout(src.texture->usage);
-
-    transitionImageLayout(cmdbuffer, {
-        src.getImage(),
-        srcLayout,
-        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        srcRange,
-        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT
-    });
-
-    transitionImageLayout(cmdbuffer, {
-        dst.getImage(),
-        VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        dstRange,
-        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-    });
-
-    if (src.texture->samples > 1 && dst.texture->samples == 1) {
-        assert_invariant(aspect != VK_IMAGE_ASPECT_DEPTH_BIT && "Resolve with depth is not yet supported.");
-        vkCmdResolveImage(cmdbuffer, src.getImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.getImage(),
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, resolveRegions);
-    } else {
-        vkCmdBlitImage(cmdbuffer, src.getImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.getImage(),
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, blitRegions, filter);
-    }
-
-    transitionImageLayout(cmdbuffer, blitterTransitionHelper({
-        .image = src.getImage(),
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .newLayout = srcLayout,
-        .subresources = srcRange
-    }));
-
-    transitionImageLayout(cmdbuffer, blitterTransitionHelper({
-        .image = dst.getImage(),
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .newLayout = getDefaultImageLayout(dst.texture->usage),
-        .subresources = dstRange,
-    }));
-}
 
 void VulkanBlitter::shutdown() noexcept {
     if (mContext.device) {
@@ -267,12 +261,11 @@ void VulkanBlitter::blitSlowDepth(VkImageAspectFlags aspect, VkFilter filter,
     // BEGIN RENDER PASS
     // -----------------
 
-    const VulkanDepthLayout layout =
-            fromVkImageLayout(getDefaultImageLayout(TextureUsage::DEPTH_ATTACHMENT));
+    VulkanLayout const layout = VulkanLayout::DEPTH_ATTACHMENT;
 
     const VulkanFboCache::RenderPassKey rpkey = {
         .initialColorLayoutMask = 0,
-        .initialDepthLayout = VulkanDepthLayout::UNDEFINED,
+        .initialDepthLayout = VulkanLayout::UNDEFINED,
         .renderPassDepthLayout = layout,
         .finalDepthLayout = layout,
         .depthFormat = dst.getFormat(),
@@ -366,14 +359,14 @@ void VulkanBlitter::blitSlowDepth(VkImageAspectFlags aspect, VkFilter filter,
         sampler = {
             .sampler = vksampler,
             .imageView = mContext.emptyTexture->getPrimaryImageView(),
-            .imageLayout = VK_IMAGE_LAYOUT_GENERAL
+            .imageLayout = ImgUtil::getVkLayout(VulkanLayout::READ_WRITE),
         };
     }
 
     samplers[0] = {
         .sampler = vksampler,
         .imageView = src.getImageView(VK_IMAGE_ASPECT_DEPTH_BIT),
-        .imageLayout = getDefaultImageLayout(TextureUsage::DEPTH_ATTACHMENT)
+        .imageLayout = ImgUtil::getVkLayout(VulkanLayout::DEPTH_ATTACHMENT),
     };
 
     mPipelineCache.bindSamplers(samplers,

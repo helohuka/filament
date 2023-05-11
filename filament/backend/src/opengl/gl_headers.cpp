@@ -28,10 +28,6 @@ static void getProcAddress(T& pfn, const char* name) noexcept {
 }
 
 namespace glext {
-#ifdef GL_QCOM_tiled_rendering
-PFNGLSTARTTILINGQCOMPROC glStartTilingQCOM;
-PFNGLENDTILINGQCOMPROC glEndTilingQCOM;
-#endif
 #ifdef GL_OES_EGL_image
 PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
 #endif
@@ -49,18 +45,26 @@ PFNGLDEBUGMESSAGECALLBACKKHRPROC glDebugMessageCallbackKHR;
 PFNGLGETDEBUGMESSAGELOGKHRPROC glGetDebugMessageLogKHR;
 #endif
 #ifdef GL_EXT_disjoint_timer_query
-PFNGLGENQUERIESEXTPROC glGenQueries;
-PFNGLDELETEQUERIESEXTPROC glDeleteQueries;
-PFNGLBEGINQUERYEXTPROC glBeginQuery;
-PFNGLENDQUERYEXTPROC glEndQuery;
-PFNGLGETQUERYOBJECTUIVEXTPROC glGetQueryObjectuiv;
-PFNGLGETQUERYOBJECTUI64VEXTPROC glGetQueryObjectui64v;
+PFNGLGENQUERIESEXTPROC glGenQueriesEXT;
+PFNGLDELETEQUERIESEXTPROC glDeleteQueriesEXT;
+PFNGLBEGINQUERYEXTPROC glBeginQueryEXT;
+PFNGLENDQUERYEXTPROC glEndQueryEXT;
+PFNGLGETQUERYOBJECTUIVEXTPROC glGetQueryObjectuivEXT;
+PFNGLGETQUERYOBJECTUI64VEXTPROC glGetQueryObjectui64vEXT;
+#endif
+#ifdef GL_OES_vertex_array_object
+PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES;
+PFNGLDELETEVERTEXARRAYSOESPROC glDeleteVertexArraysOES;
+PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES;
 #endif
 #ifdef GL_EXT_clip_control
 PFNGLCLIPCONTROLEXTPROC glClipControlEXT;
 #endif
+#ifdef GL_EXT_discard_framebuffer
+PFNGLDISCARDFRAMEBUFFEREXTPROC glDiscardFramebufferEXT;
+#endif
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) && !defined(FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2)
 // On Android, If we want to support a build system less than ANDROID_API 21, we need to
 // use getProcAddress for ES3.1 and above entry points.
 PFNGLDISPATCHCOMPUTEPROC glDispatchCompute;
@@ -70,38 +74,42 @@ static std::once_flag sGlExtInitialized;
 
 void importGLESExtensionsEntryPoints() {
     std::call_once(sGlExtInitialized, +[]() {
-#ifdef GL_QCOM_tiled_rendering
-        getProcAddress(glStartTilingQCOM, "glStartTilingQCOM");
-        getProcAddress(glEndTilingQCOM, "glEndTilingQCOM");
-#endif
 #ifdef GL_OES_EGL_image
-        getProcAddress(glEGLImageTargetTexture2DOES, "glEGLImageTargetTexture2DOES");
+    getProcAddress(glEGLImageTargetTexture2DOES, "glEGLImageTargetTexture2DOES");
 #endif
 #if GL_EXT_debug_marker
-        getProcAddress(glInsertEventMarkerEXT, "glInsertEventMarkerEXT");
-        getProcAddress(glPushGroupMarkerEXT, "glPushGroupMarkerEXT");
-        getProcAddress(glPopGroupMarkerEXT, "glPopGroupMarkerEXT");
+    getProcAddress(glInsertEventMarkerEXT, "glInsertEventMarkerEXT");
+    getProcAddress(glPushGroupMarkerEXT, "glPushGroupMarkerEXT");
+    getProcAddress(glPopGroupMarkerEXT, "glPopGroupMarkerEXT");
 #endif
 #if GL_EXT_multisampled_render_to_texture
-        getProcAddress(glFramebufferTexture2DMultisampleEXT, "glFramebufferTexture2DMultisampleEXT");
-        getProcAddress(glRenderbufferStorageMultisampleEXT, "glRenderbufferStorageMultisampleEXT");
+    getProcAddress(glFramebufferTexture2DMultisampleEXT, "glFramebufferTexture2DMultisampleEXT");
+    getProcAddress(glRenderbufferStorageMultisampleEXT, "glRenderbufferStorageMultisampleEXT");
 #endif
 #ifdef GL_KHR_debug
-        getProcAddress(glDebugMessageCallbackKHR, "glDebugMessageCallbackKHR");
-        getProcAddress(glGetDebugMessageLogKHR, "glGetDebugMessageLogKHR");
+    getProcAddress(glDebugMessageCallbackKHR, "glDebugMessageCallbackKHR");
+    getProcAddress(glGetDebugMessageLogKHR, "glGetDebugMessageLogKHR");
 #endif
 #ifdef GL_EXT_disjoint_timer_query
-        getProcAddress(glGenQueries, "glGenQueriesEXT");
-        getProcAddress(glDeleteQueries, "glDeleteQueriesEXT");
-        getProcAddress(glBeginQuery, "glBeginQueryEXT");
-        getProcAddress(glEndQuery, "glEndQueryEXT");
-        getProcAddress(glGetQueryObjectuiv, "glGetQueryObjectuivEXT");
-        getProcAddress(glGetQueryObjectui64v, "glGetQueryObjectui64vEXT");
+    getProcAddress(glGenQueriesEXT, "glGenQueriesEXT");
+    getProcAddress(glDeleteQueriesEXT, "glDeleteQueriesEXT");
+    getProcAddress(glBeginQueryEXT, "glBeginQueryEXT");
+    getProcAddress(glEndQueryEXT, "glEndQueryEXT");
+    getProcAddress(glGetQueryObjectuivEXT, "glGetQueryObjectuivEXT");
+    getProcAddress(glGetQueryObjectui64vEXT, "glGetQueryObjectui64vEXT");
+#endif
+#if defined(GL_OES_vertex_array_object)
+    getProcAddress(glBindVertexArrayOES, "glBindVertexArrayOES");
+    getProcAddress(glDeleteVertexArraysOES, "glDeleteVertexArraysOES");
+    getProcAddress(glGenVertexArraysOES, "glGenVertexArraysOES");
 #endif
 #ifdef GL_EXT_clip_control
-        getProcAddress(glClipControlEXT, "glClipControlEXT");
+    getProcAddress(glClipControlEXT, "glClipControlEXT");
 #endif
-#if defined(__ANDROID__)
+#ifdef GL_EXT_discard_framebuffer
+        getProcAddress(glDiscardFramebufferEXT, "glDiscardFramebufferEXT");
+#endif
+#if defined(__ANDROID__) && !defined(FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2)
         getProcAddress(glDispatchCompute, "glDispatchCompute");
 #endif
     });

@@ -103,7 +103,7 @@ highp vec3 getNormalizedViewportCoord() {
 }
 
 #if defined(VARIANT_HAS_SHADOWING) && defined(VARIANT_HAS_DYNAMIC_LIGHTING)
-highp vec4 getSpotLightSpacePosition(uint index, highp vec3 dir, highp float zLight) {
+highp vec4 getSpotLightSpacePosition(int index, highp vec3 dir, highp float zLight) {
     highp mat4 lightFromWorldMatrix = shadowUniforms.shadows[index].lightFromWorldMatrix;
 
     // for spotlights, the bias depends on z
@@ -120,23 +120,23 @@ bool isDoubleSided() {
 }
 #endif
 
+#if defined(VARIANT_HAS_SHADOWING) && defined(VARIANT_HAS_DIRECTIONAL_LIGHTING)
+
 /**
  * Returns the cascade index for this fragment (between 0 and CONFIG_MAX_SHADOW_CASCADES - 1).
  */
-uint getShadowCascade() {
-    vec3 viewPos = mulMat4x4Float3(getViewFromWorldMatrix(), getWorldPosition()).xyz;
-    bvec4 greaterZ = greaterThan(frameUniforms.cascadeSplits, vec4(viewPos.z));
-    uint cascadeCount = frameUniforms.cascades & 0xFu;
-    return clamp(uint(dot(vec4(greaterZ), vec4(1.0))), 0u, cascadeCount - 1u);
+int getShadowCascade() {
+    highp float z = mulMat4x4Float3(getViewFromWorldMatrix(), getWorldPosition()).z;
+    ivec4 greaterZ = ivec4(greaterThan(frameUniforms.cascadeSplits, vec4(z)));
+    int cascadeCount = frameUniforms.cascades & 0xF;
+    return clamp(greaterZ.x + greaterZ.y + greaterZ.z + greaterZ.w, 0, cascadeCount - 1);
 }
 
-#if defined(VARIANT_HAS_SHADOWING) && defined(VARIANT_HAS_DIRECTIONAL_LIGHTING)
-
-highp vec4 getCascadeLightSpacePosition(uint cascade) {
+highp vec4 getCascadeLightSpacePosition(int cascade) {
     // For the first cascade, return the interpolated light space position.
     // This branch will be coherent (mostly) for neighboring fragments, and it's worth avoiding
     // the matrix multiply inside computeLightSpacePosition.
-    if (cascade == 0u) {
+    if (cascade == 0) {
         // Note: this branch may cause issues with derivatives
         return vertex_lightSpacePosition;
     }

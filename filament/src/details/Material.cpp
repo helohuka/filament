@@ -32,7 +32,10 @@
 #include <backend/Program.h>
 
 #include <utils/CString.h>
+#include <utils/FixedCapacityVector.h>
 #include <utils/Panic.h>
+
+#include <unordered_map>
 
 namespace filament {
 
@@ -44,7 +47,7 @@ static MaterialParser* createParser(Backend backend, const void* data, size_t si
     // unique_ptr so we don't leak MaterialParser on failures below
     auto materialParser = std::make_unique<MaterialParser>(backend, data, size);
 
-    MaterialParser::ParseResult materialResult = materialParser->parse();
+    MaterialParser::ParseResult const materialResult = materialParser->parse();
 
     if (backend == Backend::NOOP) {
         return materialParser.release();
@@ -71,6 +74,7 @@ struct Material::BuilderDetails {
     size_t mSize = 0;
     MaterialParser* mMaterialParser = nullptr;
     bool mDefaultMaterial = false;
+    std::unordered_map<std::string, std::variant<int32_t, float, bool>> mConstantSpecializations;
 };
 
 FMaterial::DefaultMaterialBuilder::DefaultMaterialBuilder() : Material::Builder() {
@@ -91,6 +95,17 @@ Material::Builder& Material::Builder::package(const void* payload, size_t size) 
     return *this;
 }
 
+template<typename T, typename>
+Material::Builder& Material::Builder::constant(const char* name, size_t nameLength, T value) {
+    ASSERT_PRECONDITION(name != nullptr, "name cannot be null");
+    mImpl->mConstantSpecializations[{name, nameLength}] = value;
+    return *this;
+}
+
+template Material::Builder& Material::Builder::constant<int32_t>(const char*, size_t, int32_t);
+template Material::Builder& Material::Builder::constant<float>(const char*, size_t, float);
+template Material::Builder& Material::Builder::constant<bool>(const char*, size_t, bool);
+
 Material* Material::Builder::build(Engine& engine) {
     std::unique_ptr<MaterialParser> materialParser{ createParser(
             downcast(engine).getBackend(), mImpl->mPayload, mImpl->mSize) };
@@ -104,7 +119,7 @@ Material* Material::Builder::build(Engine& engine) {
     utils::bitset32 shaderModels;
     shaderModels.setValue(v);
 
-    ShaderModel shaderModel = downcast(engine).getShaderModel();
+    ShaderModel const shaderModel = downcast(engine).getShaderModel();
     if (!shaderModels.test(static_cast<uint32_t>(shaderModel))) {
         CString name;
         materialParser->getName(&name);
@@ -134,20 +149,30 @@ FMaterial::FMaterial(FEngine& engine, const Material::Builder& builder)
     MaterialParser* parser = builder->mMaterialParser;
     mMaterialParser = parser;
 
-    UTILS_UNUSED_IN_RELEASE bool nameOk = parser->getName(&mName);
+    UTILS_UNUSED_IN_RELEASE bool const nameOk = parser->getName(&mName);
     assert_invariant(nameOk);
 
-    uint8_t featureLevel = 1;
-    parser->getFeatureLevel(&featureLevel);
-    assert_invariant(featureLevel <= 3);
-    mFeatureLevel = [featureLevel]() -> FeatureLevel {
-        switch (featureLevel) {
-            default:
-            case 1: return FeatureLevel::FEATURE_LEVEL_1;
-            case 2: return FeatureLevel::FEATURE_LEVEL_2;
-            case 3: return FeatureLevel::FEATURE_LEVEL_3;
+    mFeatureLevel = [parser]() -> FeatureLevel {
+        // code written this way so the IDE will complain when/if we add a FeatureLevel
+        uint8_t level = 1;
+        parser->getFeatureLevel(&level);
+        assert_invariant(level <= 3);
+        FeatureLevel featureLevel = FeatureLevel::FEATURE_LEVEL_1;
+        switch (FeatureLevel(level)) {
+            case FeatureLevel::FEATURE_LEVEL_0:
+            case FeatureLevel::FEATURE_LEVEL_1:
+            case FeatureLevel::FEATURE_LEVEL_2:
+            case FeatureLevel::FEATURE_LEVEL_3:
+                featureLevel = FeatureLevel(level);
+                break;
         }
+        return featureLevel;
     }();
+
+    // TODO: this should probably be checked in build()
+    // if the engine is at feature level 0, so must the material be.
+    assert_invariant((engine.getActiveFeatureLevel() != FeatureLevel::FEATURE_LEVEL_0) ||
+                     (mFeatureLevel == FeatureLevel::FEATURE_LEVEL_0));
 
     UTILS_UNUSED_IN_RELEASE bool success;
 
@@ -157,9 +182,27 @@ FMaterial::FMaterial(FEngine& engine, const Material::Builder& builder)
     success = parser->getUIB(&mUniformInterfaceBlock);
     assert_invariant(success);
 
-    // read the uniform binding list
-    success = parser->getUniformBlockBindings(&mUniformBlockBindings);
-    assert_invariant(success || mFeatureLevel >= FeatureLevel::FEATURE_LEVEL_2);
+    // TODO: currently, the feature level used is determined by the material because we
+    //       don't have "feature level" variants. In the future, we could instead pick
+    //       the code path based on the engine's feature level.
+
+    if (mFeatureLevel == FeatureLevel::FEATURE_LEVEL_0) {
+        // these chunks are only needed for materials at feature level 0
+        // TODO: remove this assert when we support feature level variants
+        assert_invariant(engine.getActiveFeatureLevel() == FeatureLevel::FEATURE_LEVEL_0);
+
+        success = parser->getBindingUniformInfo(&mBindingUniformInfo);
+        assert_invariant(success);
+
+        success = parser->getAttributeInfo(&mAttributeInfo);
+        assert_invariant(success);
+    }
+
+    if (mFeatureLevel == FeatureLevel::FEATURE_LEVEL_1) {
+        // this chunk is not needed for materials at feature level 2 and above
+        success = parser->getUniformBlockBindings(&mUniformBlockBindings);
+        assert_invariant(success);
+    }
 
     success = parser->getSamplerBlockBindings(
             &mSamplerGroupBindingInfoList, &mSamplerBindingToNameMap);
@@ -177,6 +220,69 @@ FMaterial::FMaterial(FEngine& engine, const Material::Builder& builder)
     // Older materials will not have a subpass chunk; this should not be an error.
     if (!parser->getSubpasses(&mSubpassInfo)) {
         mSubpassInfo.isValid = false;
+    }
+
+    utils::FixedCapacityVector<MaterialConstant> constants;
+    // Older materials won't have a constants chunk, but that's okay.
+    parser->getConstants(&constants);
+
+    // Verify that all the constant specializations exist in the material and that their types match.
+    // The first specialization constants are defined internally by Filament.
+    // The subsequent constants are user-defined in the material.
+
+    // Feature level 0 doesn't support instancing
+    int const maxInstanceCount = (engine.getActiveFeatureLevel() == FeatureLevel::FEATURE_LEVEL_0)
+            ? 1 : CONFIG_MAX_INSTANCES;
+
+    const bool staticTextureWorkaround =
+            engine.getDriverApi().isWorkaroundNeeded(Workaround::A8X_STATIC_TEXTURE_TARGET_ERROR);
+
+    mSpecializationConstants.reserve(constants.size() + CONFIG_MAX_RESERVED_SPEC_CONSTANTS);
+    mSpecializationConstants.push_back({
+                    +ReservedSpecializationConstants::BACKEND_FEATURE_LEVEL,
+                    (int)engine.getSupportedFeatureLevel() });
+    mSpecializationConstants.push_back({
+                    +ReservedSpecializationConstants::CONFIG_MAX_INSTANCES,
+                    (int)maxInstanceCount });
+    mSpecializationConstants.push_back({
+                    +ReservedSpecializationConstants::CONFIG_STATIC_TEXTURE_TARGET_WORKAROUND,
+                    (bool)staticTextureWorkaround });
+    if (mFeatureLevel == FeatureLevel::FEATURE_LEVEL_0) {
+        // The actual value of this spec-constant is set in the OpenGLDriver backend.
+        mSpecializationConstants.push_back({
+            +ReservedSpecializationConstants::CONFIG_SRGB_SWAPCHAIN_EMULATION,
+            false});
+    }
+
+    for (const auto& [name, value] : builder->mConstantSpecializations) {
+        auto found = std::find_if(
+                constants.begin(), constants.end(), [name = name](const auto& constant) {
+                    return strncmp(constant.name.data(), name.data(), name.length()) == 0;
+                });
+        ASSERT_PRECONDITION(found != constants.end(),
+                "The material %s does not have a constant parameter named %s.",
+                mName.c_str_safe(), name.c_str());
+        const char* const types[3] = {"an int", "a float", "a bool"};
+        const char* const errorMessage =
+                "The constant parameter %s on material %s is of type %s, but %s was "
+                "provided.";
+        switch (found->type) {
+            case ConstantType::INT:
+                ASSERT_PRECONDITION(std::holds_alternative<int32_t>(value), errorMessage,
+                        name.c_str(), mName.c_str_safe(), "int", types[value.index()]);
+                break;
+            case ConstantType::FLOAT:
+                ASSERT_PRECONDITION(std::holds_alternative<float>(value), errorMessage,
+                        name.c_str(), mName.c_str_safe(), "float", types[value.index()]);
+                break;
+            case ConstantType::BOOL:
+                ASSERT_PRECONDITION(std::holds_alternative<bool>(value), errorMessage,
+                        name.c_str(), mName.c_str_safe(), "bool", types[value.index()]);
+                break;
+        }
+        uint32_t const index =
+                std::distance(constants.begin(), found) + CONFIG_MAX_RESERVED_SPEC_CONSTANTS;
+        mSpecializationConstants.push_back({ index, value });
     }
 
     parser->getShading(&mShading);
@@ -281,16 +387,28 @@ FMaterial::FMaterial(FEngine& engine, const Material::Builder& builder)
     parser->hasCustomDepthShader(&mHasCustomDepthShader);
     mIsDefaultMaterial = builder->mDefaultMaterial;
 
-    // pre-cache the shared variants -- these variants are shared with the default material.
-    if (UTILS_UNLIKELY(!mIsDefaultMaterial && !mHasCustomDepthShader)) {
-        auto& cachedPrograms = mCachedPrograms;
-        for (Variant::type_t k = 0, n = VARIANT_COUNT; k < n; ++k) {
-            const Variant variant(k);
+    if (UTILS_UNLIKELY(mIsDefaultMaterial)) {
+        filaflat::MaterialChunk const& materialChunk{ mMaterialParser->getMaterialChunk() };
+        auto variants = FixedCapacityVector<Variant>::with_capacity(materialChunk.getShaderCount());
+        materialChunk.visitShaders([&variants](
+                ShaderModel model, Variant variant, ShaderStage stage) {
             if (Variant::isValidDepthVariant(variant)) {
-                FMaterial const* const pMaterial = engine.getDefaultMaterial();
-                pMaterial->prepareProgram(variant);
-                cachedPrograms[k] = pMaterial->getProgram(variant);
+                variants.push_back(variant);
             }
+        });
+        std::sort(variants.begin(), variants.end(),
+                [](Variant lhs, Variant rhs) { return lhs.key < rhs.key; });
+        auto pos = std::unique(variants.begin(), variants.end());
+        variants.resize(std::distance(variants.begin(), pos));
+        std::swap(mDepthVariants, variants);
+    }
+
+    if (UTILS_UNLIKELY(!mIsDefaultMaterial && !mHasCustomDepthShader)) {
+        FMaterial const* const pDefaultMaterial = engine.getDefaultMaterial();
+        auto& cachedPrograms = mCachedPrograms;
+        for (Variant variant : pDefaultMaterial->mDepthVariants) {
+            pDefaultMaterial->prepareProgram(variant);
+            cachedPrograms[variant.key] = pDefaultMaterial->getProgram(variant);
         }
     }
 
@@ -378,32 +496,33 @@ void FMaterial::getSurfaceProgramSlow(Variant variant) const noexcept {
 
     assert_invariant(!Variant::isReserved(variant));
 
-    Variant vertexVariant   = Variant::filterVariantVertex(variant);
-    Variant fragmentVariant = Variant::filterVariantFragment(variant);
+    Variant const vertexVariant   = Variant::filterVariantVertex(variant);
+    Variant const fragmentVariant = Variant::filterVariantFragment(variant);
 
-    Program pb{ getProgramBuilderWithVariants(variant, vertexVariant, fragmentVariant) };
+    Program pb{ getProgramWithVariants(variant, vertexVariant, fragmentVariant) };
     createAndCacheProgram(std::move(pb), variant);
 }
 
 void FMaterial::getPostProcessProgramSlow(Variant variant) const noexcept {
-    Program pb{ getProgramBuilderWithVariants(variant, variant, variant) };
+    Program pb{ getProgramWithVariants(variant, variant, variant) };
     createAndCacheProgram(std::move(pb), variant);
 }
 
-Program FMaterial::getProgramBuilderWithVariants(
+Program FMaterial::getProgramWithVariants(
         Variant variant,
         Variant vertexVariant,
         Variant fragmentVariant) const noexcept {
-    const ShaderModel sm = mEngine.getShaderModel();
-    const bool isNoop = mEngine.getBackend() == Backend::NOOP;
-
+    FEngine const& engine = mEngine;
+    const ShaderModel sm = engine.getShaderModel();
+    const bool isNoop = engine.getBackend() == Backend::NOOP;
+    const FeatureLevel engineFeatureLevel = engine.getActiveFeatureLevel();
     /*
      * Vertex shader
      */
 
-    ShaderContent& vsBuilder = mEngine.getVertexShaderContent();
+    ShaderContent& vsBuilder = engine.getVertexShaderContent();
 
-    UTILS_UNUSED_IN_RELEASE bool vsOK = mMaterialParser->getShader(vsBuilder, sm,
+    UTILS_UNUSED_IN_RELEASE bool const vsOK = mMaterialParser->getShader(vsBuilder, sm,
             vertexVariant, ShaderStage::VERTEX);
 
     ASSERT_POSTCONDITION(isNoop || (vsOK && !vsBuilder.empty()),
@@ -415,10 +534,16 @@ Program FMaterial::getProgramBuilderWithVariants(
      * Fragment shader
      */
 
-    ShaderContent& fsBuilder = mEngine.getFragmentShaderContent();
+    ShaderContent& fsBuilder = engine.getFragmentShaderContent();
 
-    UTILS_UNUSED_IN_RELEASE bool fsOK = mMaterialParser->getShader(fsBuilder, sm,
+    UTILS_UNUSED_IN_RELEASE bool const fsOK = mMaterialParser->getShader(fsBuilder, sm,
             fragmentVariant, ShaderStage::FRAGMENT);
+
+    ASSERT_POSTCONDITION(
+            (engineFeatureLevel != FeatureLevel::FEATURE_LEVEL_0) ||
+            (mFeatureLevel == FeatureLevel::FEATURE_LEVEL_0),
+            "Engine is running a FEATURE_LEVEL_0 but material '%s' is not.",
+            mName.c_str());
 
     ASSERT_POSTCONDITION(isNoop || (fsOK && !fsBuilder.empty()),
             "The material '%s' has not been compiled to include the required "
@@ -437,12 +562,12 @@ Program FMaterial::getProgramBuilderWithVariants(
 
     UTILS_NOUNROLL
     for (size_t i = 0; i < Enum::count<SamplerBindingPoints>(); i++) {
-        SamplerBindingPoints bindingPoint = (SamplerBindingPoints)i;
+        SamplerBindingPoints const bindingPoint = (SamplerBindingPoints)i;
         auto const& info = mSamplerGroupBindingInfoList[i];
         if (info.count) {
             std::array<Program::Sampler, backend::MAX_SAMPLER_COUNT> samplers{};
             for (size_t j = 0, c = info.count; j < c; ++j) {
-                uint8_t binding = info.bindingOffset + j;
+                uint8_t const binding = info.bindingOffset + j;
                 samplers[j] = { mSamplerBindingToNameMap[binding], binding };
             }
             program.setSamplerGroup(+bindingPoint, info.shaderStageFlags,
@@ -450,10 +575,15 @@ Program FMaterial::getProgramBuilderWithVariants(
         }
     }
 
-    program.specializationConstants({
-            { 0, (int)mEngine.getSupportedFeatureLevel() },
-            { 1, (int)CONFIG_MAX_INSTANCES }
-    });
+    if (engineFeatureLevel == FeatureLevel::FEATURE_LEVEL_0) {
+        assert_invariant(!mBindingUniformInfo.empty());
+        for (auto const& [index, uniforms] : mBindingUniformInfo) {
+            program.uniforms(uint32_t(index), uniforms);
+        }
+        program.attributes(mAttributeInfo);
+    }
+
+    program.specializationConstants(mSpecializationConstants);
 
     return program;
 }
@@ -469,7 +599,7 @@ size_t FMaterial::getParameters(ParameterInfo* parameters, size_t count) const n
 
     const auto& uniforms = mUniformInterfaceBlock.getFieldInfoList();
     size_t i = 0;
-    size_t uniformCount = std::min(count, size_t(uniforms.size()));
+    size_t const uniformCount = std::min(count, size_t(uniforms.size()));
     for ( ; i < uniformCount; i++) {
         ParameterInfo& info = parameters[i];
         const auto& uniformInfo = uniforms[i];
@@ -482,7 +612,7 @@ size_t FMaterial::getParameters(ParameterInfo* parameters, size_t count) const n
     }
 
     const auto& samplers = mSamplerInterfaceBlock.getSamplerInfoList();
-    size_t samplerCount = samplers.size();
+    size_t const samplerCount = samplers.size();
     for (size_t j = 0; i < count && j < samplerCount; i++, j++) {
         ParameterInfo& info = parameters[i];
         const auto& samplerInfo = samplers[j];
@@ -502,11 +632,12 @@ size_t FMaterial::getParameters(ParameterInfo* parameters, size_t count) const n
         info.subpassType = mSubpassInfo.type;
         info.count = 1;
         info.precision = mSubpassInfo.precision;
-        i++;
     }
 
     return count;
 }
+
+#if FILAMENT_ENABLE_MATDBG
 
 // Swaps in an edited version of the original package that was used to create the material. The
 // edited package was stashed in response to a debugger event. This is invoked only when the
@@ -530,8 +661,6 @@ void FMaterial::applyPendingEdits() noexcept {
  *
  * @{
  */
-
-#if FILAMENT_ENABLE_MATDBG
 
 void FMaterial::onEditCallback(void* userdata, const utils::CString&, const void* packageData,
         size_t packageSize) {

@@ -75,7 +75,7 @@ static void collectSibs(const GLSLPostProcessor::Config& config, SibVector& sibs
             &config.materialInfo->sib);
 }
 
-}; // namespace msl
+} // namespace msl
 
 GLSLPostProcessor::GLSLPostProcessor(MaterialBuilder::Optimization optimization, uint32_t flags)
         : mOptimization(optimization),
@@ -395,7 +395,9 @@ bool GLSLPostProcessor::process(const std::string& inputShader, Config const& co
 
     if (internalConfig.glslOutput) {
         *internalConfig.glslOutput =
-                internalConfig.minifier.removeWhitespace(*internalConfig.glslOutput);
+                internalConfig.minifier.removeWhitespace(
+                        *internalConfig.glslOutput,
+                        mOptimization == MaterialBuilder::Optimization::SIZE);
 
         // In theory this should only be enabled for SIZE, but in practice we often use PERFORMANCE.
         if (mOptimization != MaterialBuilder::Optimization::NONE) {
@@ -470,14 +472,33 @@ void GLSLPostProcessor::fullOptimization(const TShader& tShader,
         GLSLPostProcessor::Config const& config, InternalConfig& internalConfig) const {
     SpirvBlob spirv;
 
+    bool optimizeForSize = mOptimization == MaterialBuilderBase::Optimization::SIZE;
+
     // Compile GLSL to to SPIR-V
     SpvOptions options;
     options.generateDebugInfo = mGenerateDebugInfo;
+    // This step is required for what we attempt later using spirvbin_t::remap()
+    if (!internalConfig.spirvOutput && optimizeForSize) {
+        options.emitNonSemanticShaderDebugInfo = true;
+    }
     GlslangToSpv(*tShader.getIntermediate(), spirv, &options);
 
-    // Run the SPIR-V optimizer
-    OptimizerPtr optimizer = createOptimizer(mOptimization, config);
-    optimizeSpirv(optimizer, spirv);
+    if (internalConfig.spirvOutput) {
+        // Run the SPIR-V optimizer
+        OptimizerPtr optimizer = createOptimizer(mOptimization, config);
+        optimizeSpirv(optimizer, spirv);
+    } else {
+        // When we optimize for size, and we generate text-based shaders, we save much more
+        // by preserving variable names and running a simple DCE pass instead of using spirv-opt
+        if (optimizeForSize) {
+            std::vector<std::string> whiteListStrings;
+            spv::spirvbin_t(0).remap(
+                    spirv, whiteListStrings, spv::spirvbin_t::DCE_ALL | spv::spirvbin_t::OPT_ALL);
+        } else {
+            OptimizerPtr optimizer = createOptimizer(mOptimization, config);
+            optimizeSpirv(optimizer, spirv);
+        }
+    }
 
     if (internalConfig.spirvOutput) {
         *internalConfig.spirvOutput = spirv;
@@ -502,6 +523,12 @@ void GLSLPostProcessor::fullOptimization(const TShader& tShader,
                 CompilerGLSL::Options::Precision::Mediump : CompilerGLSL::Options::Precision::Highp;
         glslOptions.fragment.default_int_precision = glslOptions.es ?
                 CompilerGLSL::Options::Precision::Mediump : CompilerGLSL::Options::Precision::Highp;
+
+        // TODO: this should be done only on the "feature level 0" variant
+        if (config.featureLevel == 0) {
+            // convert UBOs to plain uniforms if we're at feature level 0
+            glslOptions.emit_uniform_buffer_as_plain_uniforms = true;
+        }
 
         CompilerGLSL glslCompiler(std::move(spirv));
         glslCompiler.set_common_options(glslOptions);
@@ -573,8 +600,16 @@ void GLSLPostProcessor::registerPerformancePasses(Optimizer& optimizer, Config c
         optimizer.RegisterPass(CreateMergeReturnPass());
     }
 
-    optimizer
-            .RegisterPass(CreateInlineExhaustivePass())
+    auto const localCreateSimplificationPass = [&config] {
+        // Adreno GPU show artifacts after running simplication passes. We workaround this just by
+        // disabling the simplification pass for mobile + vulkan.
+        return config.shaderModel == ShaderModel::MOBILE
+                               && config.targetApi == MaterialBuilder::TargetApi::VULKAN
+                       ? std::move(CreateNullPass())
+                       : std::move(CreateSimplificationPass());
+    };
+
+    optimizer.RegisterPass(CreateInlineExhaustivePass())
             .RegisterPass(CreateAggressiveDCEPass())
             .RegisterPass(CreatePrivateToLocalPass())
             .RegisterPass(CreateLocalSingleBlockLoadStoreElimPass())
@@ -591,11 +626,11 @@ void GLSLPostProcessor::registerPerformancePasses(Optimizer& optimizer, Config c
             .RegisterPass(CreateAggressiveDCEPass())
             .RegisterPass(CreateRedundancyEliminationPass())
             .RegisterPass(CreateCombineAccessChainsPass())
-            .RegisterPass(CreateSimplificationPass())
+            .RegisterPass(localCreateSimplificationPass())
             .RegisterPass(CreateVectorDCEPass())
             .RegisterPass(CreateDeadInsertElimPass())
             .RegisterPass(CreateDeadBranchElimPass())
-            .RegisterPass(CreateSimplificationPass())
+            .RegisterPass(localCreateSimplificationPass())
             .RegisterPass(CreateIfConversionPass())
             .RegisterPass(CreateCopyPropagateArraysPass())
             .RegisterPass(CreateReduceLoadSizePass())
@@ -604,7 +639,7 @@ void GLSLPostProcessor::registerPerformancePasses(Optimizer& optimizer, Config c
             .RegisterPass(CreateRedundancyEliminationPass())
             .RegisterPass(CreateDeadBranchElimPass())
             .RegisterPass(CreateBlockMergePass())
-            .RegisterPass(CreateSimplificationPass());
+            .RegisterPass(localCreateSimplificationPass());
 }
 
 void GLSLPostProcessor::registerSizePasses(Optimizer& optimizer, Config const& config) {

@@ -133,6 +133,24 @@ Texture* Texture::Builder::build(Engine& engine) {
     ASSERT_PRECONDITION(!swizzled, "WebGL does not support texture swizzling.");
     #endif
 
+    auto validateSamplerType = [&engine = downcast(engine)](SamplerType sampler) -> bool {
+        switch (sampler) {
+            case SamplerType::SAMPLER_2D:
+            case SamplerType::SAMPLER_CUBEMAP:
+            case SamplerType::SAMPLER_EXTERNAL:
+                return true;
+            case SamplerType::SAMPLER_3D:
+            case SamplerType::SAMPLER_2D_ARRAY:
+                return engine.hasFeatureLevel(FeatureLevel::FEATURE_LEVEL_1);
+            case SamplerType::SAMPLER_CUBEMAP_ARRAY:
+                return engine.hasFeatureLevel(FeatureLevel::FEATURE_LEVEL_2);
+        }
+    };
+
+    ASSERT_PRECONDITION(validateSamplerType(mImpl->mTarget),
+            "SamplerType %u not support at feature level %u",
+            mImpl->mTarget, engine.getActiveFeatureLevel());
+
     ASSERT_PRECONDITION((swizzled && sampleable) || !swizzled,
             "Swizzled texture must be SAMPLEABLE");
 
@@ -208,19 +226,13 @@ void FTexture::setImage(FEngine& engine, size_t level,
         uint32_t width, uint32_t height, uint32_t depth,
         FTexture::PixelBufferDescriptor&& buffer) const {
 
-    auto validateTarget = [&engine](SamplerType sampler) -> bool {
-        switch (sampler) {
-            case SamplerType::SAMPLER_2D:
-            case SamplerType::SAMPLER_3D:
-            case SamplerType::SAMPLER_2D_ARRAY:
-            case SamplerType::SAMPLER_CUBEMAP:
-                return true;
-            case SamplerType::SAMPLER_EXTERNAL:
-                return false;
-            case SamplerType::SAMPLER_CUBEMAP_ARRAY:
-                return engine.hasFeatureLevel(FeatureLevel::FEATURE_LEVEL_2);
-        }
-    };
+    if (UTILS_UNLIKELY(!engine.hasFeatureLevel(FeatureLevel::FEATURE_LEVEL_1))) {
+        ASSERT_PRECONDITION(buffer.stride == 0 || buffer.stride == width,
+                "PixelBufferDescriptor stride must be 0 (or width) at FEATURE_LEVEL_0");
+    }
+
+    // this should have been validated already
+    assert_invariant(isTextureFormatSupported(engine, mFormat));
 
     ASSERT_PRECONDITION(buffer.type == PixelDataType::COMPRESSED ||
             validatePixelFormatAndType(mFormat, buffer.format, buffer.type),
@@ -232,19 +244,22 @@ void FTexture::setImage(FEngine& engine, size_t level,
     ASSERT_PRECONDITION(level < mLevelCount,
             "level=%u is >= to levelCount=%u.", unsigned(level), unsigned(mLevelCount));
 
-    ASSERT_PRECONDITION(validateTarget(mTarget),
-            "Texture Sampler type (%u) not supported for this operation.", unsigned(mTarget));
+    ASSERT_PRECONDITION(mTarget != SamplerType::SAMPLER_EXTERNAL,
+            "Texture SamplerType::SAMPLER_EXTERNAL not supported for this operation.",
+            unsigned(mTarget));
 
     ASSERT_PRECONDITION(mSampleCount <= 1,
             "Operation not supported with multisample (%u) texture.", unsigned(mSampleCount));
 
     ASSERT_PRECONDITION(xoffset + width <= valueForLevel(level, mWidth),
             "xoffset (%u) + width (%u) > texture width (%u) at level (%u)",
-            unsigned(xoffset), unsigned(width), unsigned(valueForLevel(level, mWidth)), unsigned(level));
+            unsigned(xoffset), unsigned(width), unsigned(valueForLevel(level, mWidth)),
+            unsigned(level));
 
     ASSERT_PRECONDITION(yoffset + height <= valueForLevel(level, mHeight),
             "yoffset (%u) + height (%u) > texture height (%u) at level (%u)",
-            unsigned(yoffset), unsigned(height), unsigned(valueForLevel(level, mHeight)), unsigned(level));
+            unsigned(yoffset), unsigned(height), unsigned(valueForLevel(level, mHeight)),
+            unsigned(level));
 
     ASSERT_PRECONDITION(buffer.buffer, "Data buffer is nullptr.");
 
@@ -294,6 +309,9 @@ void FTexture::setImage(FEngine& engine, size_t level,
                 return false;
         }
     };
+
+    // this should have been validated already
+    assert_invariant(isTextureFormatSupported(engine, mFormat));
 
     ASSERT_PRECONDITION(buffer.type == PixelDataType::COMPRESSED ||
                         validatePixelFormatAndType(mFormat, buffer.format, buffer.type),
@@ -401,8 +419,8 @@ void FTexture::generateMipmaps(FEngine& engine) const noexcept {
         // Perform a blit for all miplevels down to 1x1.
         backend::Handle<backend::HwRenderTarget> dstrth;
         do {
-            uint32_t dstw = std::max(srcw >> 1u, 1u);
-            uint32_t dsth = std::max(srch >> 1u, 1u);
+            uint32_t const dstw = std::max(srcw >> 1u, 1u);
+            uint32_t const dsth = std::max(srch >> 1u, 1u);
             proto.level = level++;
             dstrth = driver.createRenderTarget(
                     TargetBufferFlags::COLOR, dstw, dsth, mSampleCount, proto, {}, {});
@@ -500,7 +518,7 @@ void FTexture::generatePrefilterMipmap(FEngine& engine,
             "reflections texture cannot be compressed");
 
 
-    PrefilterOptions defaultOptions;
+    PrefilterOptions const defaultOptions;
     options = options ? options : &defaultOptions;
 
     JobSystem& js = engine.getJobSystem();
@@ -558,7 +576,7 @@ void FTexture::generatePrefilterMipmap(FEngine& engine,
     Image temp;
     Cubemap cml = CubemapUtils::create(temp, size);
     for (size_t j = 0; j < 6; j++) {
-        Cubemap::Face face = (Cubemap::Face)j;
+        Cubemap::Face const face = (Cubemap::Face)j;
         Image const& image = cml.getImageForFace(face);
         for (size_t y = 0; y < size; y++) {
             Cubemap::Texel* out = (Cubemap::Texel*)image.getPixelRef(0, y);
@@ -584,10 +602,10 @@ void FTexture::generatePrefilterMipmap(FEngine& engine,
                 for (size_t x = 0; x < size; x++, out++, src++) {
                     using fp10 = fp<0, 5, 5>;
                     using fp11 = fp<0, 5, 6>;
-                    fp11 r{ uint16_t( *src         & 0x7FFu) };
-                    fp11 g{ uint16_t((*src >> 11u) & 0x7FFu) };
-                    fp10 b{ uint16_t((*src >> 22u) & 0x3FFu) };
-                    Cubemap::Texel texel{ fp11::tof(r), fp11::tof(g), fp10::tof(b) };
+                    fp11 const r{ uint16_t( *src         & 0x7FFu) };
+                    fp11 const g{ uint16_t((*src >> 11u) & 0x7FFu) };
+                    fp10 const b{ uint16_t((*src >> 22u) & 0x3FFu) };
+                    Cubemap::Texel const texel{ fp11::tof(r), fp11::tof(g), fp10::tof(b) };
                     Cubemap::writeAt(out, texel);
                 }
             }
@@ -614,12 +632,12 @@ void FTexture::generatePrefilterMipmap(FEngine& engine,
 
     // Finally generate each pre-filtered mipmap level
     const size_t baseExp = ctz(size);
-    size_t numSamples = options->sampleCount;
+    size_t const numSamples = options->sampleCount;
     const size_t numLevels = baseExp + 1;
-    for (ssize_t i = baseExp; i >= 0; --i) {
+    for (ssize_t i = (ssize_t)baseExp; i >= 0; --i) {
         const size_t dim = 1U << i;
         const size_t level = baseExp - i;
-        const float lod = saturate(level / (numLevels - 1.0f));
+        const float lod = saturate(float(level) / float(numLevels - 1));
         const float linearRoughness = lod * lod;
 
         Image image;
@@ -627,11 +645,11 @@ void FTexture::generatePrefilterMipmap(FEngine& engine,
         CubemapIBL::roughnessFilter(js, dst, { levels.begin(), uint32_t(levels.size()) },
                 linearRoughness, numSamples, mirror, true);
 
-        Texture::PixelBufferDescriptor pbd(image.getData(), image.getSize(),
+        Texture::PixelBufferDescriptor const pbd(image.getData(), image.getSize(),
                 Texture::PixelBufferDescriptor::PixelDataFormat::RGB,
                 Texture::PixelBufferDescriptor::PixelDataType::FLOAT, 1, 0, 0, image.getStride());
 
-        uintptr_t base = uintptr_t(image.getData());
+        uintptr_t const base = uintptr_t(image.getData());
         for (size_t j = 0; j < 6; j++) {
             Image const& faceImage = dst.getImageForFace((Cubemap::Face)j);
             auto offset = uintptr_t(faceImage.getData()) - base;

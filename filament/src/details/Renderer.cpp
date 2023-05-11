@@ -610,14 +610,6 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
 
     view.prepareUpscaler(scale);
 
-    // start froxelization immediately, it has no dependencies
-    JobSystem::Job* jobFroxelize = nullptr;
-    if (view.hasDynamicLighting()) {
-        jobFroxelize = js.runAndRetain(js.createJob(nullptr,
-                [&engine, &view, &viewMatrix = cameraInfo.view](JobSystem&, JobSystem::Job*) {
-                    view.froxelize(engine, viewMatrix); }));
-    }
-
     /*
      * Allocate command buffer
      */
@@ -717,7 +709,6 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
             .keepOverrideEnd = keepOverrideEndFlags
     }, viewRenderTarget);
 
-    const bool blending = blendModeTranslucent;
     const TextureFormat hdrFormat = getHdrFormat(view, needsAlphaChannel);
 
     // the clearFlags and clearColor specified below will only apply when rendering into the
@@ -895,8 +886,8 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
 
                 // We use a framegraph pass to wait for froxelization to finish (so it can be done
                 // in parallel with .compile()
-                if (jobFroxelize) {
-                    auto *sync = jobFroxelize;
+                auto sync = view.getFroxelizerSync();
+                if (sync) {
                     js.waitAndRelease(sync);
                     view.commitFroxels(driver);
                 }
@@ -988,6 +979,12 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
     auto const depth = ppm.resolveBaseLevel(fg, "Resolved Depth Buffer",
             blackboard.get<FrameGraphTexture>("depth"));
 
+    // Debug: CSM visualisation
+    if (UTILS_UNLIKELY(engine.debug.shadowmap.visualize_cascades &&
+                       view.hasShadowing() && view.hasDirectionalLight())) {
+        input = ppm.debugShadowCascades(fg, input, depth);
+    }
+
     // TODO: DoF should be applied here, before TAA -- but if we do this it'll result in a lot of
     //       fireflies due to the instability of the highlights. This can be fixed with a
     //       dedicated TAA pass for the DoF, as explained in
@@ -1048,7 +1045,7 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
         if (scaled) {
             mightNeedFinalBlit = false;
             auto viewport = DEBUG_DYNAMIC_SCALING ? xvp : vp;
-            input = ppm.upscale(fg, blending, dsrOptions, input, xvp, {
+            input = ppm.upscale(fg, blendModeTranslucent, dsrOptions, input, xvp, {
                     .width = viewport.width, .height = viewport.height,
                     .format = colorGradingConfig.ldrFormat });
             xvp.left = xvp.bottom = 0;
@@ -1075,7 +1072,7 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
 
     const bool outputIsSwapChain = (input == colorPassOutput) && (viewRenderTarget == mRenderTargetHandle);
     if (mightNeedFinalBlit) {
-        if (blending ||
+        if (blendModeTranslucent ||
             xvp != svp ||
             (outputIsSwapChain &&
                     (msaaSampleCount > 1 ||
@@ -1083,7 +1080,7 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
                     hasScreenSpaceRefraction ||
                     ssReflectionsOptions.enabled))) {
             assert_invariant(!scaled);
-            input = ppm.blit(fg, blending, input, xvp, {
+            input = ppm.blit(fg, blendModeTranslucent, input, xvp, {
                     .width = vp.width, .height = vp.height,
                     .format = colorGradingConfig.ldrFormat }, SamplerMagFilter::NEAREST);
         }

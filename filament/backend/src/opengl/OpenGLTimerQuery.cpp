@@ -36,7 +36,7 @@ OpenGLTimerQueryInterface::~OpenGLTimerQueryInterface() = default;
 
 #if defined(BACKEND_OPENGL_VERSION_GL) || defined(GL_EXT_disjoint_timer_query)
 
-TimerQueryNative::TimerQueryNative(OpenGLContext&) {
+TimerQueryNative::TimerQueryNative(OpenGLContext& context) : mContext(context) {
 }
 
 TimerQueryNative::~TimerQueryNative() = default;
@@ -45,30 +45,18 @@ void TimerQueryNative::flush() {
 }
 
 void TimerQueryNative::beginTimeElapsedQuery(GLTimerQuery* query) {
-#if defined(GL_EXT_disjoint_timer_query) && defined(FILAMENT_IMPORT_ENTRY_POINTS)
-    // glBeginQuery exists in core ES 3.0 and since GL 3.3
-    using glext::glBeginQuery;
-#endif
-    glBeginQuery(GL_TIME_ELAPSED, query->gl.query);
+    mContext.procs.beginQuery(GL_TIME_ELAPSED, query->gl.query);
+    CHECK_GL_ERROR(utils::slog.e)
 }
 
 void TimerQueryNative::endTimeElapsedQuery(GLTimerQuery*) {
-#if defined(GL_EXT_disjoint_timer_query) && defined(FILAMENT_IMPORT_ENTRY_POINTS)
-    // glEndQuery exists in core ES 3.0 and since GL 3.3
-    using glext::glEndQuery;
-#endif
-    glEndQuery(GL_TIME_ELAPSED);
+    mContext.procs.endQuery(GL_TIME_ELAPSED);
+    CHECK_GL_ERROR(utils::slog.e)
 }
 
 bool TimerQueryNative::queryResultAvailable(GLTimerQuery* query) {
     GLuint available = 0;
-
-#if defined(GL_EXT_disjoint_timer_query) && defined(FILAMENT_IMPORT_ENTRY_POINTS)
-    // glGetQueryObjectuiv exists in core ES 3.0 and since GL 3.3
-    using glext::glGetQueryObjectuiv;
-#endif
-
-    glGetQueryObjectuiv(query->gl.query, GL_QUERY_RESULT_AVAILABLE, &available);
+    mContext.procs.getQueryObjectuiv(query->gl.query, GL_QUERY_RESULT_AVAILABLE, &available);
     CHECK_GL_ERROR(utils::slog.e)
     return available != 0;
 }
@@ -76,7 +64,7 @@ bool TimerQueryNative::queryResultAvailable(GLTimerQuery* query) {
 uint64_t TimerQueryNative::queryResult(GLTimerQuery* query) {
     GLuint64 elapsedTime = 0;
     // we won't end-up here if we're on ES and don't have GL_EXT_disjoint_timer_query
-    glGetQueryObjectui64v(query->gl.query, GL_QUERY_RESULT, &elapsedTime);
+    mContext.procs.getQueryObjectui64v(query->gl.query, GL_QUERY_RESULT, &elapsedTime);
     CHECK_GL_ERROR(utils::slog.e)
     return elapsedTime;
 }

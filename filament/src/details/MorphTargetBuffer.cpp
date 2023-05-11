@@ -102,6 +102,11 @@ FMorphTargetBuffer::EmptyMorphTargetBuilder::EmptyMorphTargetBuilder() {
 FMorphTargetBuffer::FMorphTargetBuffer(FEngine& engine, const Builder& builder)
         : mVertexCount(builder->mVertexCount),
           mCount(builder->mCount) {
+
+    if (UTILS_UNLIKELY(engine.getActiveFeatureLevel() == FeatureLevel::FEATURE_LEVEL_0)) {
+        return;
+    }
+
     FEngine::DriverApi& driver = engine.getDriverApi();
 
     // create buffer (here a texture) to store the morphing vertex data
@@ -129,9 +134,15 @@ FMorphTargetBuffer::FMorphTargetBuffer(FEngine& engine, const Builder& builder)
 
 void FMorphTargetBuffer::terminate(FEngine& engine) {
     FEngine::DriverApi& driver = engine.getDriverApi();
-    driver.destroySamplerGroup(mSbHandle);
-    driver.destroyTexture(mTbHandle);
-    driver.destroyTexture(mPbHandle);
+    if (UTILS_LIKELY(mSbHandle)) {
+        driver.destroySamplerGroup(mSbHandle);
+    }
+    if (UTILS_LIKELY(mTbHandle)) {
+        driver.destroyTexture(mTbHandle);
+    }
+    if (UTILS_LIKELY(mPbHandle)) {
+        driver.destroyTexture(mPbHandle);
+    }
 }
 
 void FMorphTargetBuffer::setPositionsAt(FEngine& engine, size_t targetIndex,
@@ -220,7 +231,7 @@ void FMorphTargetBuffer::updateDataAt(backend::DriverApi& driver,
     // 'out' buffer is going to be used up to 3 times, so for simplicity we use a shared_buffer
     // to manage its lifetime. One side effect of this is that the callbacks below will allocate
     // a small object on the heap.
-    std::shared_ptr<void> allocation((void*)out, ::free);
+    std::shared_ptr<void> const allocation((void*)out, ::free);
 
     // Note: because the texture width is up to 2048, we're expecting that most of the time
     // only a single texture update call will be necessary (i.e. that there are no more

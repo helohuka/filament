@@ -139,6 +139,7 @@ void PerViewUniforms::prepareFog(float3 const& cameraPosition, FogOptions const&
     s.fogMaxOpacity        = options.maximumOpacity;
     s.fogHeight            = options.height;
     s.fogHeightFalloff     = heightFalloff;
+    s.fogCutOffDistance    = options.cutOffDistance;
     s.fogColor             = options.color;
     s.fogDensity           = { options.density, density, options.density * std::exp(density) };
     s.fogInscatteringStart = options.inScatteringStart;
@@ -168,6 +169,14 @@ void PerViewUniforms::prepareSSAO(Handle<HwTexture> ssao,
 
 void PerViewUniforms::prepareBlending(bool needsAlphaChannel) noexcept {
     mUniforms.edit().needsAlphaChannel = needsAlphaChannel ? 1.0f : 0.0f;
+}
+
+void PerViewUniforms::prepareMaterialGlobals(
+        std::array<math::float4, 4> const& materialGlobals) noexcept {
+    mUniforms.edit().custom[0] = materialGlobals[0];
+    mUniforms.edit().custom[1] = materialGlobals[1];
+    mUniforms.edit().custom[2] = materialGlobals[2];
+    mUniforms.edit().custom[3] = materialGlobals[3];
 }
 
 void PerViewUniforms::prepareSSR(Handle<HwTexture> ssr,

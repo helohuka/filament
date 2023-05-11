@@ -7,6 +7,60 @@ A new header is inserted each time a *tag* is created.
 Instead, if you are authoring a PR for the main branch, add your release note to
 [NEW_RELEASE_NOTES.md](./NEW_RELEASE_NOTES.md).
 
+## v1.36.0
+
+- engine: a local transform can now be supplied for each GPU instance [⚠️ **Recompile materials**]
+- everything: Add limited support for OpenGL ES 2.0 devices. [⚠️ **Recompile Materials**]
+- platform: New virtual on `OpenGLPlatform` to preserve ancillary buffers
+
+## v1.35.0
+
+- materials: Materials can now access up to 4 global `vec4` visible by all materials [⚠️ **Recompile Materials**]
+
+## v1.34.0
+
+- materials: picking is done in float (prepare for ES2) [⚠️ **New Material Version**]
+- materials: postLightingBlending is now applied before the fog [⚠️ **Recompile materials**]
+- vulkan: fix adreno optimized material artifacts [⚠️ **Recompile Materials**]
+
+## v1.33.0
+
+- materials: prepare ES2 support [⚠️ **New Material Version**]
+
+## v1.32.4
+
+- engine: Add support for _constant parameters_, which are constants that can be specialized after material compilation.
+- materials: improved size reduction of OpenGL/Metal shaders by ~65% when compiling materials with
+             size optimizations (`matc -S`) [⚠️ **Recompile Materials**]
+- engine: fix potential crash on Metal devices with A8X GPU (iPad Air 2) [⚠️ **Recompile Materials**]
+- opengl: support the external image on macOS
+
+## v1.32.3
+
+- fog: added an option to disable the fog after a certain distance [⚠️ **Recompile Materials**].
+- fog: fog color now takes exposure and IBL intensity into account [⚠️ **Recompile Materials**].
+- materials: implement cascades debugging as a post-process [⚠️ **Recompile Materials**].
+- materials: use 9 digits or less for floats [⚠️ **Recompile Materials**].
+- gltfio: fix skinning when objects are far from the origin
+- materials: remove 4 unneeded variants from `unlit` materials [⚠️ **Recompile Materials**].
+
+## v1.32.2
+
+- lighting: the sun disc was computed in low/medium quality instead of high quality. This will
+  provide performance improvements to mobile devices [⚠️ **Recompile Materials**]
+
+## v1.32.1
+
+## v1.32.0
+
+- fog: fixed fog height falloff and computation precision on mobile [⚠️ **Recompile Materials**]
+- materials: new alphaToCoverage property can be used to control alpha to coverage behavior
+- materials: added `getUserWorldFromWorldMatrix()` and `getUserWorldPosition()` to retrieve the
+  API-level (user) world position in materials. Deprecated `getWorldOffset()`. [⚠️ **Recompile
+  Materials**]
+- engine: fix precision issue with `shading_view` in large scenes
+- vulkan: readPixels is now async (#6560)
+
 ## v1.31.7
 
 ## v1.31.6

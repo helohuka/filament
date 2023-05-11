@@ -21,6 +21,7 @@
 #include "Includes.h"
 #include "MaterialVariants.h"
 #include "shaders/SibGenerator.h"
+#include "shaders/UibGenerator.h"
 
 #ifndef FILAMAT_LITE
 #   include "GLSLPostProcessor.h"
@@ -45,6 +46,9 @@
 #include <private/filament/BufferInterfaceBlock.h>
 #include <private/filament/SamplerInterfaceBlock.h>
 #include <private/filament/UibStructs.h>
+#include <private/filament/ConstantInfo.h>
+
+#include <backend/Program.h>
 
 #include <utils/JobSystem.h>
 #include <utils/Log.h>
@@ -60,6 +64,26 @@ namespace filamat {
 
 using namespace utils;
 using namespace filament;
+
+// Note: the VertexAttribute enum value must match the index in the array
+const MaterialBuilder::AttributeDatabase MaterialBuilder::sAttributeDatabase = {{
+        { "position",      AttributeType::FLOAT4, VertexAttribute::POSITION     },
+        { "tangents",      AttributeType::FLOAT4, VertexAttribute::TANGENTS     },
+        { "color",         AttributeType::FLOAT4, VertexAttribute::COLOR        },
+        { "uv0",           AttributeType::FLOAT2, VertexAttribute::UV0          },
+        { "uv1",           AttributeType::FLOAT2, VertexAttribute::UV1          },
+        { "bone_indices",  AttributeType::UINT4,  VertexAttribute::BONE_INDICES },
+        { "bone_weights",  AttributeType::FLOAT4, VertexAttribute::BONE_WEIGHTS },
+        { },
+        { "custom0",       AttributeType::FLOAT4, VertexAttribute::CUSTOM0      },
+        { "custom1",       AttributeType::FLOAT4, VertexAttribute::CUSTOM1      },
+        { "custom2",       AttributeType::FLOAT4, VertexAttribute::CUSTOM2      },
+        { "custom3",       AttributeType::FLOAT4, VertexAttribute::CUSTOM3      },
+        { "custom4",       AttributeType::FLOAT4, VertexAttribute::CUSTOM4      },
+        { "custom5",       AttributeType::FLOAT4, VertexAttribute::CUSTOM5      },
+        { "custom6",       AttributeType::FLOAT4, VertexAttribute::CUSTOM6      },
+        { "custom7",       AttributeType::FLOAT4, VertexAttribute::CUSTOM7      },
+}};
 
 std::atomic<int> MaterialBuilderBase::materialBuilderClients(0);
 
@@ -211,6 +235,53 @@ MaterialBuilder& MaterialBuilder::parameter(const char* name, SamplerType sample
         ParameterPrecision precision) noexcept {
     return parameter(name, samplerType, SamplerFormat::FLOAT, precision);
 }
+
+template<typename T, typename>
+MaterialBuilder& MaterialBuilder::constant(const char* name, ConstantType type, T defaultValue) {
+    auto result = std::find_if(mConstants.begin(), mConstants.end(), [name](const Constant& c) {
+        return c.name == utils::CString(name);
+    });
+    ASSERT_POSTCONDITION(result == mConstants.end(),
+            "There is already a constant parameter present with the name %s.", name);
+    Constant constant {
+            .name = CString(name),
+            .type = type,
+    };
+    auto toString = [](ConstantType t) {
+        switch (t) {
+            case ConstantType::INT: return "INT";
+            case ConstantType::FLOAT: return "FLOAT";
+            case ConstantType::BOOL: return "BOOL";
+        }
+    };
+
+    const char* const errMessage =
+            "Constant %s was declared with type %s but given %s default value.";
+    if constexpr (std::is_same_v<T, int32_t>) {
+        ASSERT_POSTCONDITION(
+                type == ConstantType::INT, errMessage, name, toString(type), "an int");
+        constant.defaultValue.i = defaultValue;
+    } else if constexpr (std::is_same_v<T, float>) {
+        ASSERT_POSTCONDITION(
+                type == ConstantType::FLOAT, errMessage, name, toString(type), "a float");
+        constant.defaultValue.f = defaultValue;
+    } else if constexpr (std::is_same_v<T, bool>) {
+        ASSERT_POSTCONDITION(
+                type == ConstantType::BOOL, errMessage, name, toString(type), "a bool");
+        constant.defaultValue.b = defaultValue;
+    } else {
+        assert_invariant(false);
+    }
+
+    mConstants.push_back(constant);
+    return *this;
+}
+template MaterialBuilder& MaterialBuilder::constant<int32_t>(
+        const char* name, ConstantType type, int32_t defaultValue);
+template MaterialBuilder& MaterialBuilder::constant<float>(
+        const char* name, ConstantType type, float defaultValue);
+template MaterialBuilder& MaterialBuilder::constant<bool>(
+        const char* name, ConstantType type, bool defaultValue);
 
 MaterialBuilder& MaterialBuilder::buffer(BufferInterfaceBlock bib) noexcept {
     ASSERT_POSTCONDITION(mBuffers.size() < MAX_BUFFERS_COUNT, "Too many buffers");
@@ -463,7 +534,8 @@ void MaterialBuilder::prepareToBuild(MaterialInfo& info) noexcept {
                     param.samplerType, param.format, param.precision);
         } else if (param.isUniform()) {
             ibb.add({{{ param.name.data(), param.name.size() },
-                      uint32_t(param.size == 1u ? 0u : param.size), param.uniformType, param.precision }});
+                      uint32_t(param.size == 1u ? 0u : param.size), param.uniformType,
+                      param.precision, FeatureLevel::FEATURE_LEVEL_0 }});
         }
     }
 
@@ -534,15 +606,19 @@ void MaterialBuilder::prepareToBuild(MaterialInfo& info) noexcept {
 }
 
 bool MaterialBuilder::findProperties(backend::ShaderStage type,
-        MaterialBuilder::PropertyList& allProperties) noexcept {
+        MaterialBuilder::PropertyList& allProperties,
+        CodeGenParams const& semanticCodeGenParams) noexcept {
 #ifndef FILAMAT_LITE
     GLSLTools glslTools;
-    std::string shaderCodeAllProperties = peek(type, mSemanticCodeGenParams, allProperties);
+    std::string shaderCodeAllProperties = peek(type, semanticCodeGenParams, allProperties);
     // Populate mProperties with the properties set in the shader.
     if (!glslTools.findProperties(type, shaderCodeAllProperties, mProperties,
-            mSemanticCodeGenParams.targetApi,
-            mSemanticCodeGenParams.targetLanguage,
-            mSemanticCodeGenParams.shaderModel)) {
+            semanticCodeGenParams.targetApi,
+            semanticCodeGenParams.targetLanguage,
+            semanticCodeGenParams.shaderModel)) {
+        if (mPrintShaders) {
+            slog.e << shaderCodeAllProperties << io::endl;
+        }
         return false;
     }
     return true;
@@ -551,7 +627,7 @@ bool MaterialBuilder::findProperties(backend::ShaderStage type,
 #endif
 }
 
-bool MaterialBuilder::findAllProperties() noexcept {
+bool MaterialBuilder::findAllProperties(CodeGenParams const& semanticCodeGenParams) noexcept {
     if (mMaterialDomain != MaterialDomain::SURFACE) {
         return true;
     }
@@ -564,10 +640,10 @@ bool MaterialBuilder::findAllProperties() noexcept {
     // static code analyse the AST.
     MaterialBuilder::PropertyList allProperties;
     std::fill_n(allProperties, MATERIAL_PROPERTIES_COUNT, true);
-    if (!findProperties(ShaderStage::FRAGMENT, allProperties)) {
+    if (!findProperties(ShaderStage::FRAGMENT, allProperties, semanticCodeGenParams)) {
         return false;
     }
-    if (!findProperties(ShaderStage::VERTEX, allProperties)) {
+    if (!findProperties(ShaderStage::VERTEX, allProperties, semanticCodeGenParams)) {
         return false;
     }
     return true;
@@ -581,13 +657,13 @@ bool MaterialBuilder::findAllProperties() noexcept {
 #endif
 }
 
-bool MaterialBuilder::runSemanticAnalysis(MaterialInfo const& info) noexcept {
+bool MaterialBuilder::runSemanticAnalysis(MaterialInfo const& info,
+        CodeGenParams const& semanticCodeGenParams) noexcept {
 #ifndef FILAMAT_LITE
     using namespace backend;
-    GLSLTools glslTools;
 
-    TargetApi targetApi = mSemanticCodeGenParams.targetApi;
-    TargetLanguage targetLanguage = mSemanticCodeGenParams.targetLanguage;
+    TargetApi targetApi = semanticCodeGenParams.targetApi;
+    TargetLanguage const targetLanguage = semanticCodeGenParams.targetLanguage;
     assertSingleTargetApi(targetApi);
 
     if (mEnableFramebufferFetch) {
@@ -596,20 +672,24 @@ bool MaterialBuilder::runSemanticAnalysis(MaterialInfo const& info) noexcept {
     }
 
     bool result = false;
-    ShaderModel model = mSemanticCodeGenParams.shaderModel;
+    std::string shaderCode;
+    ShaderModel const model = semanticCodeGenParams.shaderModel;
     if (mMaterialDomain == filament::MaterialDomain::COMPUTE) {
-        std::string shaderCode = peek(ShaderStage::COMPUTE, mSemanticCodeGenParams, mProperties);
+        shaderCode = peek(ShaderStage::COMPUTE, semanticCodeGenParams, mProperties);
         result = GLSLTools::analyzeComputeShader(shaderCode, model,
                 targetApi, targetLanguage, info);
     } else {
-        std::string shaderCode = peek(ShaderStage::VERTEX, mSemanticCodeGenParams, mProperties);
+        shaderCode = peek(ShaderStage::VERTEX, semanticCodeGenParams, mProperties);
         result = GLSLTools::analyzeVertexShader(shaderCode, model, mMaterialDomain,
                 targetApi, targetLanguage, info);
         if (result) {
-            shaderCode = peek(ShaderStage::FRAGMENT, mSemanticCodeGenParams, mProperties);
+            shaderCode = peek(ShaderStage::FRAGMENT, semanticCodeGenParams, mProperties);
             result = GLSLTools::analyzeFragmentShader(shaderCode, model, mMaterialDomain,
                     targetApi, targetLanguage, mCustomSurfaceShading, info);
         }
+    }
+    if (!result && mPrintShaders) {
+        slog.e << shaderCode << io::endl;
     }
     return result;
 #else
@@ -696,12 +776,12 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
 #endif
     // End: must be protected by lock
 
-    ShaderGenerator sg(
-            mProperties, mVariables, mOutputs, mDefines, mMaterialFragmentCode.getResolved(),
-            mMaterialFragmentCode.getLineOffset(), mMaterialVertexCode.getResolved(),
-            mMaterialVertexCode.getLineOffset(), mMaterialDomain);
+    ShaderGenerator sg(mProperties, mVariables, mOutputs, mDefines, mConstants,
+            mMaterialFragmentCode.getResolved(), mMaterialFragmentCode.getLineOffset(),
+            mMaterialVertexCode.getResolved(), mMaterialVertexCode.getLineOffset(),
+            mMaterialDomain);
 
-    container.addSimpleChild<bool>(ChunkType::MaterialHasCustomDepthShader, needsStandardDepthProgram());
+    container.emplace<bool>(ChunkType::MaterialHasCustomDepthShader, needsStandardDepthProgram());
 
     std::atomic_bool cancelJobs(false);
     bool firstJob = true;
@@ -739,17 +819,17 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
                 std::vector<uint32_t>* pSpirv = targetApiNeedsSpirv ? &spirv : nullptr;
                 std::string* pMsl = targetApiNeedsMsl ? &msl : nullptr;
 
-                TextEntry glslEntry{0};
-                SpirvEntry spirvEntry{0};
-                TextEntry metalEntry{0};
+                TextEntry glslEntry{};
+                SpirvEntry spirvEntry{};
+                TextEntry metalEntry{};
 
-                glslEntry.shaderModel = static_cast<uint8_t>(params.shaderModel);
-                spirvEntry.shaderModel = static_cast<uint8_t>(params.shaderModel);
-                metalEntry.shaderModel = static_cast<uint8_t>(params.shaderModel);
+                glslEntry.shaderModel  = params.shaderModel;
+                spirvEntry.shaderModel = params.shaderModel;
+                metalEntry.shaderModel = params.shaderModel;
 
-                glslEntry.variantKey  = v.variant.key;
-                spirvEntry.variantKey = v.variant.key;
-                metalEntry.variantKey = v.variant.key;
+                glslEntry.variant  = v.variant;
+                spirvEntry.variant = v.variant;
+                metalEntry.variant = v.variant;
 
                 // Generate raw shader code.
                 // The quotes in Google-style line directives cause problems with certain drivers. These
@@ -765,7 +845,7 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
                             shaderModel, targetApi, targetLanguage, info, v.variant, mInterpolation);
                 } else if (v.stage == backend::ShaderStage::COMPUTE) {
                     shader = sg.createComputeProgram(
-                            shaderModel, targetApi, targetLanguage, info, v.variant);
+                            shaderModel, targetApi, targetLanguage, info);
                 }
 
 #ifdef FILAMAT_LITE
@@ -796,13 +876,16 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
                     config.glsl.subpassInputToColorLocation.emplace_back(0, 0);
                 }
 
-                bool ok = postProcessor.process(shader, config, pGlsl, pSpirv, pMsl);
+                bool const ok = postProcessor.process(shader, config, pGlsl, pSpirv, pMsl);
 #else
                 bool ok = true;
 #endif
                 if (!ok) {
                     showErrorMessage(mMaterialName.c_str_safe(), v.variant, targetApi, v.stage, shader);
                     cancelJobs = true;
+                    if (mPrintShaders) {
+                        slog.e << shader << io::endl;
+                    }
                     return;
                 }
 
@@ -814,7 +897,7 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
 
                 // NOTE: Everything below touches shared structures protected by a lock
                 // NOTE: do not execute expensive work from here on!
-                std::unique_lock<Mutex> lock(entriesLock);
+                std::unique_lock<Mutex> const lock(entriesLock);
 
                 // below we rely on casting ShaderStage to uint8_t
                 static_assert(sizeof(filament::backend::ShaderStage) == 1);
@@ -825,14 +908,14 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
                         // should never happen
                         break;
                     case TargetApi::OPENGL:
-                        glslEntry.stage = uint8_t(v.stage);
+                        glslEntry.stage = v.stage;
                         glslEntry.shader = shader;
                         glslEntries.push_back(glslEntry);
                         break;
                     case TargetApi::VULKAN:
 #ifndef FILAMAT_LITE
                         assert(!spirv.empty());
-                        spirvEntry.stage = uint8_t(v.stage);
+                        spirvEntry.stage = v.stage;
                         spirvEntry.spirv = std::move(spirv);
                         spirvEntries.push_back(spirvEntry);
 #endif
@@ -841,7 +924,7 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
 #ifndef FILAMAT_LITE
                         assert(!spirv.empty());
                         assert(msl.length() > 0);
-                        metalEntry.stage = uint8_t(v.stage);
+                        metalEntry.stage = v.stage;
                         metalEntry.shader = msl;
                         metalEntries.push_back(metalEntry);
 #endif
@@ -869,10 +952,10 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
 
     // Sort the variants.
     auto compare = [](const auto& a, const auto& b) {
-        static_assert(sizeof(decltype(a.variantKey)) == 1);
-        static_assert(sizeof(decltype(b.variantKey)) == 1);
-        const uint32_t akey = (a.shaderModel << 16) | (a.variantKey << 8) | a.stage;
-        const uint32_t bkey = (b.shaderModel << 16) | (b.variantKey << 8) | b.stage;
+        static_assert(sizeof(decltype(a.variant.key)) == 1);
+        static_assert(sizeof(decltype(b.variant.key)) == 1);
+        const uint32_t akey = (uint32_t(a.shaderModel) << 16) | (uint32_t(a.variant.key) << 8) | uint32_t(a.stage);
+        const uint32_t bkey = (uint32_t(b.shaderModel) << 16) | (uint32_t(b.variant.key) << 8) | uint32_t(b.stage);
         return akey < bkey;
     };
     std::sort(glslEntries.begin(), glslEntries.end(), compare);
@@ -894,12 +977,12 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
     }
 
     // Emit dictionary chunk (TextDictionaryReader and DictionaryTextChunk)
-    const auto& dictionaryChunk = container.addChild<filamat::DictionaryTextChunk>(
+    const auto& dictionaryChunk = container.push<filamat::DictionaryTextChunk>(
             std::move(textDictionary), ChunkType::DictionaryText);
 
     // Emit GLSL chunk (MaterialTextChunk).
     if (!glslEntries.empty()) {
-        container.addChild<MaterialTextChunk>(std::move(glslEntries),
+        container.push<MaterialTextChunk>(std::move(glslEntries),
                 dictionaryChunk.getDictionary(), ChunkType::MaterialGlsl);
     }
 
@@ -907,13 +990,13 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
 #ifndef FILAMAT_LITE
     if (!spirvEntries.empty()) {
         const bool stripInfo = !mGenerateDebugInfo;
-        container.addChild<filamat::DictionarySpirvChunk>(std::move(spirvDictionary), stripInfo);
-        container.addChild<MaterialSpirvChunk>(std::move(spirvEntries));
+        container.push<filamat::DictionarySpirvChunk>(std::move(spirvDictionary), stripInfo);
+        container.push<MaterialSpirvChunk>(std::move(spirvEntries));
     }
 
     // Emit Metal chunk (MaterialTextChunk).
     if (!metalEntries.empty()) {
-        container.addChild<MaterialTextChunk>(std::move(metalEntries),
+        container.push<MaterialTextChunk>(std::move(metalEntries),
                 dictionaryChunk.getDictionary(), ChunkType::MaterialMetal);
     }
 #endif
@@ -1006,6 +1089,17 @@ error:
         goto error;
     }
 
+    if (mFeatureLevel == FeatureLevel::FEATURE_LEVEL_0) {
+        if (mPlatform != Platform::MOBILE) {
+            slog.e << "Error: only platform `mobile` is supported at featureLevel 0." << io::endl;
+            goto error;
+        }
+        if (any(mTargetApi & ~TargetApi::OPENGL)) {
+            mTargetApi &= TargetApi::OPENGL;
+            slog.w << "Warning: only target `opengl` is supported at featureLevel 0." << io::endl;
+        }
+    }
+
     // prepareToBuild must be called first, to populate mCodeGenPermutations.
     MaterialInfo info{};
     prepareToBuild(info);
@@ -1025,11 +1119,20 @@ error:
     }
 #endif
 
-    if (!findAllProperties()) {
+    // For finding properties and running semantic analysis, we always use the same code gen
+    // permutation. This is the first permutation generated with default arguments passed to matc.
+    CodeGenParams const semanticCodeGenParams = {
+            .shaderModel = ShaderModel::MOBILE,
+            .targetApi = TargetApi::OPENGL,
+            .targetLanguage = (info.featureLevel == FeatureLevel::FEATURE_LEVEL_0) ?
+                              TargetLanguage::GLSL : TargetLanguage::SPIRV
+    };
+
+    if (!findAllProperties(semanticCodeGenParams)) {
         goto error;
     }
 
-    if (!runSemanticAnalysis(info)) {
+    if (!runSemanticAnalysis(info, semanticCodeGenParams)) {
         goto error;
     }
 
@@ -1045,6 +1148,16 @@ error:
     info.useLegacyMorphing = mUseLegacyMorphing;
 
     // Generate all shaders and write the shader chunks.
+
+    if (mFeatureLevel == filament::backend::FeatureLevel::FEATURE_LEVEL_0) {
+        // at feature level 0, many variants are not supported
+        mVariantFilter |= uint32_t(UserVariantFilterBit::DIRECTIONAL_LIGHTING);
+        mVariantFilter |= uint32_t(UserVariantFilterBit::DYNAMIC_LIGHTING);
+        mVariantFilter |= uint32_t(UserVariantFilterBit::SHADOW_RECEIVER);
+        mVariantFilter |= uint32_t(UserVariantFilterBit::SKINNING);
+        mVariantFilter |= uint32_t(UserVariantFilterBit::VSM);
+        mVariantFilter |= uint32_t(UserVariantFilterBit::SSR);
+    }
 
     std::vector<Variant> variants;
     switch (mMaterialDomain) {
@@ -1099,6 +1212,15 @@ bool MaterialBuilder::checkMaterialLevelFeatures(MaterialInfo const& info) const
 
     const auto userSamplerCount = info.sib.getSize();
     switch (info.featureLevel) {
+        case FeatureLevel::FEATURE_LEVEL_0:
+            // TODO: check FEATURE_LEVEL_0 features (e.g. unlit only, no texture arrays, etc...)
+            if (info.isLit) {
+                slog.e << "Error: material \"" << mMaterialName.c_str()
+                       << "\" has feature level " << +info.featureLevel
+                       << " and is not 'unlit'." << io::endl;
+                return false;
+            }
+            return true;
         case FeatureLevel::FEATURE_LEVEL_1:
         case FeatureLevel::FEATURE_LEVEL_2: {
             // TODO: we need constants somewhere for these values
@@ -1160,7 +1282,7 @@ bool MaterialBuilder::needsStandardDepthProgram() const noexcept {
 std::string MaterialBuilder::peek(backend::ShaderStage stage,
         const CodeGenParams& params, const PropertyList& properties) noexcept {
 
-    ShaderGenerator sg(properties, mVariables, mOutputs, mDefines,
+    ShaderGenerator sg(properties, mVariables, mOutputs, mDefines, mConstants,
             mMaterialFragmentCode.getResolved(), mMaterialFragmentCode.getLineOffset(),
             mMaterialVertexCode.getResolved(), mMaterialVertexCode.getLineOffset(),
             mMaterialDomain);
@@ -1181,18 +1303,101 @@ std::string MaterialBuilder::peek(backend::ShaderStage stage,
         case backend::ShaderStage::COMPUTE:
             return sg.createComputeProgram(
                     params.shaderModel, params.targetApi, params.targetLanguage,
-                    info, {});
+                    info);
     }
 }
 
+static Program::UniformInfo extractUniforms(BufferInterfaceBlock const& uib) noexcept {
+    auto list = uib.getFieldInfoList();
+    Program::UniformInfo uniforms = Program::UniformInfo::with_capacity(list.size());
+
+    char const firstLetter = std::tolower( uib.getName().at(0) );
+    std::string_view const nameAfterFirstLetter{
+        uib.getName().data() + 1, uib.getName().size() - 1 };
+
+    for (auto const& item : list) {
+        // construct the fully qualified name
+        std::string qualified;
+        qualified.reserve(uib.getName().size() + item.name.size() + 1u);
+        qualified.append({ &firstLetter, 1u });
+        qualified.append(nameAfterFirstLetter);
+        qualified.append(".");
+        qualified.append({ item.name.data(), item.name.size() });
+
+        uniforms.push_back({
+            { qualified.data(), qualified.size() },
+            item.offset,
+            uint8_t(item.size < 1u ? 1u : item.size),
+            item.type
+        });
+    }
+    return uniforms;
+}
+
 void MaterialBuilder::writeCommonChunks(ChunkContainer& container, MaterialInfo& info) const noexcept {
-    container.addSimpleChild<uint32_t>(ChunkType::MaterialVersion, MATERIAL_VERSION);
-    container.addSimpleChild<uint8_t>(ChunkType::MaterialFeatureLevel, (uint8_t)mFeatureLevel);
-    container.addSimpleChild<const char*>(ChunkType::MaterialName, mMaterialName.c_str_safe());
-    container.addSimpleChild<uint32_t>(ChunkType::MaterialShaderModels, mShaderModels.getValue());
-    container.addSimpleChild<uint8_t>(ChunkType::MaterialDomain, static_cast<uint8_t>(mMaterialDomain));
+    container.emplace<uint32_t>(ChunkType::MaterialVersion, MATERIAL_VERSION);
+    container.emplace<uint8_t>(ChunkType::MaterialFeatureLevel, (uint8_t)info.featureLevel);
+    container.emplace<const char*>(ChunkType::MaterialName, mMaterialName.c_str_safe());
+    container.emplace<uint32_t>(ChunkType::MaterialShaderModels, mShaderModels.getValue());
+    container.emplace<uint8_t>(ChunkType::MaterialDomain, static_cast<uint8_t>(mMaterialDomain));
 
     using namespace filament;
+
+    if (info.featureLevel == FeatureLevel::FEATURE_LEVEL_0) {
+        FixedCapacityVector<std::pair<UniformBindingPoints, Program::UniformInfo>> list({
+                { UniformBindingPoints::PER_VIEW,
+                        extractUniforms(UibGenerator::getPerViewUib()) },
+                { UniformBindingPoints::PER_RENDERABLE,
+                        extractUniforms(UibGenerator::getPerRenderableUib()) },
+                { UniformBindingPoints::PER_MATERIAL_INSTANCE,
+                        extractUniforms(info.uib) },
+        });
+
+        // FIXME: don't hardcode this
+        auto& uniforms = list[1].second;
+        uniforms.clear();
+        uniforms.reserve(6);
+        uniforms.push_back({
+                "objectUniforms.data[0].worldFromModelMatrix",
+                offsetof(PerRenderableUib, data[0].worldFromModelMatrix), 1,
+                UniformType::MAT4 });
+        uniforms.push_back({
+                "objectUniforms.data[0].worldFromModelNormalMatrix",
+                offsetof(PerRenderableUib, data[0].worldFromModelNormalMatrix), 1,
+                UniformType::MAT3 });
+        uniforms.push_back({
+                "objectUniforms.data[0].morphTargetCount",
+                offsetof(PerRenderableUib, data[0].morphTargetCount), 1,
+                UniformType::UINT });
+        uniforms.push_back({
+                "objectUniforms.data[0].flagsChannels",
+                offsetof(PerRenderableUib, data[0].flagsChannels), 1,
+                UniformType::UINT });
+        uniforms.push_back({
+                "objectUniforms.data[0].objectId",
+                offsetof(PerRenderableUib, data[0].objectId), 1,
+                UniformType::UINT });
+        uniforms.push_back({
+                "objectUniforms.data[0].userData",
+                offsetof(PerRenderableUib, data[0].userData), 1,
+                UniformType::FLOAT });
+
+        container.push<MaterialBindingUniformInfoChunk>(std::move(list));
+
+        using Container = utils::FixedCapacityVector<std::pair<utils::CString, uint8_t>>;
+        auto attributes = Container::with_capacity(sAttributeDatabase.size());
+        for (auto const& attribute: sAttributeDatabase) {
+            std::string name("mesh_");
+            name.append(attribute.name);
+            attributes.emplace_back(utils::CString{ name.data(), name.size() }, attribute.location);
+        }
+        container.push<MaterialAttributesInfoChunk>(std::move(attributes));
+    }
+
+    // TODO: currently, the feature level used is determined by the material because we
+    //       don't have "feature level" variants. In other words, a feature level 0 material
+    //       won't work with a feature level 1 engine. However, we do embed the feature level 1
+    //       meta-data, as it should.
 
     if (info.featureLevel <= FeatureLevel::FEATURE_LEVEL_1) {
         // note: this chunk is only needed for OpenGL backends, which don't all support layout(binding=)
@@ -1206,18 +1411,24 @@ void MaterialBuilder::writeCommonChunks(ChunkContainer& container, MaterialInfo&
                 { PerRenderableMorphingUib::_name, UniformBindingPoints::PER_RENDERABLE_MORPHING },
                 { info.uib.getName(),              UniformBindingPoints::PER_MATERIAL_INSTANCE }
         };
-        container.addChild<MaterialUniformBlockBindingsChunk>(std::move(list));
+        container.push<MaterialUniformBlockBindingsChunk>(std::move(list));
     }
 
     // note: this chunk is needed for Vulkan and GL backends. Metal shouldn't need it (but
     // still does as of now).
-    container.addChild<MaterialSamplerBlockBindingChunk>(info.samplerBindings);
+    container.push<MaterialSamplerBlockBindingChunk>(info.samplerBindings);
 
     // User Material UIB
-    container.addChild<MaterialUniformInterfaceBlockChunk>(info.uib);
+    container.push<MaterialUniformInterfaceBlockChunk>(info.uib);
 
     // User Material SIB
-    container.addChild<MaterialSamplerInterfaceBlockChunk>(info.sib);
+    container.push<MaterialSamplerInterfaceBlockChunk>(info.sib);
+
+    // User constant parameters
+    utils::FixedCapacityVector<MaterialConstant> constantsEntry(mConstants.size());
+    std::transform(mConstants.begin(), mConstants.end(), constantsEntry.begin(),
+            [](Constant const& c) { return MaterialConstant(c.name.c_str(), c.type); });
+    container.push<MaterialConstantParametersChunk>(std::move(constantsEntry));
 
     // TODO: should we write the SSBO info? this would only be needed if we wanted to provide
     //       an interface to set [get?] values in the buffer. But we can do that easily
@@ -1225,21 +1436,25 @@ void MaterialBuilder::writeCommonChunks(ChunkContainer& container, MaterialInfo&
 
     if (mMaterialDomain != MaterialDomain::COMPUTE) {
         // User Subpass
-        container.addChild<MaterialSubpassInterfaceBlockChunk>(info.subpass);
+        container.push<MaterialSubpassInterfaceBlockChunk>(info.subpass);
 
-        container.addSimpleChild<bool>(ChunkType::MaterialDoubleSidedSet, mDoubleSidedCapability);
-        container.addSimpleChild<bool>(ChunkType::MaterialDoubleSided, mDoubleSided);
-        container.addSimpleChild<uint8_t>(ChunkType::MaterialBlendingMode, static_cast<uint8_t>(mBlendingMode));
-        container.addSimpleChild<uint8_t>(ChunkType::MaterialTransparencyMode, static_cast<uint8_t>(mTransparencyMode));
-        container.addSimpleChild<uint8_t>(ChunkType::MaterialReflectionMode, static_cast<uint8_t>(mReflectionMode));
-        container.addSimpleChild<bool>(ChunkType::MaterialColorWrite, mColorWrite);
-        container.addSimpleChild<bool>(ChunkType::MaterialDepthWriteSet, mDepthWriteSet);
-        container.addSimpleChild<bool>(ChunkType::MaterialDepthWrite, mDepthWrite);
-        container.addSimpleChild<bool>(ChunkType::MaterialDepthTest, mDepthTest);
-        container.addSimpleChild<bool>(ChunkType::MaterialInstanced, mInstanced);
-        container.addSimpleChild<bool>(ChunkType::MaterialAlphaToCoverageSet, mAlphaToCoverageSet);
-        container.addSimpleChild<bool>(ChunkType::MaterialAlphaToCoverage, mAlphaToCoverage);
-        container.addSimpleChild<uint8_t>(ChunkType::MaterialCullingMode, static_cast<uint8_t>(mCullingMode));
+        container.emplace<bool>(ChunkType::MaterialDoubleSidedSet, mDoubleSidedCapability);
+        container.emplace<bool>(ChunkType::MaterialDoubleSided, mDoubleSided);
+        container.emplace<uint8_t>(ChunkType::MaterialBlendingMode,
+                static_cast<uint8_t>(mBlendingMode));
+        container.emplace<uint8_t>(ChunkType::MaterialTransparencyMode,
+                static_cast<uint8_t>(mTransparencyMode));
+        container.emplace<uint8_t>(ChunkType::MaterialReflectionMode,
+                static_cast<uint8_t>(mReflectionMode));
+        container.emplace<bool>(ChunkType::MaterialColorWrite, mColorWrite);
+        container.emplace<bool>(ChunkType::MaterialDepthWriteSet, mDepthWriteSet);
+        container.emplace<bool>(ChunkType::MaterialDepthWrite, mDepthWrite);
+        container.emplace<bool>(ChunkType::MaterialDepthTest, mDepthTest);
+        container.emplace<bool>(ChunkType::MaterialInstanced, mInstanced);
+        container.emplace<bool>(ChunkType::MaterialAlphaToCoverageSet, mAlphaToCoverageSet);
+        container.emplace<bool>(ChunkType::MaterialAlphaToCoverage, mAlphaToCoverage);
+        container.emplace<uint8_t>(ChunkType::MaterialCullingMode,
+                static_cast<uint8_t>(mCullingMode));
 
         uint64_t properties = 0;
         UTILS_NOUNROLL
@@ -1248,30 +1463,35 @@ void MaterialBuilder::writeCommonChunks(ChunkContainer& container, MaterialInfo&
                 properties |= uint64_t(1u) << i;
             }
         }
-        container.addSimpleChild<uint64_t>(ChunkType::MaterialProperties, properties);
+        container.emplace<uint64_t>(ChunkType::MaterialProperties, properties);
     }
 }
 
 void MaterialBuilder::writeSurfaceChunks(ChunkContainer& container) const noexcept {
     if (mBlendingMode == BlendingMode::MASKED) {
-        container.addSimpleChild<float>(ChunkType::MaterialMaskThreshold, mMaskThreshold);
+        container.emplace<float>(ChunkType::MaterialMaskThreshold, mMaskThreshold);
     }
 
-    container.addSimpleChild<uint8_t>(ChunkType::MaterialShading, static_cast<uint8_t>(mShading));
+    container.emplace<uint8_t>(ChunkType::MaterialShading, static_cast<uint8_t>(mShading));
 
     if (mShading == Shading::UNLIT) {
-        container.addSimpleChild<bool>(ChunkType::MaterialShadowMultiplier, mShadowMultiplier);
+        container.emplace<bool>(ChunkType::MaterialShadowMultiplier, mShadowMultiplier);
     }
 
-    container.addSimpleChild<uint8_t>(ChunkType::MaterialRefraction, static_cast<uint8_t>(mRefractionMode));
-    container.addSimpleChild<uint8_t>(ChunkType::MaterialRefractionType, static_cast<uint8_t>(mRefractionType));
-    container.addSimpleChild<bool>(ChunkType::MaterialClearCoatIorChange, mClearCoatIorChange);
-    container.addSimpleChild<uint32_t>(ChunkType::MaterialRequiredAttributes, mRequiredAttributes.getValue());
-    container.addSimpleChild<bool>(ChunkType::MaterialSpecularAntiAliasing, mSpecularAntiAliasing);
-    container.addSimpleChild<float>(ChunkType::MaterialSpecularAntiAliasingVariance, mSpecularAntiAliasingVariance);
-    container.addSimpleChild<float>(ChunkType::MaterialSpecularAntiAliasingThreshold, mSpecularAntiAliasingThreshold);
-    container.addSimpleChild<uint8_t>(ChunkType::MaterialVertexDomain, static_cast<uint8_t>(mVertexDomain));
-    container.addSimpleChild<uint8_t>(ChunkType::MaterialInterpolation, static_cast<uint8_t>(mInterpolation));
+    container.emplace<uint8_t>(ChunkType::MaterialRefraction, static_cast<uint8_t>(mRefractionMode));
+    container.emplace<uint8_t>(ChunkType::MaterialRefractionType,
+            static_cast<uint8_t>(mRefractionType));
+    container.emplace<bool>(ChunkType::MaterialClearCoatIorChange, mClearCoatIorChange);
+    container.emplace<uint32_t>(ChunkType::MaterialRequiredAttributes,
+            mRequiredAttributes.getValue());
+    container.emplace<bool>(ChunkType::MaterialSpecularAntiAliasing, mSpecularAntiAliasing);
+    container.emplace<float>(ChunkType::MaterialSpecularAntiAliasingVariance,
+            mSpecularAntiAliasingVariance);
+    container.emplace<float>(ChunkType::MaterialSpecularAntiAliasingThreshold,
+            mSpecularAntiAliasingThreshold);
+    container.emplace<uint8_t>(ChunkType::MaterialVertexDomain, static_cast<uint8_t>(mVertexDomain));
+    container.emplace<uint8_t>(ChunkType::MaterialInterpolation,
+            static_cast<uint8_t>(mInterpolation));
 }
 
 } // namespace filamat

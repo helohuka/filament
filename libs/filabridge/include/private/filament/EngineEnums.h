@@ -55,10 +55,21 @@ enum class SamplerBindingPoints : uint8_t {
     // These are limited by CONFIG_SAMPLER_BINDING_COUNT (currently 4)
 };
 
+enum class ReservedSpecializationConstants : uint8_t {
+    BACKEND_FEATURE_LEVEL = 0,
+    CONFIG_MAX_INSTANCES = 1,
+    CONFIG_STATIC_TEXTURE_TARGET_WORKAROUND = 2,
+    CONFIG_SRGB_SWAPCHAIN_EMULATION = 3 // don't change (hardcoded in OpenGLDriver.cpp)
+};
+
 // This value is limited by UBO size, ES3.0 only guarantees 16 KiB.
 // It's also limited by the Froxelizer's record buffer data type (uint8_t).
 constexpr size_t CONFIG_MAX_LIGHT_COUNT = 256;
 constexpr size_t CONFIG_MAX_LIGHT_INDEX = CONFIG_MAX_LIGHT_COUNT - 1;
+
+// The number of specialization constants that Filament reserves for its own use. These are always
+// the first constants (from 0 to CONFIG_MAX_RESERVED_SPEC_CONSTANTS - 1).
+constexpr size_t CONFIG_MAX_RESERVED_SPEC_CONSTANTS = 8;
 
 // The maximum number of shadowmaps.
 // There is currently a maximum limit of 128 shadowmaps.
@@ -109,6 +120,8 @@ template<>
 struct utils::EnableIntegerOperators<filament::UniformBindingPoints> : public std::true_type {};
 template<>
 struct utils::EnableIntegerOperators<filament::SamplerBindingPoints> : public std::true_type {};
+template<>
+struct utils::EnableIntegerOperators<filament::ReservedSpecializationConstants> : public std::true_type {};
 
 template<>
 inline constexpr size_t utils::Enum::count<filament::UniformBindingPoints>() { return 8; }

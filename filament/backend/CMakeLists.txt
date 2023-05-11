@@ -96,6 +96,7 @@ if (FILAMENT_SUPPORTS_OPENGL AND NOT FILAMENT_USE_EXTERNAL_GLES3 AND NOT FILAMEN
         list(APPEND SRCS src/opengl/platforms/CocoaTouchExternalImage.mm)
     elseif (APPLE)
         list(APPEND SRCS src/opengl/platforms/PlatformCocoaGL.mm)
+        list(APPEND SRCS src/opengl/platforms/CocoaExternalImage.mm)
     elseif (WEBGL)
         list(APPEND SRCS src/opengl/platforms/PlatformWebGL.cpp)
     elseif (LINUX)
@@ -174,39 +175,28 @@ if (FILAMENT_SUPPORTS_VULKAN)
             src/vulkan/VulkanFboCache.h
             src/vulkan/VulkanHandles.cpp
             src/vulkan/VulkanHandles.h
+            src/vulkan/VulkanImageUtility.cpp
+            src/vulkan/VulkanImageUtility.h
             src/vulkan/VulkanMemory.h
             src/vulkan/VulkanMemory.cpp
             src/vulkan/VulkanPipelineCache.cpp
             src/vulkan/VulkanPipelineCache.h
             src/vulkan/VulkanPlatform.cpp
-            src/vulkan/VulkanReadPixels.cpp
-            src/vulkan/VulkanReadPixels.h
             src/vulkan/VulkanSamplerCache.cpp
             src/vulkan/VulkanSamplerCache.h
             src/vulkan/VulkanStagePool.cpp
             src/vulkan/VulkanStagePool.h
             src/vulkan/VulkanSwapChain.cpp
             src/vulkan/VulkanSwapChain.h
-            src/vulkan/VulkanTaskHandler.h
             src/vulkan/VulkanTexture.cpp
             src/vulkan/VulkanTexture.h
             src/vulkan/VulkanUtility.cpp
             src/vulkan/VulkanUtility.h
     )
-    if (LINUX)
-        if (FILAMENT_SUPPORTS_WAYLAND)
-            list(APPEND SRCS src/vulkan/PlatformVkLinuxWayland.cpp)
-        elseif (FILAMENT_SUPPORTS_X11)
-            list(APPEND SRCS src/vulkan/PlatformVkLinuxX11.cpp)
-        endif()
-    elseif (APPLE AND NOT IOS)
-        list(APPEND SRCS src/vulkan/PlatformVkCocoa.mm)
-    elseif (IOS)
-        list(APPEND SRCS src/vulkan/PlatformVkCocoaTouch.mm)
-    elseif (ANDROID)
-        list(APPEND SRCS src/vulkan/PlatformVkAndroid.cpp)
-    elseif (WIN32)
-        list(APPEND SRCS src/vulkan/PlatformVkWindows.cpp)
+    if (ANDROID OR LINUX OR WIN32)
+        list(APPEND SRCS src/vulkan/platform/PlatformVulkanAndroidLinuxWindows.cpp)
+    elseif (APPLE OR IOS)
+        list(APPEND SRCS src/vulkan/platform/PlatformVulkanApple.mm)
     endif()
 endif()
 
@@ -335,6 +325,7 @@ elseif(WEBGL)
 else()
     set(OPTIMIZATION_FLAGS
         -ffast-math
+        -fno-finite-math-only
         -ffp-contract=fast
         # TODO: aggressive vectorization is currently broken on Android
         #        -fslp-vectorize-aggressive

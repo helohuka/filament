@@ -88,7 +88,7 @@ struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
     // --------------------------------------------------------------------------------------------
     math::float4 zParams;                       // froxel Z parameters
     math::uint3 fParams;                        // stride-x, stride-y, stride-z
-    uint32_t lightChannels;                     // light channel bits
+    int32_t lightChannels;                      // light channel bits
     math::float2 froxelCountXY;
 
     // IBL
@@ -111,16 +111,15 @@ struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
     // bit 0: directional (sun) shadow enabled
     // bit 1: directional (sun) screen-space contact shadow enabled
     // bit 8-15: screen-space contact shadows ray casting steps
-    uint32_t directionalShadows;
+    int32_t directionalShadows;
     float ssContactShadowDistance;
 
     // position of cascade splits, in world space (not including the near plane)
     // -Inf stored in unused components
     math::float4 cascadeSplits;
     // bit 0-3: cascade count
-    // bit 4: visualize cascades
     // bit 8-11: cascade has visible shadows
-    uint32_t cascades;
+    int32_t cascades;
     float reserved0;
     float reserved1;                    // normal bias
     float shadowPenumbraRatioScale;     // For DPCF or PCSS, scale penumbra ratio for artistic use
@@ -141,7 +140,7 @@ struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
     float fogMaxOpacity;
     float fogHeight;
     float fogHeightFalloff;
-    float fogReserved0;
+    float fogCutOffDistance;
     math::float3 fogColor;
     float fogColorFromIbl;
     float fogInscatteringStart;
@@ -159,8 +158,21 @@ struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
     float ssrDistance;                  // ssr world raycast distance, 0 when ssr is off
     float ssrStride;                    // ssr texel stride, >= 1.0
 
+    // --------------------------------------------------------------------------------------------
+    // user defined global variables
+    // --------------------------------------------------------------------------------------------
+    math::float4 custom[4];
+
+    // --------------------------------------------------------------------------------------------
+    // for feature level 0 / es2 usage
+    // --------------------------------------------------------------------------------------------
+    int32_t rec709;                     // Only for ES2, 0 or 1, whether we need to do sRGB conversion
+    float es2Reserved0;
+    float es2Reserved1;
+    float es2Reserved2;
+
     // bring PerViewUib to 2 KiB
-    math::float4 reserved[60];
+    math::float4 reserved[55];
 };
 
 // 2 KiB == 128 float4s
@@ -198,19 +210,21 @@ struct PerRenderableData {
 
     mat44_std140 worldFromModelMatrix;
     mat33_std140 worldFromModelNormalMatrix;
-    uint32_t morphTargetCount;
-    uint32_t flagsChannels;                   // see packFlags() below (0x00000fll)
-    uint32_t objectId;                        // used for picking
+    int32_t morphTargetCount;
+    int32_t flagsChannels;                   // see packFlags() below (0x00000fll)
+    int32_t objectId;                        // used for picking
     // TODO: We need a better solution, this currently holds the average local scale for the renderable
     float userData;
 
     math::float4 reserved[8];
 
     static uint32_t packFlagsChannels(
-            bool skinning, bool morphing, bool contactShadows, uint8_t channels) noexcept {
-        return (skinning       ? 0x100 : 0) |
-               (morphing       ? 0x200 : 0) |
-               (contactShadows ? 0x400 : 0) |
+            bool skinning, bool morphing, bool contactShadows, bool hasInstanceBuffer,
+            uint8_t channels) noexcept {
+        return (skinning              ? 0x100 : 0) |
+               (morphing              ? 0x200 : 0) |
+               (contactShadows        ? 0x400 : 0) |
+               (hasInstanceBuffer     ? 0x800 : 0) |
                channels;
     }
 };

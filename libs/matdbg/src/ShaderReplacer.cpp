@@ -62,7 +62,7 @@ public:
     void writeChunks(ostream& stream);
 
     // Replaces the specified shader text with new content.
-    void replaceShader(backend::ShaderModel shaderModel, Variant variant,
+    void replaceShader(backend::ShaderModel model, Variant variant,
             ShaderStage stage, const char* source, size_t sourceLength);
 
     bool isEmpty() const { return mShaderRecords.size() == 0; }
@@ -299,6 +299,9 @@ size_t ShaderReplacer::getEditedSize() const {
 
 ShaderIndex::ShaderIndex(ChunkType dictTag, ChunkType matTag, const filaflat::ChunkContainer& cc) :
         mDictTag(dictTag), mMatTag(matTag) {
+
+    assert_invariant(matTag != filamat::ChunkType::MaterialSpirv);
+
     filaflat::BlobDictionary stringBlobs;
     DictionaryReader reader;
     reader.unflatten(cc, dictTag, stringBlobs);
@@ -306,18 +309,17 @@ ShaderIndex::ShaderIndex(ChunkType dictTag, ChunkType matTag, const filaflat::Ch
     filaflat::MaterialChunk matChunk(cc);
     matChunk.initialize(matTag);
 
-    const auto& offsets = matChunk.getOffsets();
-    mShaderRecords.reserve(offsets.size());
-    for (auto [key, offset] : offsets) {
-        TextEntry info;
-        filaflat::MaterialChunk::decodeKey(key, &info.shaderModel, &info.variantKey, &info.stage);
-        ShaderContent content;
-        UTILS_UNUSED_IN_RELEASE bool success = matChunk.getShader(content,
-                stringBlobs, info.shaderModel, Variant(info.variantKey), info.stage);
-        info.shader = std::string(content.data(), content.data() + content.size() - 1);
-        assert_invariant(success);
-        mShaderRecords.emplace_back(info);
-    }
+    matChunk.visitShaders([this, &matChunk, &stringBlobs]
+            (ShaderModel shaderModel, Variant variant, ShaderStage stage) {
+                ShaderContent content;
+                UTILS_UNUSED_IN_RELEASE bool success = matChunk.getShader(content,
+                        stringBlobs, shaderModel, variant, stage);
+
+                std::string source{ content.data(), content.data() + content.size() - 1u };
+                assert_invariant(success);
+
+                mShaderRecords.push_back({ shaderModel, variant, stage, std::move(source) });
+            });
 }
 
 void ShaderIndex::writeChunks(ostream& stream) {
@@ -327,8 +329,8 @@ void ShaderIndex::writeChunks(ostream& stream) {
     }
 
     filamat::ChunkContainer cc;
-    const auto& dchunk = cc.addChild<DictionaryTextChunk>(std::move(lines), mDictTag);
-    cc.addChild<MaterialTextChunk>(std::move(mShaderRecords), dchunk.getDictionary(), mMatTag);
+    const auto& dchunk = cc.push<DictionaryTextChunk>(std::move(lines), mDictTag);
+    cc.push<MaterialTextChunk>(std::move(mShaderRecords), dchunk.getDictionary(), mMatTag);
 
     const size_t bufSize = cc.getSize();
     auto buffer = std::make_unique<uint8_t[]>(bufSize);
@@ -338,12 +340,11 @@ void ShaderIndex::writeChunks(ostream& stream) {
     stream.write((char*)buffer.get(), bufSize);
 }
 
-void ShaderIndex::replaceShader(backend::ShaderModel shaderModel, Variant variant,
+void ShaderIndex::replaceShader(backend::ShaderModel model, Variant variant,
             backend::ShaderStage stage, const char* source, size_t sourceLength) {
-    const uint8_t model = uint8_t(shaderModel);
     for (auto& record : mShaderRecords) {
-        if (record.shaderModel == model && record.variantKey == variant.key &&
-                record.stage == uint8_t(stage)) {
+        if (record.shaderModel == model && record.variant == variant &&
+                record.stage == stage) {
             record.shader = std::string(source, sourceLength);
             return;
         }
@@ -364,7 +365,7 @@ BlobIndex::BlobIndex(ChunkType dictTag, ChunkType matTag, const filaflat::ChunkC
     mShaderRecords.reserve(offsets.size());
     for (auto [key, offset] : offsets) {
         SpirvEntry info;
-        filaflat::MaterialChunk::decodeKey(key, &info.shaderModel, &info.variantKey, &info.stage);
+        filaflat::MaterialChunk::decodeKey(key, &info.shaderModel, &info.variant, &info.stage);
         info.dictionaryIndex = offset;
         mShaderRecords.emplace_back(info);
     }
@@ -390,8 +391,8 @@ void BlobIndex::writeChunks(ostream& stream) {
 
     // Apply SMOL-V compression and write out the results.
     filamat::ChunkContainer cc;
-    cc.addChild<MaterialSpirvChunk>(std::move(mShaderRecords));
-    cc.addChild<DictionarySpirvChunk>(std::move(blobs), false);
+    cc.push<MaterialSpirvChunk>(std::move(mShaderRecords));
+    cc.push<DictionarySpirvChunk>(std::move(blobs), false);
 
     Flattener prepass = Flattener::getDryRunner();
     initialize(prepass);
@@ -408,13 +409,10 @@ void BlobIndex::writeChunks(ostream& stream) {
     stream.write((char*)buffer.get() + pad, bufSize - pad);
 }
 
-void BlobIndex::replaceShader(ShaderModel shaderModel, Variant variant,
+void BlobIndex::replaceShader(ShaderModel model, Variant variant,
             ShaderStage stage, const char* source, size_t sourceLength) {
-    const uint8_t model = (uint8_t) shaderModel;
     for (auto& record : mShaderRecords) {
-        if (record.shaderModel == model && record.variantKey == variant.key &&
-                record.stage == uint8_t(stage)) {
-
+        if (record.shaderModel == model && record.variant == variant && record.stage == stage) {
             // TODO: because a single blob entry might be used by more than one variant, matdbg
             // users may unwittingly edit more than 1 variant when multiple variants have the exact
             // same content before the edit. In practice this is rarely problematic, but we should

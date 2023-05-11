@@ -615,7 +615,9 @@ class_<View>("View")
         self->setRenderTarget(renderTarget);
     }), allow_raw_pointers())
     .function("setStencilBufferEnabled", &View::setStencilBufferEnabled)
-    .function("isStencilBufferEnabled", &View::isStencilBufferEnabled);
+    .function("isStencilBufferEnabled", &View::isStencilBufferEnabled)
+    .function("setMaterialGlobal", &View::setMaterialGlobal)
+    .function("getMaterialGlobal", &View::getMaterialGlobal);
 
 /// Scene ::core class:: Flat container of renderables and lights.
 /// See also the [Engine] methods `createScene` and `destroyScene`.
@@ -1072,7 +1074,7 @@ class_<TransformManager>("TransformManager")
 
     .function("getWorldTransform", EMBIND_LAMBDA(flatmat4,
             (TransformManager* self, TransformManager::Instance instance), {
-        return flatmat4 { self->getTransform(instance) } ; }), allow_raw_pointers())
+        return flatmat4 { self->getWorldTransform(instance) } ; }), allow_raw_pointers())
 
     .function("openLocalTransformTransaction", &TransformManager::openLocalTransformTransaction)
     .function("commitLocalTransformTransaction",

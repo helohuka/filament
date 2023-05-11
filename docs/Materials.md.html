@@ -1076,6 +1076,63 @@ fragment {
 }
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+### General: constants
+
+Type
+:   array of constant objects
+
+Value
+:   Each entry is an object with the properties `name` and `type`, both of `string` type. The name
+    must be a valid GLSL identifier. Entries also have an optional `default`, which can either be a
+    `bool` or `number`, depending on the `type` of the constant. The type must be one of the types
+    described in table [materialConstantsTypes].
+
+         Type          |            Description                   |      Default
+:----------------------|:-----------------------------------------|:------------------
+int                    | A signed, 32 bit GLSL int                |         0
+float                  | A single-precision GLSL float            |         0.0
+bool                   | A GLSL bool                              |         false
+[Table [materialConstantsTypes]: Material constants types]
+
+Description
+:   Lists the constant parameters accepted by your material. These constants can be set, or
+    "specialized", at runtime when loading a material package. Multiple materials can be loaded from
+    the same material package with differing constant parameter specializations. Once a material is
+    loaded from a material package, its constant parameters cannot be changed. Compared to regular
+    parameters, constant parameters allow the compiler to generate more efficient code. Access
+    constant parameters from the shader by prefixing the name with `materialConstant_`. For example,
+    a constant parameter named `myConstant` is accessed in the shader as
+    `materialConstant_myConstant`. If a constant parameter is not set at runtime, the default is
+    used.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ JSON
+material {
+    constants : [
+        {
+           name : overrideAlpha,
+           type : bool
+        },
+        {
+           name : customAlpha,
+           type : float,
+           default : 0.5
+        }
+    ],
+    shadingModel : lit,
+    blending : transparent,
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        if (materialConstants_overrideAlpha) {
+            material.baseColor.a = materialConstants_customAlpha;
+            material.baseColor.rgb *= material.baseColor.a;
+        }
+    }
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 ### General: variantFilter
 
 Type
@@ -2306,7 +2363,7 @@ type aliases:
 **getUserWorldFromWorldMatrix()**   | float4x4 |  Matrix that converts from world space to API-level (user) world space.
 **getTime()**                       | float    |  Current time as a remainder of 1 second. Yields a value between 0 and 1
 **getUserTime()**                   | float4   |  Current time in seconds: `time`, `(double)time - time`, `0`, `0`
-**getUserTimeMode(float m)**        | float    |  Current time modulo m in seconds
+**getUserTimeMod(float m)**         | float    |  Current time modulo m in seconds
 **getExposure()**                   | float    |  Photometric exposure of the camera
 **getEV100()**                      | float    |  [Exposure value at ISO 100](https://en.wikipedia.org/wiki/Exposure_value) of the camera
 
@@ -2314,6 +2371,15 @@ type aliases:
     To achieve good precision, the "world space" in Filament's shading system does not necessarily
     match the API-level world space. To obtain the position of the API-level camera, custom
     materials can use `getUserWorldFromWorldMatrix()` to transform `getWorldCameraPosition()`.
+
+### Material globals
+
+                 Name               |   Type   |            Description
+:-----------------------------------|:--------:|:------------------------------------
+**getMaterialGlobal0()**            | float4   | A vec4 visible by all materials, its value is set by `View::setMaterialGlobal(0, float4)`. Its default value is {0,0,0,1}.
+**getMaterialGlobal1()**            | float4   | A vec4 visible by all materials, its value is set by `View::setMaterialGlobal(1, float4)`. Its default value is {0,0,0,1}.
+**getMaterialGlobal2()**            | float4   | A vec4 visible by all materials, its value is set by `View::setMaterialGlobal(2, float4)`. Its default value is {0,0,0,1}.
+**getMaterialGlobal3()**            | float4   | A vec4 visible by all materials, its value is set by `View::setMaterialGlobal(3, float4)`. Its default value is {0,0,0,1}.
 
 ### Vertex only
 

@@ -315,12 +315,13 @@ Java_com_google_android_filament_View_nSetBloomOptions(JNIEnv*, jclass,
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_google_android_filament_View_nSetFogOptions(JNIEnv *, jclass , jlong nativeView,
-        jfloat distance, jfloat maximumOpacity, jfloat height, jfloat heightFalloff, jfloat r,
-        jfloat g, jfloat b, jfloat density, jfloat inScatteringStart,
+        jfloat distance, jfloat maximumOpacity, jfloat height, jfloat heightFalloff, jfloat cutOffDistance,
+        jfloat r, jfloat g, jfloat b, jfloat density, jfloat inScatteringStart,
         jfloat inScatteringSize, jboolean fogColorFromIbl, jboolean enabled) {
     View* view = (View*) nativeView;
     View::FogOptions options = {
              .distance = distance,
+             .cutOffDistance = cutOffDistance,
              .maximumOpacity = maximumOpacity,
              .height = height,
              .heightFalloff = heightFalloff,
@@ -484,4 +485,23 @@ Java_com_google_android_filament_View_nSetGuardBandOptions(JNIEnv *, jclass,
         jlong nativeView, jboolean enabled) {
     View* view = (View*) nativeView;
     view->setGuardBandOptions({ .enabled = (bool)enabled });
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_google_android_filament_View_nSetMaterialGlobal(JNIEnv * , jclass, jlong nativeView,
+        jint index, jfloat x, jfloat y, jfloat z, jfloat w) {
+    View *view = (View *) nativeView;
+    view->setMaterialGlobal((uint32_t)index, { x, y, z, w });
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_google_android_filament_View_nGetMaterialGlobal(JNIEnv *env, jclass clazz,
+        jlong nativeView, jint index, jfloatArray out_) {
+    jfloat* out = env->GetFloatArrayElements(out_, nullptr);
+    View *view = (View *) nativeView;
+    auto result = view->getMaterialGlobal(index);
+    std::copy_n(result.v, 4, out);
+    env->ReleaseFloatArrayElements(out_, out, 0);
 }

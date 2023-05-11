@@ -203,7 +203,7 @@ public:
      * The variant is inserted while building the commands, because we don't know it before that
      */
     static CommandKey makeMaterialSortingKey(uint32_t materialId, uint32_t instanceId) noexcept {
-        CommandKey key = ((materialId << MATERIAL_ID_SHIFT) & MATERIAL_ID_MASK) |
+        CommandKey const key = ((materialId << MATERIAL_ID_SHIFT) & MATERIAL_ID_MASK) |
                          ((instanceId << MATERIAL_INSTANCE_ID_SHIFT) & MATERIAL_INSTANCE_ID_MASK);
         return (key << MATERIAL_SHIFT) & MATERIAL_MASK;
     }
@@ -224,7 +224,7 @@ public:
         return boolish ? value : uint64_t(0);
     }
 
-    struct PrimitiveInfo { // 40 bytes
+    struct PrimitiveInfo { // 48 bytes
         union {
             FMaterialInstance const* mi;
             uint64_t padding = {}; // ensures mi is 8 bytes on all archs
@@ -234,18 +234,22 @@ public:
         backend::Handle<backend::HwBufferObject> skinningHandle;        // 4 bytes
         backend::Handle<backend::HwBufferObject> morphWeightBuffer;     // 4 bytes
         backend::Handle<backend::HwSamplerGroup> morphTargetBuffer;     // 4 bytes
+        backend::Handle<backend::HwBufferObject> instanceBufferHandle;  // 4 bytes
         uint32_t index = 0;                                             // 4 bytes
         uint32_t skinningOffset = 0;                                    // 4 bytes
-        uint16_t instanceCount;                                         // 2 bytes
+        uint16_t instanceCount;                                         // 2 bytes [MSb: user]
         Variant materialVariant;                                        // 1 byte
-        uint8_t reserved[1] = {};                                       // 1 byte
+        uint8_t reserved[4] = {};                                       // 4 bytes
+
+        static const uint16_t USER_INSTANCE_MASK = 0x8000u;
+        static const uint16_t INSTANCE_COUNT_MASK = 0x7fffu;
     };
-    static_assert(sizeof(PrimitiveInfo) == 40);
+    static_assert(sizeof(PrimitiveInfo) == 48);
 
     struct alignas(8) Command {     // 64 bytes
         CommandKey key = 0;         //  8 bytes
-        PrimitiveInfo primitive;    // 40 bytes
-        uint64_t reserved[2] = {};  // 16 bytes
+        PrimitiveInfo primitive;    // 48 bytes
+        uint64_t reserved[1] = {};  //  8 bytes
         bool operator < (Command const& rhs) const noexcept { return key < rhs.key; }
         // placement new declared as "throw" to avoid the compiler's null-check
         inline void* operator new (std::size_t, void* ptr) {

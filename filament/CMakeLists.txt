@@ -26,6 +26,7 @@ set(PUBLIC_HDRS
         include/filament/Frustum.h
         include/filament/IndexBuffer.h
         include/filament/IndirectLight.h
+        include/filament/InstanceBuffer.h
         include/filament/LightManager.h
         include/filament/Material.h
         include/filament/MaterialInstance.h
@@ -67,6 +68,7 @@ set(SRCS
         src/HwRenderPrimitiveFactory.cpp
         src/IndexBuffer.cpp
         src/IndirectLight.cpp
+        src/InstanceBuffer.cpp
         src/LightManager.cpp
         src/Material.cpp
         src/MaterialInstance.cpp
@@ -108,6 +110,7 @@ set(SRCS
         src/details/Fence.cpp
         src/details/IndexBuffer.cpp
         src/details/IndirectLight.cpp
+        src/details/InstanceBuffer.cpp
         src/details/Material.cpp
         src/details/MaterialInstance.cpp
         src/details/MorphTargetBuffer.cpp
@@ -171,6 +174,7 @@ set(PRIVATE_HDRS
         src/details/Fence.h
         src/details/IndexBuffer.h
         src/details/IndirectLight.h
+        src/details/InstanceBuffer.h
         src/details/Material.h
         src/details/MaterialInstance.h
         src/details/MorphTargetBuffer.h
@@ -212,6 +216,7 @@ set(MATERIAL_SRCS
         src/materials/colorGrading/colorGrading.mat
         src/materials/colorGrading/colorGradingAsSubpass.mat
         src/materials/colorGrading/customResolveAsSubpass.mat
+        src/materials/debugShadowCascades.mat
         src/materials/defaultMaterial.mat
         src/materials/dof/dof.mat
         src/materials/dof/dofCoc.mat
@@ -232,17 +237,15 @@ set(MATERIAL_SRCS
         src/materials/skybox.mat
         src/materials/ssao/sao.mat
         src/materials/ssao/saoBentNormals.mat
-        src/materials/separableGaussianBlur1.mat
-        src/materials/separableGaussianBlur2.mat
-        src/materials/separableGaussianBlur3.mat
-        src/materials/separableGaussianBlur4.mat
-        src/materials/separableGaussianBlur1L.mat
-        src/materials/separableGaussianBlur2L.mat
-        src/materials/separableGaussianBlur3L.mat
-        src/materials/separableGaussianBlur4L.mat
+        src/materials/separableGaussianBlur.mat
         src/materials/antiAliasing/fxaa.mat
         src/materials/antiAliasing/taa.mat
         src/materials/vsmMipmap.mat
+)
+
+set(MATERIAL_ES2_SRCS
+        src/materials/defaultMaterial0.mat
+        src/materials/skybox0.mat
 )
 
 # Embed the binary resource blob for materials.
@@ -309,6 +312,23 @@ foreach (mat_src ${MATERIAL_SRCS})
     )
     list(APPEND MATERIAL_BINS ${output_path})
 endforeach()
+
+if (IS_MOBILE_TARGET AND FILAMENT_SUPPORTS_OPENGL)
+    foreach (mat_src ${MATERIAL_ES2_SRCS})
+        get_filename_component(localname "${mat_src}" NAME_WE)
+        get_filename_component(fullname "${mat_src}" ABSOLUTE)
+        set(output_path "${MATERIAL_DIR}/${localname}.filamat")
+
+        add_custom_command(
+                OUTPUT ${output_path}
+                COMMAND matc -a opengl -p ${MATC_TARGET} ${MATC_OPT_FLAGS} -o ${output_path} ${fullname}
+                MAIN_DEPENDENCY ${fullname}
+                DEPENDS matc
+                COMMENT "Compiling material ${mat_src} to ${output_path}"
+        )
+        list(APPEND MATERIAL_BINS ${output_path})
+    endforeach ()
+endif ()
 
 # Additional dependencies on included files for materials
 
@@ -435,56 +455,7 @@ add_custom_command(
 )
 
 add_custom_command(
-        OUTPUT "${MATERIAL_DIR}/separableGaussianBlur1.filamat"
-        DEPENDS src/materials/separableGaussianBlur.vs
-        DEPENDS src/materials/separableGaussianBlur.fs
-        APPEND
-)
-
-add_custom_command(
-        OUTPUT "${MATERIAL_DIR}/separableGaussianBlur2.filamat"
-        DEPENDS src/materials/separableGaussianBlur.vs
-        DEPENDS src/materials/separableGaussianBlur.fs
-        APPEND
-)
-
-add_custom_command(
-        OUTPUT "${MATERIAL_DIR}/separableGaussianBlur3.filamat"
-        DEPENDS src/materials/separableGaussianBlur.vs
-        DEPENDS src/materials/separableGaussianBlur.fs
-        APPEND
-)
-
-add_custom_command(
-        OUTPUT "${MATERIAL_DIR}/separableGaussianBlur4.filamat"
-        DEPENDS src/materials/separableGaussianBlur.vs
-        DEPENDS src/materials/separableGaussianBlur.fs
-        APPEND
-)
-
-add_custom_command(
-        OUTPUT "${MATERIAL_DIR}/separableGaussianBlur1L.filamat"
-        DEPENDS src/materials/separableGaussianBlur.vs
-        DEPENDS src/materials/separableGaussianBlur.fs
-        APPEND
-)
-
-add_custom_command(
-        OUTPUT "${MATERIAL_DIR}/separableGaussianBlur2L.filamat"
-        DEPENDS src/materials/separableGaussianBlur.vs
-        DEPENDS src/materials/separableGaussianBlur.fs
-        APPEND
-)
-
-add_custom_command(
-        OUTPUT "${MATERIAL_DIR}/separableGaussianBlur3L.filamat"
-        DEPENDS src/materials/separableGaussianBlur.vs
-        DEPENDS src/materials/separableGaussianBlur.fs
-        APPEND
-)
-
-add_custom_command(
-        OUTPUT "${MATERIAL_DIR}/separableGaussianBlur4L.filamat"
+        OUTPUT "${MATERIAL_DIR}/separableGaussianBlur.filamat"
         DEPENDS src/materials/separableGaussianBlur.vs
         DEPENDS src/materials/separableGaussianBlur.fs
         APPEND
@@ -564,6 +535,7 @@ elseif(WEBGL)
 else()
     set(OPTIMIZATION_FLAGS
         -ffast-math
+        -fno-finite-math-only
         -ffp-contract=fast
         # TODO: aggressive vectorization is currently broken on Android
         #        -fslp-vectorize-aggressive

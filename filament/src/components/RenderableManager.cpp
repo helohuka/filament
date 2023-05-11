@@ -23,6 +23,7 @@
 #include "details/Engine.h"
 #include "details/VertexBuffer.h"
 #include "details/IndexBuffer.h"
+#include "details/InstanceBuffer.h"
 #include "details/Texture.h"
 #include "details/Material.h"
 
@@ -64,6 +65,7 @@ struct RenderableManager::BuilderDetails {
     Bone const* mUserBones = nullptr;
     mat4f const* mUserBoneMatrices = nullptr;
     FSkinningBuffer* mSkinningBuffer = nullptr;
+    FInstanceBuffer* mInstanceBuffer = nullptr;
     uint32_t mSkinningBufferOffset = 0;
 
     explicit BuilderDetails(size_t count)
@@ -207,7 +209,7 @@ RenderableManager::Builder& RenderableManager::Builder::morphing(size_t targetCo
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::morphing(uint8_t level, size_t primitiveIndex,
+RenderableManager::Builder& RenderableManager::Builder::morphing(uint8_t, size_t primitiveIndex,
         MorphTargetBuffer* morphTargetBuffer, size_t offset, size_t count) noexcept {
     std::vector<Entry>& entries = mImpl->mEntries;
     if (primitiveIndex < entries.size()) {
@@ -240,6 +242,19 @@ RenderableManager::Builder::Result RenderableManager::Builder::build(Engine& eng
 
     ASSERT_PRECONDITION(mImpl->mSkinningBoneCount <= CONFIG_MAX_BONE_COUNT,
             "bone count > %u", CONFIG_MAX_BONE_COUNT);
+    ASSERT_PRECONDITION(mImpl->mInstanceCount <= CONFIG_MAX_INSTANCES || !mImpl->mInstanceBuffer,
+            "instance count is %zu, but instance count is limited to CONFIG_MAX_INSTANCES (%zu) "
+            "instances when supplying transforms via an InstanceBuffer.",
+            mImpl->mInstanceCount,
+            CONFIG_MAX_INSTANCES);
+    if (mImpl->mInstanceBuffer) {
+        size_t bufferInstanceCount = mImpl->mInstanceBuffer->mInstanceCount;
+        ASSERT_PRECONDITION(mImpl->mInstanceCount <= bufferInstanceCount,
+                "instance count (%zu) must be less than or equal to the InstanceBuffer's instance "
+                "count "
+                "(%zu).",
+                mImpl->mInstanceCount, bufferInstanceCount);
+    }
 
     for (size_t i = 0, c = mImpl->mEntries.size(); i < c; i++) {
         auto& entry = mImpl->mEntries[i];
@@ -277,8 +292,8 @@ RenderableManager::Builder::Result RenderableManager::Builder::build(Engine& eng
         // this can't be an error because (1) those values are not immutable, so the caller
         // could fix later, and (2) the material's shader will work (i.e. compile), and
         // use the default values for this attribute, which maybe be acceptable.
-        AttributeBitset declared = downcast(entry.vertices)->getDeclaredAttributes();
-        AttributeBitset required = material->getRequiredAttributes();
+        AttributeBitset const declared = downcast(entry.vertices)->getDeclaredAttributes();
+        AttributeBitset const required = material->getRequiredAttributes();
         if ((declared & required) != required) {
             slog.w << "[entity=" << entity.getId() << ", primitive @ " << i
                    << "] missing required attributes ("
@@ -301,7 +316,14 @@ RenderableManager::Builder::Result RenderableManager::Builder::build(Engine& eng
 }
 
 RenderableManager::Builder& RenderableManager::Builder::instances(size_t instanceCount) noexcept {
-    mImpl->mInstanceCount = clamp((unsigned int)instanceCount, 1u, 65535u);
+    mImpl->mInstanceCount = clamp((unsigned int)instanceCount, 1u, 32767u);
+    return *this;
+}
+
+RenderableManager::Builder& RenderableManager::Builder::instances(
+        size_t instanceCount, InstanceBuffer* instanceBuffer) noexcept {
+    mImpl->mInstanceCount = clamp(instanceCount, (size_t)1, CONFIG_MAX_INSTANCES);
+    mImpl->mInstanceBuffer = downcast(instanceBuffer);
     return *this;
 }
 
@@ -326,7 +348,7 @@ void FRenderableManager::create(
     if (UTILS_UNLIKELY(manager.hasComponent(entity))) {
         destroy(entity);
     }
-    Instance ci = manager.addComponent(entity);
+    Instance const ci = manager.addComponent(entity);
     assert_invariant(ci);
 
     if (ci) {
@@ -352,7 +374,18 @@ void FRenderableManager::create(
         setSkinning(ci, false);
         setMorphing(ci, builder->mMorphTargetCount);
         mManager[ci].channels = builder->mLightChannels;
-        mManager[ci].instanceCount = builder->mInstanceCount;
+
+        InstancesInfo& instances = manager[ci].instances;
+        instances.count = builder->mInstanceCount;
+        instances.buffer = builder->mInstanceBuffer;
+        if (instances.buffer) {
+            // Allocate our instance buffer for this Renderable. We always allocate a size to match
+            // PerRenderableUib, regardless of the number of instances. This is because the buffer
+            // will get bound to the PER_RENDERABLE UBO, and we can't bind a buffer smaller than the
+            // full size of the UBO.
+            instances.handle = driver.createBufferObject(sizeof(PerRenderableUib),
+                    BufferObjectBinding::UNIFORM, backend::BufferUsage::DYNAMIC);
+        }
 
         const uint32_t boneCount = builder->mSkinningBoneCount;
         const uint32_t targetCount = builder->mMorphTargetCount;
@@ -460,7 +493,7 @@ void FRenderableManager::create(
 
 // this destroys a single component from an entity
 void FRenderableManager::destroy(utils::Entity e) noexcept {
-    Instance ci = getInstance(e);
+    Instance const ci = getInstance(e);
     if (ci) {
         destroyComponent(ci);
         mManager.removeComponent(e);
@@ -476,7 +509,7 @@ void FRenderableManager::terminate() noexcept {
                << " leaked Renderable components" << io::endl;
 #endif
         while (!manager.empty()) {
-            Instance ci = manager.end() - 1;
+            Instance const ci = manager.end() - 1;
             destroyComponent(ci);
             manager.removeComponent(manager.getEntity(ci));
         }
@@ -510,6 +543,11 @@ void FRenderableManager::destroyComponent(Instance ci) noexcept {
     if (morphWeights.handle) {
         driver.destroyBufferObject(morphWeights.handle);
     }
+
+    InstancesInfo const& instances = manager[ci].instances;
+    if (instances.handle) {
+        driver.destroyBufferObject(instances.handle);
+    }
 }
 
 void FRenderableManager::destroyComponentPrimitives(
@@ -521,7 +559,7 @@ void FRenderableManager::destroyComponentPrimitives(
     delete[] primitives.data();
 }
 
-void FRenderableManager::destroyComponentMorphTargets(FEngine& engine,
+void FRenderableManager::destroyComponentMorphTargets(FEngine&,
         utils::Slice<MorphTargets>& morphTargets) noexcept {
     delete[] morphTargets.data();
 }
@@ -540,8 +578,8 @@ void FRenderableManager::setMaterialInstanceAt(Instance instance, uint8_t level,
                     material->getName().c_str_safe(), (uint8_t)material->getFeatureLevel());
 
             primitives[primitiveIndex].setMaterialInstance(mi);
-            AttributeBitset required = material->getRequiredAttributes();
-            AttributeBitset declared = primitives[primitiveIndex].getEnabledAttributes();
+            AttributeBitset const required = material->getRequiredAttributes();
+            AttributeBitset const declared = primitives[primitiveIndex].getEnabledAttributes();
             if (UTILS_UNLIKELY((declared & required) != required)) {
                 slog.w << "[instance=" << instance.asValue() << ", primitive @ " << primitiveIndex
                        << "] missing required attributes ("
@@ -610,7 +648,7 @@ void FRenderableManager::setGeometryAt(Instance instance, uint8_t level, size_t 
 void FRenderableManager::setBones(Instance ci,
         Bone const* UTILS_RESTRICT transforms, size_t boneCount, size_t offset) {
     if (ci) {
-        Bones& bones = mManager[ci].bones;
+        Bones const& bones = mManager[ci].bones;
 
         ASSERT_PRECONDITION(!bones.skinningBufferMode,
                 "Disable skinning buffer mode to use this API");
@@ -626,7 +664,7 @@ void FRenderableManager::setBones(Instance ci,
 void FRenderableManager::setBones(Instance ci,
         mat4f const* UTILS_RESTRICT transforms, size_t boneCount, size_t offset) {
     if (ci) {
-        Bones& bones = mManager[ci].bones;
+        Bones const& bones = mManager[ci].bones;
 
         ASSERT_PRECONDITION(!bones.skinningBufferMode,
                 "Disable skinning buffer mode to use this API");
@@ -688,7 +726,7 @@ void FRenderableManager::setMorphWeights(Instance instance, float const* weights
                 "Only %d morph targets are supported (count=%d, offset=%d)",
                 CONFIG_MAX_MORPH_TARGET_COUNT, count, offset);
 
-        MorphWeights& morphWeights = mManager[instance].morphWeights;
+        MorphWeights const& morphWeights = mManager[instance].morphWeights;
         if (morphWeights.handle) {
             updateMorphWeights(mEngine, morphWeights.handle, weights, count, offset);
         }
@@ -702,7 +740,7 @@ void FRenderableManager::setMorphTargetBufferAt(Instance instance, uint8_t level
     if (instance) {
         assert_invariant(morphTargetBuffer);
 
-        MorphWeights& morphWeights = mManager[instance].morphWeights;
+        MorphWeights const& morphWeights = mManager[instance].morphWeights;
         ASSERT_PRECONDITION(morphWeights.count == morphTargetBuffer->getCount(),
                 "Only %d morph targets can be set (count=%d)",
                 morphWeights.count, morphTargetBuffer->getCount());

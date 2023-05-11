@@ -29,6 +29,7 @@
 #include <private/filament/BufferInterfaceBlock.h>
 #include <private/filament/SubpassInfo.h>
 #include <private/filament/Variant.h>
+#include <private/filament/ConstantInfo.h>
 
 #include <utils/CString.h>
 
@@ -167,6 +168,20 @@ bool MaterialParser::getUniformBlockBindings(
     return ChunkUniformBlockBindings::unflatten(unflattener, value);
 }
 
+bool MaterialParser::getBindingUniformInfo(BindingUniformInfoContainer* container) const noexcept {
+    auto [start, end] = mImpl.mChunkContainer.getChunkRange(MaterialBindingUniformInfo);
+    if (start == end) return false;
+    Unflattener unflattener(start, end);
+    return ChunkBindingUniformInfo::unflatten(unflattener, container);
+}
+
+bool MaterialParser::getAttributeInfo(AttributeInfoContainer* container) const noexcept {
+    auto [start, end] = mImpl.mChunkContainer.getChunkRange(MaterialAttributeInfo);
+    if (start == end) return false;
+    Unflattener unflattener(start, end);
+    return ChunkAttributeInfo::unflatten(unflattener, container);
+}
+
 bool MaterialParser::getSamplerBlockBindings(
         SamplerGroupBindingInfoList* pSamplerGroupInfoList,
         SamplerBindingToNameMap* pSamplerBindingToNameMap) const noexcept {
@@ -175,6 +190,13 @@ bool MaterialParser::getSamplerBlockBindings(
     Unflattener unflattener(start, end);
     return ChunkSamplerBlockBindings::unflatten(unflattener,
             pSamplerGroupInfoList, pSamplerBindingToNameMap);
+}
+
+bool MaterialParser::getConstants(utils::FixedCapacityVector<MaterialConstant>* value) const noexcept {
+    auto [start, end] = mImpl.mChunkContainer.getChunkRange(filamat::MaterialConstants);
+    if (start == end) return false;
+    Unflattener unflattener(start, end);
+    return ChunkMaterialConstants::unflatten(unflattener, value);
 }
 
 bool MaterialParser::getDepthWriteSet(bool* value) const noexcept {
@@ -311,7 +333,7 @@ bool MaterialParser::getReflectionMode(ReflectionMode* value) const noexcept {
 bool MaterialParser::getShader(ShaderContent& shader,
         ShaderModel shaderModel, Variant variant, ShaderStage stage) noexcept {
     return mImpl.mMaterialChunk.getShader(shader,
-            mImpl.mBlobDictionary, uint8_t(shaderModel), variant, uint8_t(stage));
+            mImpl.mBlobDictionary, shaderModel, variant, stage);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -499,6 +521,72 @@ bool ChunkUniformBlockBindings::unflatten(filaflat::Unflattener& unflattener,
     return true;
 }
 
+bool ChunkBindingUniformInfo::unflatten(filaflat::Unflattener& unflattener,
+        MaterialParser::BindingUniformInfoContainer* bindingUniformInfo) {
+    uint8_t bindingPointCount;
+    if (!unflattener.read(&bindingPointCount)) {
+        return false;
+    }
+    bindingUniformInfo->reserve(bindingPointCount);
+    for (size_t i = 0; i < bindingPointCount; i++) {
+        uint8_t index;
+        if (!unflattener.read(&index)) {
+            return false;
+        }
+        uint8_t uniformCount;
+        if (!unflattener.read(&uniformCount)) {
+            return false;
+        }
+
+        Program::UniformInfo uniforms = Program::UniformInfo::with_capacity(uniformCount);
+        for (size_t j = 0; j < uniformCount; j++) {
+            utils::CString name;
+            if (!unflattener.read(&name)) {
+                return false;
+            }
+            uint16_t offset;
+            if (!unflattener.read(&offset)) {
+                return false;
+            }
+            uint8_t size;
+            if (!unflattener.read(&size)) {
+                return false;
+            }
+            uint8_t type;
+            if (!unflattener.read(&type)) {
+                return false;
+            }
+            uniforms.push_back({ name, offset, size, UniformType(type) });
+        }
+        bindingUniformInfo->emplace_back(UniformBindingPoints(index), std::move(uniforms));
+    }
+    return true;
+}
+
+bool ChunkAttributeInfo::unflatten(filaflat::Unflattener& unflattener,
+        MaterialParser::AttributeInfoContainer* attributeInfoContainer) {
+
+    uint8_t attributeCount;
+    if (!unflattener.read(&attributeCount)) {
+        return false;
+    }
+
+    attributeInfoContainer->reserve(attributeCount);
+
+    for (size_t j = 0; j < attributeCount; j++) {
+        utils::CString name;
+        if (!unflattener.read(&name)) {
+            return false;
+        }
+        uint8_t location;
+        if (!unflattener.read(&location)) {
+            return false;
+        }
+        attributeInfoContainer->emplace_back(name, location);
+    }
+
+    return true;
+}
 
 bool ChunkSamplerBlockBindings::unflatten(Unflattener& unflattener,
         SamplerGroupBindingInfoList* pSamplerGroupBindingInfoList,
@@ -541,6 +629,38 @@ bool ChunkSamplerBlockBindings::unflatten(Unflattener& unflattener,
         if (!unflattener.read(&samplerBindingToNameMap[binding])) {
             return false;
         }
+    }
+
+    return true;
+}
+
+bool ChunkMaterialConstants::unflatten(filaflat::Unflattener& unflattener,
+        utils::FixedCapacityVector<MaterialConstant>* materialConstants) {
+    assert_invariant(materialConstants);
+
+    // Read number of constants.
+    uint64_t numConstants = 0;
+    if (!unflattener.read(&numConstants)) {
+        return false;
+    }
+
+    materialConstants->reserve(numConstants);
+    materialConstants->resize(numConstants);
+
+    for (uint64_t i = 0; i < numConstants; i++) {
+        CString constantName;
+        uint8_t constantType = 0;
+
+        if (!unflattener.read(&constantName)) {
+            return false;
+        }
+
+        if (!unflattener.read(&constantType)) {
+            return false;
+        }
+
+        (*materialConstants)[i].name = constantName;
+        (*materialConstants)[i].type = static_cast<backend::ConstantType>(constantType);
     }
 
     return true;

@@ -7,10 +7,12 @@
  */
 
 void main() {
-#if defined(TARGET_METAL_ENVIRONMENT) || defined(TARGET_VULKAN_ENVIRONMENT)
+#if defined(FILAMENT_HAS_FEATURE_INSTANCING)
+#   if defined(TARGET_METAL_ENVIRONMENT) || defined(TARGET_VULKAN_ENVIRONMENT)
     instance_index = gl_InstanceIndex;
-#else
+#   else
     instance_index = gl_InstanceID;
+#   endif
 #endif
 
     initObjectUniforms(object_uniforms);
@@ -43,7 +45,7 @@ void main() {
         toTangentFrame(mesh_tangents, material.worldNormal, vertex_worldTangent.xyz);
 
         #if defined(VARIANT_HAS_SKINNING_OR_MORPHING)
-        if ((object_uniforms.flagsChannels & FILAMENT_OBJECT_MORPHING_ENABLED_BIT) != 0u) {
+        if ((object_uniforms.flagsChannels & FILAMENT_OBJECT_MORPHING_ENABLED_BIT) != 0) {
             #if defined(LEGACY_MORPHING)
             vec3 normal0, normal1, normal2, normal3;
             toTangentFrame(mesh_custom4, normal0);
@@ -61,7 +63,7 @@ void main() {
             #endif
         }
 
-        if ((object_uniforms.flagsChannels & FILAMENT_OBJECT_SKINNING_ENABLED_BIT) != 0u) {
+        if ((object_uniforms.flagsChannels & FILAMENT_OBJECT_SKINNING_ENABLED_BIT) != 0) {
             skinNormal(material.worldNormal, mesh_bone_indices, mesh_bone_weights);
             skinNormal(vertex_worldTangent.xyz, mesh_bone_indices, mesh_bone_weights);
         }
@@ -79,7 +81,7 @@ void main() {
         toTangentFrame(mesh_tangents, material.worldNormal);
 
         #if defined(VARIANT_HAS_SKINNING_OR_MORPHING)
-        if ((object_uniforms.flagsChannels & FILAMENT_OBJECT_MORPHING_ENABLED_BIT) != 0u) {
+        if ((object_uniforms.flagsChannels & FILAMENT_OBJECT_MORPHING_ENABLED_BIT) != 0) {
             #if defined(LEGACY_MORPHING)
             vec3 normal0, normal1, normal2, normal3;
             toTangentFrame(mesh_custom4, normal0);
@@ -97,7 +99,7 @@ void main() {
             #endif
         }
 
-        if ((object_uniforms.flagsChannels & FILAMENT_OBJECT_SKINNING_ENABLED_BIT) != 0u) {
+        if ((object_uniforms.flagsChannels & FILAMENT_OBJECT_SKINNING_ENABLED_BIT) != 0) {
             skinNormal(material.worldNormal, mesh_bone_indices, mesh_bone_weights);
         }
         #endif
