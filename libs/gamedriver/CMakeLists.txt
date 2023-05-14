@@ -5,7 +5,7 @@ project(gamedriver C ASM)
 set(TARGET gamedriver)
 set(PUBLIC_HDR_DIR include)
 
-set(ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
+set(ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 set(GENERATION_ROOT ${CMAKE_CURRENT_BINARY_DIR})
 set(RESOURCE_DIR  "${GENERATION_ROOT}/generated/resources")
 set(MATERIAL_DIR  "${GENERATION_ROOT}/generated/material")
@@ -150,11 +150,10 @@ foreach (fbs_src ${SCHEMA_SRCS})
     )
 endforeach()
 
+
 # ==================================================================================================
 # Compile resources
 # ==================================================================================================
-
-
 
 file(MAKE_DIRECTORY ${MATERIAL_DIR})
 file(MAKE_DIRECTORY ${RESOURCE_DIR})
