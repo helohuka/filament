@@ -54,6 +54,7 @@ set(DIST_GENERIC_HDRS
 
 set(SRCS
         src/api_level.cpp
+        src/architecture.cpp
         src/ashmem.cpp
         src/debug.cpp
         src/Allocator.cpp
@@ -91,6 +92,9 @@ endif()
 if (APPLE)
     list(APPEND SRCS src/darwin/Path.mm)
     list(APPEND SRCS src/darwin/Systrace.cpp)
+endif()
+if (WEBGL)
+    list(APPEND SRCS src/web/Path.cpp)
 endif()
 
 # ==================================================================================================

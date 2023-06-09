@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,20 @@
  * limitations under the License.
  */
 
-#include <backend/platforms/VulkanPlatform.h>
+#include <utils/Path.h>
 
-namespace filament::backend {
+namespace utils {
 
-Driver* VulkanPlatform::createDriver(void* const sharedContext,
-        const Platform::DriverConfig& driverConfig) noexcept {
-    return nullptr;
+bool Path::mkdir() const {
+    return true;
 }
 
-VulkanPlatform::~VulkanPlatform() = default;
+Path Path::getCurrentExecutable() {
+    return Path("filament-wasm");
+}
 
-} // namespace filament::backend
+Path Path::getUserSettingsDirectory() {
+    return Path(".");
+}
+
+} // namespace utils

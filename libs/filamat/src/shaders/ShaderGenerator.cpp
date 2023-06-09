@@ -537,6 +537,8 @@ std::string ShaderGenerator::createFragmentProgram(ShaderModel shaderModel,
     if (variant.hasDynamicLighting()) {
         cg.generateUniforms(fs, ShaderStage::FRAGMENT,
                 UniformBindingPoints::FROXEL_RECORDS, UibGenerator::getFroxelRecordUib());
+        cg.generateUniforms(fs, ShaderStage::FRAGMENT,
+                UniformBindingPoints::FROXELS, UibGenerator::getFroxelsUib());
     }
 
     cg.generateUniforms(fs, ShaderStage::FRAGMENT,
@@ -715,7 +717,7 @@ std::string ShaderGenerator::createPostProcessFragmentProgram(ShaderModel sm,
     for (const auto& output : mOutputs) {
         if (output.target == MaterialBuilder::OutputTarget::COLOR) {
             cg.generateOutput(fs, ShaderStage::FRAGMENT, output.name, output.location,
-                    output.qualifier, output.type);
+                    output.qualifier, output.precision, output.type);
         }
         if (output.target == MaterialBuilder::OutputTarget::DEPTH) {
             CodeGenerator::generateDefine(fs, "FRAG_OUTPUT_DEPTH", 1u);

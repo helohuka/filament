@@ -25,6 +25,7 @@ set(PUBLIC_HDRS
 
 set(SRCS
         src/BackendUtils.cpp
+        src/BlobCacheKey.cpp
         src/Callable.cpp
         src/CallbackHandler.cpp
         src/CircularBuffer.cpp
@@ -69,6 +70,8 @@ if (FILAMENT_SUPPORTS_OPENGL AND NOT FILAMENT_USE_EXTERNAL_GLES3 AND NOT FILAMEN
             src/opengl/gl_headers.h
             src/opengl/GLUtils.cpp
             src/opengl/GLUtils.h
+            src/opengl/OpenGLBlobCache.cpp
+            src/opengl/OpenGLBlobCache.h
             src/opengl/OpenGLContext.cpp
             src/opengl/OpenGLContext.h
             src/opengl/OpenGLDriver.cpp
@@ -157,6 +160,9 @@ endif()
 if (FILAMENT_SUPPORTS_VULKAN)
     list(APPEND SRCS
             include/backend/platforms/VulkanPlatform.h
+            src/vulkan/platform/VulkanPlatform.cpp
+            src/vulkan/platform/VulkanPlatformSwapChainImpl.cpp
+            src/vulkan/platform/VulkanPlatformSwapChainImpl.h
             src/vulkan/VulkanBlitter.cpp
             src/vulkan/VulkanBlitter.h
             src/vulkan/VulkanBuffer.cpp
@@ -181,7 +187,6 @@ if (FILAMENT_SUPPORTS_VULKAN)
             src/vulkan/VulkanMemory.cpp
             src/vulkan/VulkanPipelineCache.cpp
             src/vulkan/VulkanPipelineCache.h
-            src/vulkan/VulkanPlatform.cpp
             src/vulkan/VulkanSamplerCache.cpp
             src/vulkan/VulkanSamplerCache.h
             src/vulkan/VulkanStagePool.cpp
@@ -194,9 +199,9 @@ if (FILAMENT_SUPPORTS_VULKAN)
             src/vulkan/VulkanUtility.h
     )
     if (ANDROID OR LINUX OR WIN32)
-        list(APPEND SRCS src/vulkan/platform/PlatformVulkanAndroidLinuxWindows.cpp)
+        list(APPEND SRCS src/vulkan/platform/VulkanPlatformAndroidLinuxWindows.cpp)
     elseif (APPLE OR IOS)
-        list(APPEND SRCS src/vulkan/platform/PlatformVulkanApple.mm)
+        list(APPEND SRCS src/vulkan/platform/VulkanPlatformApple.mm)
     endif()
 endif()
 

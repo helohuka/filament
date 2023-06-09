@@ -221,13 +221,13 @@ OpenGLContext::OpenGLContext() noexcept {
             // Blits to texture arrays are failing
             //   This bug continues to reproduce, though at times we've seen it appear to "go away".
             //   The standalone sample app that was written to show this problem still reproduces.
-            //   The working hypthesis is that some other state affects this behavior.
-            bugs.disable_sidecar_blit_into_texture_array = true;
+            //   The working hypothesis is that some other state affects this behavior.
+            bugs.disable_blit_into_texture_array = true;
 
             // early exit condition is flattened in EASU code
             bugs.split_easu = true;
 
-            // initialize the non used uniform array for adreno drivers.
+            // initialize the non-used uniform array for Adreno drivers.
             bugs.enable_initialize_non_used_uniform_array = true;
 
             int maj, min, driverMajor, driverMinor;
@@ -482,6 +482,7 @@ void OpenGLContext::initExtensionsGLES() noexcept {
     ext.EXT_texture_cube_map_array = exts.has("GL_EXT_texture_cube_map_array"sv) || exts.has("GL_OES_texture_cube_map_array"sv);
     ext.GOOGLE_cpp_style_line_directive = exts.has("GL_GOOGLE_cpp_style_line_directive"sv);
     ext.KHR_debug = exts.has("GL_KHR_debug"sv);
+    ext.KHR_parallel_shader_compile = exts.has("GL_KHR_parallel_shader_compile"sv);
     ext.KHR_texture_compression_astc_hdr = exts.has("GL_KHR_texture_compression_astc_hdr"sv);
     ext.KHR_texture_compression_astc_ldr = exts.has("GL_KHR_texture_compression_astc_ldr"sv);
     ext.OES_depth_texture = exts.has("GL_OES_depth_texture"sv);
@@ -546,6 +547,7 @@ void OpenGLContext::initExtensionsGL() noexcept {
     ext.EXT_texture_filter_anisotropic = exts.has("GL_EXT_texture_filter_anisotropic"sv);
     ext.EXT_texture_sRGB = exts.has("GL_EXT_texture_sRGB"sv);
     ext.GOOGLE_cpp_style_line_directive = exts.has("GL_GOOGLE_cpp_style_line_directive"sv);
+    ext.KHR_parallel_shader_compile = exts.has("GL_KHR_parallel_shader_compile"sv);
     ext.KHR_texture_compression_astc_hdr = exts.has("GL_KHR_texture_compression_astc_hdr"sv);
     ext.KHR_texture_compression_astc_ldr = exts.has("GL_KHR_texture_compression_astc_ldr"sv);
     ext.OES_depth_texture = true;
