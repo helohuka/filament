@@ -42,10 +42,10 @@ set_option(FLATBUFFERS_INSTALL "Enable the installation of targets." ON)
 set_option(FLATBUFFERS_BUILD_FLATLIB "Enable the build of the flatbuffers library"
        ON)
 set_option(FLATBUFFERS_BUILD_FLATC "Enable the build of the flatbuffers compiler"
-       ON)
+       IS_HOST_PLATFORM)
 set_option(FLATBUFFERS_STATIC_FLATC "Build flatbuffers compiler with -static flag"
        OFF)
-set_option(FLATBUFFERS_BUILD_FLATHASH "Enable the build of flathash" ON)
+set_option(FLATBUFFERS_BUILD_FLATHASH "Enable the build of flathash" IS_HOST_PLATFORM)
 set_option(FLATBUFFERS_BUILD_BENCHMARKS "Enable the build of flatbenchmark."
        OFF)
 set_option(FLATBUFFERS_BUILD_GRPCTEST "Enable the build of grpctest" OFF)
@@ -834,5 +834,9 @@ target_include_directories(
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/include>)
 			
 set_target_properties(flatbuffers PROPERTIES FOLDER ThirdParty)
-set_target_properties(flatc PROPERTIES FOLDER Tools)
-set_target_properties(flathash PROPERTIES FOLDER Tools)
+
+
+if(FLATBUFFERS_BUILD_FLATC)
+  set_target_properties(flathash PROPERTIES FOLDER Tools)
+  set_target_properties(flatc PROPERTIES FOLDER Tools)
+endif(FLATBUFFERS_BUILD_FLATC)
