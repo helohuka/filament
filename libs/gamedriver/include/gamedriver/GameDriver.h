@@ -1,6 +1,21 @@
-
 #ifndef __GAMEDRIVER_H__
 #define __GAMEDRIVER_H__ 1
+
+/*!
+ * \file GameDriver.h
+ * \date 2023.08.15
+ *
+ * \author Helohuka
+ * 
+ * Contact: helohuka@outlook.com
+ *
+ * \brief 
+ *
+ * TODO: long description
+ *
+ * \note
+*/
+
 
 #include "gamedriver/BaseLibs.h"
 #include "gamedriver/Configure.h"
@@ -19,187 +34,279 @@ class ImGuiHelper;
 class IBL;
 class MeshAssimp;
 
-class GameDriver {
+using CameraManipulator = filament::camutils::Manipulator<float>;
+
+/*!
+ * \class CView
+ *
+ * \ingroup Views
+ *
+ * \brief 
+ *
+ * TODO: long description
+ *
+ * \note 
+ *
+ * \author Helohuka
+ *
+ * \version 1.0
+ *
+ * \date 2023.08.15
+ *
+ * Contact: helohuka@outlook.com
+ *
+ */
+class CView
+{
 public:
-    using SetupCallback = std::function<void(filament::Engine*, filament::View*, filament::Scene*)>;
-    using CleanupCallback =
-            std::function<void(filament::Engine*, filament::View*, filament::Scene*)>;
-    using PreRenderCallback = std::function<void(filament::Engine*, filament::View*,
-            filament::Scene*, filament::Renderer*)>;
-    using PostRenderCallback = std::function<void(filament::Engine*, filament::View*,
-            filament::Scene*, filament::Renderer*)>;
-    using ImGuiCallback = std::function<void(filament::Engine*, filament::View*)>;
-    using AnimCallback = std::function<void(filament::Engine*, filament::View*, double now)>;
+    CView(filament::Renderer& renderer, std::string name);
+    virtual ~CView();
+
+    void setCameraManipulator(CameraManipulator* cm);
+    void setViewport(filament::Viewport const& viewport);
+    void setCamera(filament::Camera* camera);
+    bool intersects(ssize_t x, ssize_t y);
+
+    virtual void mouseDown(int button, ssize_t x, ssize_t y);
+    virtual void mouseUp(ssize_t x, ssize_t y);
+    virtual void mouseMoved(ssize_t x, ssize_t y);
+    virtual void mouseWheel(ssize_t x);
+    virtual void keyDown(SDL_Scancode scancode);
+    virtual void keyUp(SDL_Scancode scancode);
+
+    filament::View const* getView() const { return view; }
+    filament::View* getView() { return view; }
+    CameraManipulator* getCameraManipulator() { return mCameraManipulator; }
+
+private:
+    enum class Mode : uint8_t
+    {
+        NONE,
+        ROTATE,
+        TRACK
+    };
+
+    filament::Engine& engine;
+    filament::Viewport mViewport;
+    filament::View* view = nullptr;
+    CameraManipulator* mCameraManipulator = nullptr;
+    std::string mName;
+};
+
+/*!
+ * \class GodView
+ *
+ * \ingroup Views
+ *
+ * \brief 
+ *
+ * TODO: long description
+ *
+ * \note 
+ *
+ * \author Helohuka
+ *
+ * \version 1.0
+ *
+ * \date 2023.08.15
+ *
+ * Contact: helohuka@outlook.com
+ *
+ */
+class GodView : public CView
+{
+public:
+    using CView::CView;
+    void setGodCamera(filament::Camera* camera);
+};
+
+/*!
+ * \class Window
+ *
+ * \ingroup Window
+ *
+ * \brief 
+ *
+ * TODO: long description
+ *
+ * \note 
+ *
+ * \author Helohuka
+ *
+ * \version 1.0
+ *
+ * \date 2023.08.15
+ *
+ * Contact: helohuka@outlook.com
+ *
+ */
+class Window
+{
+    friend class GameDriver;
+
+public:
+    Window(GameDriver* filamentApp, Config& config, std::string title, size_t w, size_t h);
+    virtual ~Window();
+
+    void mouseDown(int button, ssize_t x, ssize_t y);
+    void mouseUp(ssize_t x, ssize_t y);
+    void mouseMoved(ssize_t x, ssize_t y);
+    void mouseWheel(ssize_t x);
+    void keyDown(SDL_Scancode scancode);
+    void keyUp(SDL_Scancode scancode);
+    void resize();
+
+    filament::Renderer* getRenderer() { return mRenderer; }
+    filament::SwapChain* getSwapChain() { return mSwapChain; }
+
+    SDL_Window* getSDLWindow() { return mWindow; }
+
+private:
+    void configureCamerasForWindow();
+    void fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const;
+
+    GameDriver* const mGameDriver = nullptr;
+    const bool mIsHeadless;
+
+    SDL_Window* mWindow = nullptr;
+    filament::Renderer* mRenderer = nullptr;
+    filament::Engine::Backend mBackend;
+
+    CameraManipulator* mMainCameraMan;
+    CameraManipulator* mDebugCameraMan;
+    filament::SwapChain* mSwapChain = nullptr;
+
+    utils::Entity mCameraEntities[3];
+    filament::Camera* mCameras[3] = {nullptr};
+    filament::Camera* mMainCamera;
+    filament::Camera* mDebugCamera;
+    filament::Camera* mOrthoCamera;
+
+    std::vector<std::unique_ptr<CView>> mViews;
+    CView* mMainView;
+    CView* mUiView;
+    CView* mDepthView;
+    GodView* mGodView;
+    CView* mOrthoView;
+
+    size_t mWidth = 0;
+    size_t mHeight = 0;
+    ssize_t mLastX = 0;
+    ssize_t mLastY = 0;
+
+    CView* mMouseEventTarget = nullptr;
+
+    // Keep track of which view should receive a key's keyUp event.
+    std::unordered_map<SDL_Scancode, CView*> mKeyEventTarget;
+};
+
+/*!
+ * \class GameDriver
+ *
+ * \ingroup Game
+ *
+ * \brief 
+ *
+ * TODO: long description
+ *
+ * \note 
+ *
+ * \author Helohuka
+ *
+ * \version 1.0
+ *
+ * \date 2023.08.15
+ *
+ * Contact: helohuka@outlook.com
+ *
+ */
+class GameDriver
+{
+public:
+    using SetupCallback   = std::function<void(filament::Engine*, filament::View*, filament::Scene*)>;
+    using CleanupCallback = std::function<void(filament::Engine*, filament::View*, filament::Scene*)>;
+    using PreRenderCallback =
+        std::function<void(filament::Engine*, filament::View*, filament::Scene*, filament::Renderer*)>;
+    using PostRenderCallback =
+        std::function<void(filament::Engine*, filament::View*, filament::Scene*, filament::Renderer*)>;
+    using ImGuiCallback  = std::function<void(filament::Engine*, filament::View*)>;
+    using AnimCallback   = std::function<void(filament::Engine*, filament::View*, double now)>;
     using ResizeCallback = std::function<void(filament::Engine*, filament::View*)>;
-    using DropCallback = std::function<void(std::string)>;
+    using DropCallback   = std::function<void(std::string)>;
+
+    static bool manipulatorKeyFromKeycode(SDL_Scancode scancode, CameraManipulator::Key& key);
 
     SINGLE_INSTANCE_FLAG(GameDriver)
 
 public:
 
+    void initConfig(const Config& config)
+    {
+        mConfig = config;
+    }
+
+    filament::Engine* getRenderEngine() {
+        return mEngine;
+    }
+
+public:
     void animate(AnimCallback animation) { mAnimation = animation; }
 
     void resize(ResizeCallback resize) { mResize = resize; }
 
     void setDropHandler(DropCallback handler) { mDropHandler = handler; }
 
-    void run(Config& config, SetupCallback setup, CleanupCallback cleanup,
-            ImGuiCallback imgui = ImGuiCallback(), PreRenderCallback preRender = PreRenderCallback(),
-            PostRenderCallback postRender = PostRenderCallback(),
-            size_t width = 1280, size_t height = 720);
+    void run(SetupCallback setup, CleanupCallback cleanup, ImGuiCallback imgui = ImGuiCallback(), PreRenderCallback preRender = PreRenderCallback(), PostRenderCallback postRender = PostRenderCallback(), size_t width = 1280, size_t height = 720);
 
     filament::Material const* getDefaultMaterial() const noexcept { return mDefaultMaterial; }
     filament::Material const* getTransparentMaterial() const noexcept { return mTransparentMaterial; }
-    IBL* getIBL() const noexcept { return mIBL.get(); }
-    filament::Texture* getDirtTexture() const noexcept { return mDirt; }
-    filament::View* getGuiView() const noexcept;
+    IBL*                      getIBL() const noexcept { return mIBL.get(); }
+    filament::Texture*        getDirtTexture() const noexcept { return mDirt; }
+    filament::View*           getGuiView() const noexcept;
 
     void close() { mClosed = true; }
 
-    void setSidebarWidth(int width) { mSidebarWidth = width; }
-    void setWindowTitle(const char* title) { mWindowTitle = title; }
+    void   setSidebarWidth(int width) { mSidebarWidth = width; }
+    void   setWindowTitle(const char* title) { mWindowTitle = title; }
     float& getCameraFocalLength() { return mCameraFocalLength; }
 
     void addOffscreenView(filament::View* view) { mOffscreenViews.push_back(view); }
 
     size_t getSkippedFrameCount() const { return mSkippedFrames; }
 
-
 private:
- 
-    using CameraManipulator = filament::camutils::Manipulator<float>;
-
-    static bool manipulatorKeyFromKeycode(SDL_Scancode scancode, CameraManipulator::Key& key);
-
-    class CView {
-    public:
-        CView(filament::Renderer& renderer, std::string name);
-        virtual ~CView();
-
-        void setCameraManipulator(CameraManipulator* cm);
-        void setViewport(filament::Viewport const& viewport);
-        void setCamera(filament::Camera* camera);
-        bool intersects(ssize_t x, ssize_t y);
-
-        virtual void mouseDown(int button, ssize_t x, ssize_t y);
-        virtual void mouseUp(ssize_t x, ssize_t y);
-        virtual void mouseMoved(ssize_t x, ssize_t y);
-        virtual void mouseWheel(ssize_t x);
-        virtual void keyDown(SDL_Scancode scancode);
-        virtual void keyUp(SDL_Scancode scancode);
-
-        filament::View const* getView() const { return view; }
-        filament::View* getView() { return view; }
-        CameraManipulator* getCameraManipulator() { return mCameraManipulator; }
-
-    private:
-        enum class Mode : uint8_t {
-            NONE, ROTATE, TRACK
-        };
-
-        filament::Engine& engine;
-        filament::Viewport mViewport;
-        filament::View* view = nullptr;
-        CameraManipulator* mCameraManipulator = nullptr;
-        std::string mName;
-    };
-
-    class GodView : public CView {
-    public:
-        using CView::CView;
-        void setGodCamera(filament::Camera* camera);
-    };
-
-    class Window {
-        friend class GameDriver;
-    public:
-        Window(GameDriver* filamentApp,  Config& config,
-               std::string title, size_t w, size_t h);
-        virtual ~Window();
-
-        void mouseDown(int button, ssize_t x, ssize_t y);
-        void mouseUp(ssize_t x, ssize_t y);
-        void mouseMoved(ssize_t x, ssize_t y);
-        void mouseWheel(ssize_t x);
-        void keyDown(SDL_Scancode scancode);
-        void keyUp(SDL_Scancode scancode);
-        void resize();
-
-        filament::Renderer* getRenderer() { return mRenderer; }
-        filament::SwapChain* getSwapChain() { return mSwapChain; }
-
-        SDL_Window* getSDLWindow() {
-            return mWindow;
-        }
-
-    private:
-        void configureCamerasForWindow();
-        void fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const;
-
-        GameDriver* const mGameDriver = nullptr;
-        const bool mIsHeadless;
-
-        SDL_Window* mWindow = nullptr;
-        filament::Renderer* mRenderer = nullptr;
-        filament::Engine::Backend mBackend;
-
-        CameraManipulator* mMainCameraMan;
-        CameraManipulator* mDebugCameraMan;
-        filament::SwapChain* mSwapChain = nullptr;
-
-        utils::Entity mCameraEntities[3];
-        filament::Camera* mCameras[3] = { nullptr };
-        filament::Camera* mMainCamera;
-        filament::Camera* mDebugCamera;
-        filament::Camera* mOrthoCamera;
-
-        std::vector<std::unique_ptr<CView>> mViews;
-        CView* mMainView;
-        CView* mUiView;
-        CView* mDepthView;
-        GodView* mGodView;
-        CView* mOrthoView;
-
-        size_t mWidth = 0;
-        size_t mHeight = 0;
-        ssize_t mLastX = 0;
-        ssize_t mLastY = 0;
-
-        CView* mMouseEventTarget = nullptr;
-
-        // Keep track of which view should receive a key's keyUp event.
-        std::unordered_map<SDL_Scancode, CView*> mKeyEventTarget;
-    };
-
     friend class Window;
     void initSDL();
 
     void loadIBL(const Config& config);
     void loadDirt(const Config& config);
 
-    filament::Engine* mEngine = nullptr;
-    filament::Scene* mScene = nullptr;
+
+    Config mConfig;
+
+    filament::Engine*    mEngine = nullptr;
+    filament::Scene*     mScene  = nullptr;
     std::unique_ptr<IBL> mIBL;
-    filament::Texture* mDirt = nullptr;
-    bool mClosed = false;
-    uint64_t mTime = 0;
+    filament::Texture*   mDirt   = nullptr;
+    bool                 mClosed = false;
+    uint64_t             mTime   = 0;
 
-    filament::Material const* mDefaultMaterial = nullptr;
-    filament::Material const* mTransparentMaterial = nullptr;
-    filament::Material const* mDepthMaterial = nullptr;
-    filament::MaterialInstance* mDepthMI = nullptr;
+    filament::Material const*             mDefaultMaterial     = nullptr;
+    filament::Material const*             mTransparentMaterial = nullptr;
+    filament::Material const*             mDepthMaterial       = nullptr;
+    filament::MaterialInstance*           mDepthMI             = nullptr;
     std::unique_ptr<filagui::ImGuiHelper> mImGuiHelper;
-    AnimCallback mAnimation;
-    ResizeCallback mResize;
-    DropCallback mDropHandler;
-    int mSidebarWidth = 0;
-    size_t mSkippedFrames = 0;
-    std::string mWindowTitle;
-    std::vector<filament::View*> mOffscreenViews;
-    float mCameraFocalLength = 28.0f;
+    AnimCallback                          mAnimation;
+    ResizeCallback                        mResize;
+    DropCallback                          mDropHandler;
+    int                                   mSidebarWidth  = 0;
+    size_t                                mSkippedFrames = 0;
+    std::string                           mWindowTitle;
+    std::vector<filament::View*>          mOffscreenViews;
+    float                                 mCameraFocalLength = 28.0f;
 };
-
 
 int entry(int argc, char** argv);
 
-#endif // GAMEDRIVER_H
+
+#endif // __GAMEDRIVER_H__

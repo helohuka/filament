@@ -27,15 +27,15 @@ View* GameDriver::getGuiView() const noexcept {
     return mImGuiHelper->getView();
 }
 
-void GameDriver::run(Config& config, SetupCallback setupCallback,
+void GameDriver::run(SetupCallback setupCallback,
         CleanupCallback cleanupCallback, ImGuiCallback imguiCallback,
         PreRenderCallback preRender, PostRenderCallback postRender,
         size_t width, size_t height) {
 
   
-    mWindowTitle = config.title;
-    std::unique_ptr<GameDriver::Window> window(
-            new GameDriver::Window(this, config, config.title, width, height));
+    mWindowTitle = mConfig.title;
+    std::unique_ptr<Window> window(
+        new Window(this, mConfig, mConfig.title, width, height));
 
     mDepthMaterial = Material::Builder()
             .package(GAMEDRIVER_DEPTHVISUALIZER_DATA, GAMEDRIVER_DEPTHVISUALIZER_SIZE)
@@ -58,7 +58,8 @@ void GameDriver::run(Config& config, SetupCallback setupCallback,
     mScene = mEngine->createScene();
 
     window->mMainView->getView()->setVisibleLayers(0x4, 0x4);
-    if (config.splitView) {
+    if (mConfig.splitView)
+    {
         auto& rcm = mEngine->getRenderableManager();
 
         rcm.setLayerMask(rcm.getInstance(cameraCube->getSolidRenderable()), 0x3, 0x2);
@@ -84,8 +85,8 @@ void GameDriver::run(Config& config, SetupCallback setupCallback,
         window->mOrthoView->getView()->setShadowingEnabled(false);
     }
 
-    loadDirt(config);
-    loadIBL(config);
+    loadDirt(mConfig);
+    loadIBL(mConfig);
     if (mIBL != nullptr) {
         mIBL->getSkybox()->setLayerMask(0x7, 0x4);
         mScene->setSkybox(mIBL->getSkybox());
@@ -273,7 +274,7 @@ void GameDriver::run(Config& config, SetupCallback setupCallback,
 
                     break;
                 case SDL_APP_DIDENTERFOREGROUND:
-                    mEngine->setActiveFeatureLevel(config.featureLevel);
+                    mEngine->setActiveFeatureLevel(mConfig.featureLevel);
                     window->mSwapChain = mEngine->createSwapChain(::getNativeWindow(window->mWindow));
                     break;
                 default:
@@ -293,7 +294,8 @@ void GameDriver::run(Config& config, SetupCallback setupCallback,
         if (mImGuiHelper) {
 
             // Inform ImGui of the current window size in case it was resized.
-            if (config.headless) {
+            if (mConfig.headless)
+            {
                 mImGuiHelper->setDisplaySize(window->mWidth, window->mHeight);
             } else {
                 int windowWidth, windowHeight;

@@ -9,7 +9,7 @@ using namespace filament::math;
 using namespace utils;
 // ------------------------------------------------------------------------------------------------
 
-GameDriver::Window::Window(GameDriver* filamentApp,
+Window::Window(GameDriver* filamentApp,
          Config& config, std::string title, size_t w, size_t h)
         : mGameDriver(filamentApp), mIsHeadless(config.headless) {
     const int x = SDL_WINDOWPOS_CENTERED;
@@ -127,7 +127,7 @@ GameDriver::Window::Window(GameDriver* filamentApp,
     mMainCamera->lookAt({4, 0, -4}, {0, 0, -4}, {0, 1, 0});
 }
 
-GameDriver::Window::~Window() {
+Window::~Window() {
     mViews.clear();
     utils::EntityManager& em = utils::EntityManager::get();
     for (auto e : mCameraEntities) {
@@ -141,7 +141,7 @@ GameDriver::Window::~Window() {
     delete mDebugCameraMan;
 }
 
-void GameDriver::Window::mouseDown(int button, ssize_t x, ssize_t y) {
+void Window::mouseDown(int button, ssize_t x, ssize_t y) {
     fixupMouseCoordinatesForHdpi(x, y);
     y = mHeight - y;
     for (auto const& view : mViews) {
@@ -153,7 +153,7 @@ void GameDriver::Window::mouseDown(int button, ssize_t x, ssize_t y) {
     }
 }
 
-void GameDriver::Window::mouseWheel(ssize_t x) {
+void Window::mouseWheel(ssize_t x) {
     if (mMouseEventTarget) {
         mMouseEventTarget->mouseWheel(x);
     } else {
@@ -166,7 +166,7 @@ void GameDriver::Window::mouseWheel(ssize_t x) {
     }
 }
 
-void GameDriver::Window::mouseUp(ssize_t x, ssize_t y) {
+void Window::mouseUp(ssize_t x, ssize_t y) {
     fixupMouseCoordinatesForHdpi(x, y);
     if (mMouseEventTarget) {
         y = mHeight - y;
@@ -175,7 +175,7 @@ void GameDriver::Window::mouseUp(ssize_t x, ssize_t y) {
     }
 }
 
-void GameDriver::Window::mouseMoved(ssize_t x, ssize_t y) {
+void Window::mouseMoved(ssize_t x, ssize_t y) {
     fixupMouseCoordinatesForHdpi(x, y);
     y = mHeight - y;
     if (mMouseEventTarget) {
@@ -185,7 +185,7 @@ void GameDriver::Window::mouseMoved(ssize_t x, ssize_t y) {
     mLastY = y;
 }
 
-void GameDriver::Window::keyDown(SDL_Scancode key) {
+void Window::keyDown(SDL_Scancode key) {
     auto& eventTarget = mKeyEventTarget[key];
 
     // keyDown events can be sent multiple times per key (for key repeat)
@@ -215,7 +215,7 @@ void GameDriver::Window::keyDown(SDL_Scancode key) {
     }
 }
 
-void GameDriver::Window::keyUp(SDL_Scancode key) {
+void Window::keyUp(SDL_Scancode key) {
     auto& eventTarget = mKeyEventTarget[key];
     if (!eventTarget) {
         return;
@@ -224,7 +224,7 @@ void GameDriver::Window::keyUp(SDL_Scancode key) {
     eventTarget = nullptr;
 }
 
-void GameDriver::Window::fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const {
+void Window::fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const {
     int dw, dh, ww, wh;
     SDL_GL_GetDrawableSize(mWindow, &dw, &dh);
     SDL_GetWindowSize(mWindow, &ww, &wh);
@@ -232,7 +232,7 @@ void GameDriver::Window::fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) co
     y = y * dh / wh;
 }
 
-void GameDriver::Window::resize() {
+void Window::resize() {
     void* nativeWindow = ::getNativeWindow(mWindow);
 
 #if defined(__APPLE__)
@@ -258,7 +258,7 @@ void GameDriver::Window::resize() {
     }
 }
 
-void GameDriver::Window::configureCamerasForWindow() {
+void Window::configureCamerasForWindow() {
     float dpiScaleX = 1.0f;
     float dpiScaleY = 1.0f;
 

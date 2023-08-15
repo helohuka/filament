@@ -9,17 +9,17 @@ using namespace filament::math;
 using namespace utils;
 // ------------------------------------------------------------------------------------------------
 
-GameDriver::CView::CView(Renderer& renderer, std::string name)
+CView::CView(Renderer& renderer, std::string name)
         : engine(*renderer.getEngine()), mName(name) {
     view = engine.createView();
     view->setName(name.c_str());
 }
 
-GameDriver::CView::~CView() {
+CView::~CView() {
     engine.destroy(view);
 }
 
-void GameDriver::CView::setViewport(Viewport const& viewport) {
+void CView::setViewport(Viewport const& viewport) {
     mViewport = viewport;
     view->setViewport(viewport);
     if (mCameraManipulator) {
@@ -27,25 +27,25 @@ void GameDriver::CView::setViewport(Viewport const& viewport) {
     }
 }
 
-void GameDriver::CView::mouseDown(int button, ssize_t x, ssize_t y) {
+void CView::mouseDown(int button, ssize_t x, ssize_t y) {
     if (mCameraManipulator) {
         mCameraManipulator->grabBegin(x, y, button == 3);
     }
 }
 
-void GameDriver::CView::mouseUp(ssize_t x, ssize_t y) {
+void CView::mouseUp(ssize_t x, ssize_t y) {
     if (mCameraManipulator) {
         mCameraManipulator->grabEnd();
     }
 }
 
-void GameDriver::CView::mouseMoved(ssize_t x, ssize_t y) {
+void CView::mouseMoved(ssize_t x, ssize_t y) {
     if (mCameraManipulator) {
         mCameraManipulator->grabUpdate(x, y);
     }
 }
 
-void GameDriver::CView::mouseWheel(ssize_t x) {
+void CView::mouseWheel(ssize_t x) {
     if (mCameraManipulator) {
         mCameraManipulator->scroll(0, 0, x);
     }
@@ -76,25 +76,27 @@ bool GameDriver::manipulatorKeyFromKeycode(SDL_Scancode scancode, CameraManipula
     }
 }
 
-void GameDriver::CView::keyUp(SDL_Scancode scancode) {
+void CView::keyUp(SDL_Scancode scancode) {
     if (mCameraManipulator) {
         CameraManipulator::Key key;
-        if (manipulatorKeyFromKeycode(scancode, key)) {
+        if (GameDriver::manipulatorKeyFromKeycode(scancode, key))
+        {
             mCameraManipulator->keyUp(key);
         }
     }
 }
 
-void GameDriver::CView::keyDown(SDL_Scancode scancode) {
+void CView::keyDown(SDL_Scancode scancode) {
     if (mCameraManipulator) {
         CameraManipulator::Key key;
-        if (manipulatorKeyFromKeycode(scancode, key)) {
+        if (GameDriver::manipulatorKeyFromKeycode(scancode, key))
+        {
             mCameraManipulator->keyDown(key);
         }
     }
 }
 
-bool GameDriver::CView::intersects(ssize_t x, ssize_t y) {
+bool CView::intersects(ssize_t x, ssize_t y) {
     if (x >= mViewport.left && x < mViewport.left + mViewport.width)
         if (y >= mViewport.bottom && y < mViewport.bottom + mViewport.height)
             return true;
@@ -102,14 +104,14 @@ bool GameDriver::CView::intersects(ssize_t x, ssize_t y) {
     return false;
 }
 
-void GameDriver::CView::setCameraManipulator(CameraManipulator* cm) {
+void CView::setCameraManipulator(CameraManipulator* cm) {
     mCameraManipulator = cm;
 }
 
-void GameDriver::CView::setCamera(Camera* camera) {
+void CView::setCamera(Camera* camera) {
     view->setCamera(camera);
 }
 
-void GameDriver::GodView::setGodCamera(Camera* camera) {
+void GodView::setGodCamera(Camera* camera) {
     getView()->setDebugCamera(camera);
 }
