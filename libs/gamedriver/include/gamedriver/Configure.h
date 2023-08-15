@@ -11,11 +11,16 @@ struct Config {
     bool headless   = false;
     bool splitView  = false;
 
+
+    int width = 1280;   //window 宽高
+    int height = 768;
+
     float scale = 1.0f;
     
     std::string title = "23";
     std::string iblDirectory;
     std::string dirt;
+    std::string filename = "E:/1/filament/third_party/models/Breakdancer.glb";
 
     filament::Engine::Backend backend               = filament::Engine::Backend::DEFAULT;
     filament::backend::FeatureLevel featureLevel    = filament::backend::FeatureLevel::FEATURE_LEVEL_1;

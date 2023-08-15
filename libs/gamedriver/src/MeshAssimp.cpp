@@ -487,8 +487,10 @@ Box computeTransformedAABB(VECTOR const* vertices, INDEX const* indices, size_t 
     return Box().set(bmin, bmax);
 }
 
-void MeshAssimp::addFromFile(const Path& path,
-        std::map<std::string, MaterialInstance*>& materials, bool overrideMaterial) {
+void MeshAssimp::addFromFile(const Path&                               path,
+                             std::map<std::string, MaterialInstance*>& materials,
+                             bool                                      overrideMaterial)
+{
 
     Asset asset;
     asset.file = path;
@@ -500,59 +502,67 @@ void MeshAssimp::addFromFile(const Path& path,
         // std::vectors here.
 
         //TODO: a lot of these method arguments should probably be class or global variables
-        if (!setFromFile(asset, materials)) {
+        if (!setFromFile(asset, materials))
+        {
             return;
         }
 
         VertexBuffer::Builder vertexBufferBuilder = VertexBuffer::Builder()
-                .vertexCount((uint32_t)asset.positions.size())
-                .bufferCount(4)
-                .attribute(VertexAttribute::POSITION,     0, VertexBuffer::AttributeType::HALF4)
-                .attribute(VertexAttribute::TANGENTS,     1, VertexBuffer::AttributeType::SHORT4)
-                .normalized(VertexAttribute::TANGENTS);
+                                                        .vertexCount((uint32_t)asset.positions.size())
+                                                        .bufferCount(4)
+                                                        .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::HALF4)
+                                                        .attribute(VertexAttribute::TANGENTS, 1, VertexBuffer::AttributeType::SHORT4)
+                                                        .normalized(VertexAttribute::TANGENTS);
 
-        if (asset.snormUV0) {
+        if (asset.snormUV0)
+        {
             vertexBufferBuilder.attribute(VertexAttribute::UV0, 2, VertexBuffer::AttributeType::SHORT2)
                 .normalized(VertexAttribute::UV0);
-        } else {
+        }
+        else
+        {
             vertexBufferBuilder.attribute(VertexAttribute::UV0, 2, VertexBuffer::AttributeType::HALF2);
         }
 
-        if (asset.snormUV1) {
+        if (asset.snormUV1)
+        {
             vertexBufferBuilder.attribute(VertexAttribute::UV1, 3, VertexBuffer::AttributeType::SHORT2)
-                    .normalized(VertexAttribute::UV1);
-        } else {
+                .normalized(VertexAttribute::UV1);
+        }
+        else
+        {
             vertexBufferBuilder.attribute(VertexAttribute::UV1, 3, VertexBuffer::AttributeType::HALF2);
         }
 
         mVertexBuffer = vertexBufferBuilder.build(mEngine);
 
-        auto ps = new State<half4>(std::move(asset.positions));
-        auto ns = new State<short4>(std::move(asset.tangents));
+        auto ps  = new State<half4>(std::move(asset.positions));
+        auto ns  = new State<short4>(std::move(asset.tangents));
         auto t0s = new State<ushort2>(std::move(asset.texCoords0));
         auto t1s = new State<ushort2>(std::move(asset.texCoords1));
-        auto is = new State<uint32_t>(std::move(asset.indices));
+        auto is  = new State<uint32_t>(std::move(asset.indices));
 
         mVertexBuffer->setBufferAt(mEngine, 0,
-                VertexBuffer::BufferDescriptor(ps->data(), ps->size(), State<half4>::free, ps));
+                                   VertexBuffer::BufferDescriptor(ps->data(), ps->size(), State<half4>::free, ps));
 
         mVertexBuffer->setBufferAt(mEngine, 1,
-                VertexBuffer::BufferDescriptor(ns->data(), ns->size(), State<short4>::free, ns));
+                                   VertexBuffer::BufferDescriptor(ns->data(), ns->size(), State<short4>::free, ns));
 
         mVertexBuffer->setBufferAt(mEngine, 2,
-                VertexBuffer::BufferDescriptor(t0s->data(), t0s->size(), State<ushort2>::free, t0s));
+                                   VertexBuffer::BufferDescriptor(t0s->data(), t0s->size(), State<ushort2>::free, t0s));
 
         mVertexBuffer->setBufferAt(mEngine, 3,
-                VertexBuffer::BufferDescriptor(t1s->data(), t1s->size(), State<ushort2>::free, t1s));
+                                   VertexBuffer::BufferDescriptor(t1s->data(), t1s->size(), State<ushort2>::free, t1s));
 
         mIndexBuffer = IndexBuffer::Builder().indexCount(uint32_t(is->size())).build(mEngine);
         mIndexBuffer->setBuffer(mEngine,
-                IndexBuffer::BufferDescriptor(is->data(), is->size(), State<uint32_t>::free, is));
+                                IndexBuffer::BufferDescriptor(is->data(), is->size(), State<uint32_t>::free, is));
     }
 
     // always add the DefaultMaterial (with its default parameters), so we don't pick-up
     // whatever defaults is used in mesh
-    if (materials.find(AI_DEFAULT_MATERIAL_NAME) == materials.end()) {
+    if (materials.find(AI_DEFAULT_MATERIAL_NAME) == materials.end())
+    {
         materials[AI_DEFAULT_MATERIAL_NAME] = mDefaultColorMaterial->createInstance();
     }
 
@@ -565,30 +575,41 @@ void MeshAssimp::addFromFile(const Path& path,
     //Add root instance
     tcm.create(rootEntity, TransformManager::Instance{}, mat4f());
 
-    for (auto& mesh : asset.meshes) {
+    for (auto& mesh : asset.meshes)
+    {
         RenderableManager::Builder builder(mesh.parts.size());
         builder.boundingBox(mesh.aabb);
         builder.screenSpaceContactShadows(true);
 
         size_t partIndex = 0;
-        for (auto& part : mesh.parts) {
+        for (auto& part : mesh.parts)
+        {
             builder.geometry(partIndex, RenderableManager::PrimitiveType::TRIANGLES,
-                    mVertexBuffer, mIndexBuffer, part.offset, part.count);
+                             mVertexBuffer, mIndexBuffer, part.offset, part.count);
 
-            if (overrideMaterial) {
+            if (overrideMaterial)
+            {
                 builder.material(partIndex, materials[AI_DEFAULT_MATERIAL_NAME]);
-            } else {
+            }
+            else
+            {
                 auto pos = materials.find(part.material);
 
-                if (pos != materials.end()) {
+                if (pos != materials.end())
+                {
                     builder.material(partIndex, pos->second);
-                } else {
+                }
+                else
+                {
                     MaterialInstance* colorMaterial;
-                    if (part.opacity < 1.0f) {
+                    if (part.opacity < 1.0f)
+                    {
                         colorMaterial = mDefaultTransparentColorMaterial->createInstance();
                         colorMaterial->setParameter("baseColor", RgbaType::sRGB,
-                                sRGBColorA { part.baseColor, part.opacity });
-                    } else {
+                                                    sRGBColorA{part.baseColor, part.opacity});
+                    }
+                    else
+                    {
                         colorMaterial = mDefaultColorMaterial->createInstance();
                         colorMaterial->setParameter("baseColor", RgbType::sRGB, part.baseColor);
                         colorMaterial->setParameter("reflectance", part.reflectance);
@@ -603,53 +624,58 @@ void MeshAssimp::addFromFile(const Path& path,
         }
 
         const size_t meshIndex = &mesh - asset.meshes.data();
-        Entity entity = mRenderables[startIndex + meshIndex];
-        if (!mesh.parts.empty()) {
+        Entity       entity    = mRenderables[startIndex + meshIndex];
+        if (!mesh.parts.empty())
+        {
             builder.build(mEngine, entity);
         }
-        auto pindex = asset.parents[meshIndex];
+        auto                       pindex = asset.parents[meshIndex];
         TransformManager::Instance parent((pindex < 0) ?
-                tcm.getInstance(rootEntity) : tcm.getInstance(mRenderables[pindex]));
+                                              tcm.getInstance(rootEntity) :
+                                              tcm.getInstance(mRenderables[pindex]));
         tcm.create(entity, parent, mesh.transform);
     }
 }
 
 using Assimp::Importer;
 
-bool MeshAssimp::setFromFile(Asset& asset, std::map<std::string, MaterialInstance*>& outMaterials) {
+bool MeshAssimp::setFromFile(Asset& asset, std::map<std::string, MaterialInstance*>& outMaterials)
+{
     Importer importer;
     importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE,
-            aiPrimitiveType_LINE | aiPrimitiveType_POINT);
+                                aiPrimitiveType_LINE | aiPrimitiveType_POINT);
     importer.SetPropertyBool(AI_CONFIG_IMPORT_COLLADA_IGNORE_UP_DIRECTION, true);
     importer.SetPropertyBool(AI_CONFIG_PP_PTV_KEEP_HIERARCHY, true);
 
     aiScene const* scene = importer.ReadFile(asset.file,
-            // normals and tangents
-            aiProcess_GenSmoothNormals |
-            aiProcess_CalcTangentSpace |
-            // UV Coordinates
-            aiProcess_GenUVCoords |
-            // topology optimization
-            aiProcess_FindInstances |
-            aiProcess_OptimizeMeshes |
-            aiProcess_JoinIdenticalVertices |
-            // misc optimization
-            aiProcess_ImproveCacheLocality |
-            aiProcess_SortByPType |
-            // we only support triangles
-            aiProcess_Triangulate);
+                                             // normals and tangents
+                                             aiProcess_GenSmoothNormals |
+                                                 aiProcess_CalcTangentSpace |
+                                                 // UV Coordinates
+                                                 aiProcess_GenUVCoords |
+                                                 // topology optimization
+                                                 aiProcess_FindInstances |
+                                                 aiProcess_OptimizeMeshes |
+                                                 aiProcess_JoinIdenticalVertices |
+                                                 // misc optimization
+                                                 aiProcess_ImproveCacheLocality |
+                                                 aiProcess_SortByPType |
+                                                 // we only support triangles
+                                                 aiProcess_Triangulate);
 
-    size_t index = importer.GetImporterIndex(asset.file.getExtension().c_str());
+    size_t                index        = importer.GetImporterIndex(asset.file.getExtension().c_str());
     const aiImporterDesc* importerDesc = importer.GetImporterInfo(index);
-    bool isGLTF = importerDesc &&
-            (!strncmp("glTF Importer",  importerDesc->mName, 13) ||
-             !strncmp("glTF2 Importer", importerDesc->mName, 14));
+    bool                  isGLTF       = importerDesc &&
+        (!strncmp("glTF Importer", importerDesc->mName, 13) ||
+         !strncmp("glTF2 Importer", importerDesc->mName, 14));
 
-    if (!scene) {
+    if (!scene)
+    {
         std::cout << "No scene" << std::endl;
     }
 
-    if (scene && !scene->mRootNode) {
+    if (scene && !scene->mRootNode)
+    {
         std::cout << "No root node" << std::endl;
     }
 
@@ -658,31 +684,33 @@ bool MeshAssimp::setFromFile(Asset& asset, std::map<std::string, MaterialInstanc
     //      aiProcess_PreTransformVertices
 
     const std::function<void(aiNode const* node, size_t& totalVertexCount, size_t& totalIndexCount)>
-            countVertices = [scene, &countVertices]
-            (aiNode const* node, size_t& totalVertexCount, size_t& totalIndexCount) {
-        for (size_t i = 0; i < node->mNumMeshes; i++) {
-            aiMesh const *mesh = scene->mMeshes[node->mMeshes[i]];
-            totalVertexCount += mesh->mNumVertices;
+        countVertices = [scene, &countVertices](aiNode const* node, size_t& totalVertexCount, size_t& totalIndexCount) {
+            for (size_t i = 0; i < node->mNumMeshes; i++)
+            {
+                aiMesh const* mesh = scene->mMeshes[node->mMeshes[i]];
+                totalVertexCount += mesh->mNumVertices;
 
-            const aiFace *faces = mesh->mFaces;
-            const size_t numFaces = mesh->mNumFaces;
-            totalIndexCount += numFaces * faces[0].mNumIndices;
-        }
+                const aiFace* faces    = mesh->mFaces;
+                const size_t  numFaces = mesh->mNumFaces;
+                totalIndexCount += numFaces * faces[0].mNumIndices;
+            }
 
-        for (size_t i = 0; i < node->mNumChildren; i++) {
-            countVertices(node->mChildren[i], totalVertexCount, totalIndexCount);
-        }
-    };
+            for (size_t i = 0; i < node->mNumChildren; i++)
+            {
+                countVertices(node->mChildren[i], totalVertexCount, totalIndexCount);
+            }
+        };
 
-    if (scene) {
-        size_t deep = 0;
-        size_t depth = 0;
+    if (scene)
+    {
+        size_t deep     = 0;
+        size_t depth    = 0;
         size_t matCount = 0;
 
         aiNode const* node = scene->mRootNode;
 
         size_t totalVertexCount = 0;
-        size_t totalIndexCount = 0;
+        size_t totalIndexCount  = 0;
 
         countVertices(node, totalVertexCount, totalIndexCount);
 
@@ -700,70 +728,92 @@ bool MeshAssimp::setFromFile(Asset& asset, std::map<std::string, MaterialInstanc
         getMinMaxUV(scene, node, minUV1, maxUV1, 1);
 
         asset.snormUV0 = minUV0.x >= -1.0f && minUV0.x <= 1.0f && maxUV0.x >= -1.0f && maxUV0.x <= 1.0f &&
-                         minUV0.y >= -1.0f && minUV0.y <= 1.0f && maxUV0.y >= -1.0f && maxUV0.y <= 1.0f;
+            minUV0.y >= -1.0f && minUV0.y <= 1.0f && maxUV0.y >= -1.0f && maxUV0.y <= 1.0f;
 
         asset.snormUV1 = minUV1.x >= -1.0f && minUV1.x <= 1.0f && maxUV1.x >= -1.0f && maxUV1.x <= 1.0f &&
-                         minUV1.y >= -1.0f && minUV1.y <= 1.0f && maxUV1.y >= -1.0f && maxUV1.y <= 1.0f;
+            minUV1.y >= -1.0f && minUV1.y <= 1.0f && maxUV1.y >= -1.0f && maxUV1.y <= 1.0f;
 
-        if (asset.snormUV0) {
-            if (asset.snormUV1) {
+        if (asset.snormUV0)
+        {
+            if (asset.snormUV1)
+            {
                 processNode<true, true>(asset, outMaterials,
                                         scene, isGLTF, deep, matCount, node, -1, depth);
-            } else {
-                processNode<true, false>(asset, outMaterials,
-                                        scene, isGLTF, deep, matCount, node, -1, depth);
             }
-        } else {
-            if (asset.snormUV1) {
+            else
+            {
+                processNode<true, false>(asset, outMaterials,
+                                         scene, isGLTF, deep, matCount, node, -1, depth);
+            }
+        }
+        else
+        {
+            if (asset.snormUV1)
+            {
                 processNode<false, true>(asset, outMaterials,
-                                        scene, isGLTF, deep, matCount, node, -1, depth);
-            } else {
+                                         scene, isGLTF, deep, matCount, node, -1, depth);
+            }
+            else
+            {
                 processNode<false, false>(asset, outMaterials,
-                                        scene, isGLTF, deep, matCount, node, -1, depth);
+                                          scene, isGLTF, deep, matCount, node, -1, depth);
             }
         }
 
         // compute the aabb and find bounding box of entire model
-        for (auto& mesh : asset.meshes) {
+        for (auto& mesh : asset.meshes)
+        {
             mesh.aabb = RenderableManager::computeAABB(
-                    asset.positions.data(),
-                    asset.indices.data() + mesh.offset,
-                    mesh.count);
+                asset.positions.data(),
+                asset.indices.data() + mesh.offset,
+                mesh.count);
 
             Box transformedAabb = computeTransformedAABB(
-                    asset.positions.data(),
-                    asset.indices.data() + mesh.offset,
-                    mesh.count,
-                    mesh.accTransform);
+                asset.positions.data(),
+                asset.indices.data() + mesh.offset,
+                mesh.count,
+                mesh.accTransform);
 
             float3 aabbMin = transformedAabb.getMin();
             float3 aabbMax = transformedAabb.getMax();
 
-            if (!isinf(aabbMin.x) && !isinf(aabbMax.x)) {
-                if (minBound.x > maxBound.x) {
+            if (!isinf(aabbMin.x) && !isinf(aabbMax.x))
+            {
+                if (minBound.x > maxBound.x)
+                {
                     minBound.x = aabbMin.x;
                     maxBound.x = aabbMax.x;
-                } else {
+                }
+                else
+                {
                     minBound.x = fmin(minBound.x, aabbMin.x);
                     maxBound.x = fmax(maxBound.x, aabbMax.x);
                 }
             }
 
-            if (!isinf(aabbMin.y) && !isinf(aabbMax.y)) {
-                if (minBound.y > maxBound.y) {
+            if (!isinf(aabbMin.y) && !isinf(aabbMax.y))
+            {
+                if (minBound.y > maxBound.y)
+                {
                     minBound.y = aabbMin.y;
                     maxBound.y = aabbMax.y;
-                } else {
+                }
+                else
+                {
                     minBound.y = fmin(minBound.y, aabbMin.y);
                     maxBound.y = fmax(maxBound.y, aabbMax.y);
                 }
             }
 
-            if (!isinf(aabbMin.z) && !isinf(aabbMax.z)) {
-                if (minBound.z > maxBound.z) {
+            if (!isinf(aabbMin.z) && !isinf(aabbMax.z))
+            {
+                if (minBound.z > maxBound.z)
+                {
                     minBound.z = aabbMin.z;
                     maxBound.z = aabbMax.z;
-                } else {
+                }
+                else
+                {
                     minBound.z = fmin(minBound.z, aabbMin.z);
                     maxBound.z = fmax(maxBound.z, aabbMax.z);
                 }

@@ -4,7 +4,7 @@
 
 #include "gamedriver/ScriptVM.h"
 #include "gamedriver/Resource.h"
-
+#include "gamedriver/MeshAssimp.h"
 #include "gamedriver/Cube.h"
 #include "gamedriver/NativeWindowHelper.h"
 #include "generated/resources/gamedriver.h"
@@ -27,15 +27,15 @@ View* GameDriver::getGuiView() const noexcept {
     return mImGuiHelper->getView();
 }
 
-void GameDriver::run(SetupCallback setupCallback,
-        CleanupCallback cleanupCallback, ImGuiCallback imguiCallback,
-        PreRenderCallback preRender, PostRenderCallback postRender,
-        size_t width, size_t height) {
+void GameDriver::mainLoop()
+{
 
+    static const char* DEFAULT_IBL = "assets/ibl/lightroom_14b";
+    mConfig.iblDirectory = Resource::get().getRootPath() + DEFAULT_IBL;
   
     mWindowTitle = mConfig.title;
     std::unique_ptr<Window> window(
-        new Window(this, mConfig, mConfig.title, width, height));
+        new Window(this, mConfig));
 
     mDepthMaterial = Material::Builder()
             .package(GAMEDRIVER_DEPTHVISUALIZER_DATA, GAMEDRIVER_DEPTHVISUALIZER_SIZE)
@@ -85,8 +85,8 @@ void GameDriver::run(SetupCallback setupCallback,
         window->mOrthoView->getView()->setShadowingEnabled(false);
     }
 
-    loadDirt(mConfig);
-    loadIBL(mConfig);
+    loadDirt();
+    loadIBL();
     if (mIBL != nullptr) {
         mIBL->getSkybox()->setLayerMask(0x7, 0x4);
         mScene->setSkybox(mIBL->getSkybox());
@@ -99,7 +99,11 @@ void GameDriver::run(SetupCallback setupCallback,
         }
     }
 
-    setupCallback(mEngine, window->mMainView->getView(), mScene);
+
+
+    setup(window->mMainView->getView());
+
+    ImGuiCallback imguiCallback = std::bind(&GameDriver::gui, this, mEngine, std::placeholders::_2);
 
     if (imguiCallback) {
         mImGuiHelper = std::make_unique<ImGuiHelper>(mEngine, window->mUiView->getView(),
@@ -165,10 +169,12 @@ void GameDriver::run(SetupCallback setupCallback,
         }
 
         // Allow the app to animate the scene if desired.
-        if (mAnimation) {
-            double now = (double) SDL_GetPerformanceCounter() / SDL_GetPerformanceFrequency();
-            mAnimation(mEngine, window->mMainView->getView(), now);
+        //if (mAnimation) {
+        {
+            double now = (double)SDL_GetPerformanceCounter() / SDL_GetPerformanceFrequency();
+            animate(window->mMainView->getView(), now);
         }
+            //}
 
         // Loop over fresh events twice: first stash them and let ImGui process them, then allow
         // the app to process the stashed events. This is done because ImGui might wish to block
@@ -358,9 +364,9 @@ void GameDriver::run(SetupCallback setupCallback,
 
         Renderer* renderer = window->getRenderer();
 
-        if (preRender) {
-            preRender(mEngine, window->mViews[0]->getView(), mScene, renderer);
-        }
+        //if (preRender) {
+            preRender( window->mViews[0]->getView(), mScene, renderer);
+        //}
 
         if (renderer->beginFrame(window->getSwapChain())) {
             for (filament::View* offscreenView : mOffscreenViews) {
@@ -369,9 +375,9 @@ void GameDriver::run(SetupCallback setupCallback,
             for (auto const& view : window->mViews) {
                 renderer->render(view->getView());
             }
-            if (postRender) {
-                postRender(mEngine, window->mViews[0]->getView(), mScene, renderer);
-            }
+            //if (postRender) {
+                postRender(window->mViews[0]->getView(), mScene, renderer);
+            //}
             renderer->endFrame();
 
         } else {
@@ -383,7 +389,7 @@ void GameDriver::run(SetupCallback setupCallback,
         mImGuiHelper.reset();
     }
 
-    cleanupCallback(mEngine, window->mMainView->getView(), mScene);
+    cleanup();
 
     cameraCube.reset();
     lightmapCube.reset();
@@ -401,25 +407,33 @@ void GameDriver::run(SetupCallback setupCallback,
 
 
 
-void GameDriver::loadIBL(const Config& config) {
-    if (!config.iblDirectory.empty()) {
-        Path iblPath(config.iblDirectory);
+void GameDriver::loadIBL()
+{
+    if (!mConfig.iblDirectory.empty())
+    {
+        Path iblPath(mConfig.iblDirectory);
 
-        if (!iblPath.exists()) {
+        if (!iblPath.exists())
+        {
             std::cerr << "The specified IBL path does not exist: " << iblPath << std::endl;
             return;
         }
 
         mIBL = std::make_unique<IBL>(*mEngine);
 
-        if (!iblPath.isDirectory()) {
-            if (!mIBL->loadFromEquirect(iblPath)) {
+        if (!iblPath.isDirectory())
+        {
+            if (!mIBL->loadFromEquirect(iblPath))
+            {
                 std::cerr << "Could not load the specified IBL: " << iblPath << std::endl;
                 mIBL.reset(nullptr);
                 return;
             }
-        } else {
-            if (!mIBL->loadFromDirectory(iblPath)) {
+        }
+        else
+        {
+            if (!mIBL->loadFromDirectory(iblPath))
+            {
                 std::cerr << "Could not load the specified IBL: " << iblPath << std::endl;
                 mIBL.reset(nullptr);
                 return;
@@ -428,9 +442,13 @@ void GameDriver::loadIBL(const Config& config) {
     }
 }
 
-void GameDriver::loadDirt(const Config& config) {
-    if (!config.dirt.empty()) {
-        Path dirtPath(config.dirt);
+void GameDriver::loadDirt() {
+    
+
+
+    if (!mConfig.dirt.empty())
+    {
+        Path dirtPath(mConfig.dirt);
 
         if (!dirtPath.exists()) {
             std::cerr << "The specified dirt file does not exist: " << dirtPath << std::endl;
@@ -463,3 +481,676 @@ void GameDriver::initSDL() {
     ASSERT_POSTCONDITION(SDL_Init(SDL_INIT_EVERYTHING) == 0, "SDL_Init Failure");
 }
 
+
+void GameDriver::loadAsset(utils::Path filename)
+{
+    // Peek at the file size to allow pre-allocation.
+    long contentSize = static_cast<long>(getFileSize(filename.c_str()));
+    if (contentSize <= 0)
+    {
+        std::cerr << "Unable to open " << filename << std::endl;
+        exit(1);
+    }
+    std::map<std::string, filament::MaterialInstance*> materials;
+    MeshAssimp ma(*mEngine);
+    ma.addFromFile(filename, materials);
+
+    // Consume the glTF file.
+    std::ifstream        in(filename.c_str(), std::ifstream::binary | std::ifstream::in);
+    std::vector<uint8_t> buffer(static_cast<unsigned long>(contentSize));
+    if (!in.read((char*)buffer.data(), contentSize))
+    {
+        std::cerr << "Unable to read " << filename << std::endl;
+        exit(1);
+    }
+
+    // Parse the glTF file and create Filament entities.
+    mAsset    = mAssetLoader->createAsset(buffer.data(), buffer.size());
+    mInstance = mAsset->getInstance();
+    buffer.clear();
+    buffer.shrink_to_fit();
+
+    if (!mAsset)
+    {
+        std::cerr << "Unable to parse " << filename << std::endl;
+        exit(1);
+    }
+};
+
+
+void GameDriver::loadResources( utils::Path filename)
+{
+    // Load external textures and buffers.
+    std::string           gltfPath         = filename.getAbsolutePath();
+    filament::gltfio::ResourceConfiguration configuration    = {};
+    configuration.engine                   = mEngine;
+    configuration.gltfPath                 = gltfPath.c_str();
+    configuration.normalizeSkinningWeights = true;
+
+    if (!mResourceLoader)
+    {
+        mResourceLoader = new gltfio::ResourceLoader(configuration);
+        mStbDecoder     = filament::gltfio::createStbProvider(mEngine);
+        mKtxDecoder     = filament::gltfio::createKtx2Provider(mEngine);
+        mResourceLoader->addTextureProvider("image/png", mStbDecoder);
+        mResourceLoader->addTextureProvider("image/jpeg",mStbDecoder);
+        mResourceLoader->addTextureProvider("image/ktx2",mKtxDecoder);
+    }
+
+    if (!mResourceLoader->asyncBeginLoad(mAsset))
+    {
+        std::cerr << "Unable to start loading resources for " << filename << std::endl;
+        exit(1);
+    }
+
+    if (mRecomputeAabb)
+    {
+        mAsset->getInstance()->recomputeBoundingBoxes();
+    }
+
+    mAsset->releaseSourceData();
+
+    // Enable stencil writes on all material instances.
+    const size_t                   matInstanceCount = mInstance->getMaterialInstanceCount();
+    filament::MaterialInstance* const* const instances        = mInstance->getMaterialInstances();
+    for (int mi = 0; mi < matInstanceCount; mi++)
+    {
+        instances[mi]->setStencilWrite(true);
+        instances[mi]->setStencilOpDepthStencilPass(filament::MaterialInstance::StencilOperation::INCR);
+    }
+
+    if (mIBL)
+    {
+        mViewer->setIndirectLight(mIBL->getIndirectLight(), mIBL->getSphericalHarmonics());
+    }
+};
+
+
+
+void GameDriver::createGroundPlane()
+{
+    auto&     em             = EntityManager::get();
+    Material* shadowMaterial = Material::Builder()
+                                   .package(GAMEDRIVER_GROUNDSHADOW_DATA, GAMEDRIVER_GROUNDSHADOW_SIZE)
+                                   .build(*mEngine);
+    auto& viewerOptions = mViewer->getSettings().viewer;
+    shadowMaterial->setDefaultParameter("strength", viewerOptions.groundShadowStrength);
+
+    const static uint32_t indices[] = {
+        0, 1, 2, 2, 3, 0};
+
+    Aabb aabb = mAsset->getBoundingBox();
+    if (!mActualSize)
+    {
+        mat4f transform = filament::viewer::fitIntoUnitCube(aabb, 4);
+        aabb            = aabb.transform(transform);
+    }
+
+    float3 planeExtent{10.0f * aabb.extent().x, 0.0f, 10.0f * aabb.extent().z};
+
+    const static float3 vertices[] = {
+        {-planeExtent.x, 0, -planeExtent.z},
+        {-planeExtent.x, 0, planeExtent.z},
+        {planeExtent.x, 0, planeExtent.z},
+        {planeExtent.x, 0, -planeExtent.z},
+    };
+
+    short4 tbn = packSnorm16(
+        mat3f::packTangentFrame(
+            mat3f{
+                float3{1.0f, 0.0f, 0.0f},
+                float3{0.0f, 0.0f, 1.0f},
+                float3{0.0f, 1.0f, 0.0f}})
+            .xyzw);
+
+    const static short4 normals[]{tbn, tbn, tbn, tbn};
+
+    VertexBuffer* vertexBuffer = VertexBuffer::Builder()
+                                     .vertexCount(4)
+                                     .bufferCount(2)
+                                     .attribute(VertexAttribute::POSITION,
+                                                0, VertexBuffer::AttributeType::FLOAT3)
+                                     .attribute(VertexAttribute::TANGENTS,
+                                                1, VertexBuffer::AttributeType::SHORT4)
+                                     .normalized(VertexAttribute::TANGENTS)
+                                     .build(*mEngine);
+
+    vertexBuffer->setBufferAt(*mEngine, 0, VertexBuffer::BufferDescriptor(vertices, vertexBuffer->getVertexCount() * sizeof(vertices[0])));
+    vertexBuffer->setBufferAt(*mEngine, 1, VertexBuffer::BufferDescriptor(normals, vertexBuffer->getVertexCount() * sizeof(normals[0])));
+
+    IndexBuffer* indexBuffer = IndexBuffer::Builder()
+                                   .indexCount(6)
+                                   .build(*mEngine);
+
+    indexBuffer->setBuffer(*mEngine, IndexBuffer::BufferDescriptor(indices, indexBuffer->getIndexCount() * sizeof(uint32_t)));
+
+    Entity groundPlane = em.create();
+    RenderableManager::Builder(1)
+        .boundingBox({{}, {planeExtent.x, 1e-4f, planeExtent.z}})
+        .material(0, shadowMaterial->getDefaultInstance())
+        .geometry(0, RenderableManager::PrimitiveType::TRIANGLES,
+                  vertexBuffer, indexBuffer, 0, 6)
+        .culling(false)
+        .receiveShadows(true)
+        .castShadows(false)
+        .build(*mEngine, groundPlane);
+
+    mScene->addEntity(groundPlane);
+
+    auto& tcm = mEngine->getTransformManager();
+    tcm.setTransform(tcm.getInstance(groundPlane),
+                     mat4f::translation(float3{0, aabb.min.y, -4}));
+
+    auto& rcm      = mEngine->getRenderableManager();
+    auto  instance = rcm.getInstance(groundPlane);
+    rcm.setLayerMask(instance, 0xff, 0x00);
+
+    mGround.mGroundPlane        = groundPlane;
+    mGround.mGroundVertexBuffer = vertexBuffer;
+    mGround.mGroundIndexBuffer  = indexBuffer;
+    mGround.mGroundMaterial     = shadowMaterial;
+}
+
+
+
+void GameDriver::createOverdrawVisualizerEntities()
+{
+    static constexpr float4 sFullScreenTriangleVertices[3] = {
+        {-1.0f, -1.0f, 1.0f, 1.0f},
+        {3.0f, -1.0f, 1.0f, 1.0f},
+        {-1.0f, 3.0f, 1.0f, 1.0f}};
+
+    static const uint16_t sFullScreenTriangleIndices[3] = {0, 1, 2};
+
+    Material* material = Material::Builder()
+                             .package(GAMEDRIVER_OVERDRAW_DATA, GAMEDRIVER_OVERDRAW_SIZE)
+                             .build(*mEngine);
+
+    const float3 overdrawColors[GameDriver::Overdraw::OVERDRAW_LAYERS] = {
+        {0.0f, 0.0f, 1.0f}, // blue         (overdrawn 1 time)
+        {0.0f, 1.0f, 0.0f}, // green        (overdrawn 2 times)
+        {1.0f, 0.0f, 1.0f}, // magenta      (overdrawn 3 times)
+        {1.0f, 0.0f, 0.0f}  // red          (overdrawn 4+ times)
+    };
+
+    for (auto i = 0; i < GameDriver::Overdraw::OVERDRAW_LAYERS; i++)
+    {
+        MaterialInstance* matInstance = material->createInstance();
+        // TODO: move this to the material definition.
+        matInstance->setStencilCompareFunction(MaterialInstance::StencilCompareFunc::E);
+        // The stencil value represents the number of times the fragment has been written to.
+        // We want 0-1 writes to be the regular color. Overdraw visualization starts at 2+ writes,
+        // which represents a fragment overdrawn 1 time.
+        matInstance->setStencilReferenceValue(i + 2);
+        matInstance->setParameter("color", overdrawColors[i]);
+        mOverdraw.mOverdrawMaterialInstances[i] = matInstance;
+    }
+    auto& lastMi = mOverdraw.mOverdrawMaterialInstances[GameDriver::Overdraw::OVERDRAW_LAYERS - 1];
+    // This seems backwards, but it isn't. The comparison function compares:
+    // the reference value (left side) <= stored stencil value (right side)
+    lastMi->setStencilCompareFunction(MaterialInstance::StencilCompareFunc::LE);
+
+    VertexBuffer* vertexBuffer = VertexBuffer::Builder()
+                                     .vertexCount(3)
+                                     .bufferCount(1)
+                                     .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT4, 0)
+                                     .build(*mEngine);
+
+    vertexBuffer->setBufferAt(
+        *mEngine, 0, {sFullScreenTriangleVertices, sizeof(sFullScreenTriangleVertices)});
+
+    IndexBuffer* indexBuffer = IndexBuffer::Builder()
+                                   .indexCount(3)
+                                   .bufferType(IndexBuffer::IndexType::USHORT)
+                                   .build(*mEngine);
+
+    indexBuffer->setBuffer(*mEngine,
+                           {sFullScreenTriangleIndices, sizeof(sFullScreenTriangleIndices)});
+
+    auto&       em           = EntityManager::get();
+    const auto& matInstances = mOverdraw.mOverdrawMaterialInstances;
+    for (auto i = 0; i < GameDriver::Overdraw::OVERDRAW_LAYERS; i++)
+    {
+        Entity overdrawEntity = em.create();
+        RenderableManager::Builder(1)
+            .boundingBox({{}, {1.0f, 1.0f, 1.0f}})
+            .material(0, matInstances[i])
+            .geometry(0, RenderableManager::PrimitiveType::TRIANGLES, vertexBuffer, indexBuffer, 0, 3)
+            .culling(false)
+            .priority(7u) // ensure the overdraw primitives are drawn last
+            .layerMask(0xFF, 1u << GameDriver::Overdraw::OVERDRAW_VISIBILITY_LAYER)
+            .build(*mEngine, overdrawEntity);
+        mScene->addEntity(overdrawEntity);
+        mOverdraw.mOverdrawVisualizer[i] = overdrawEntity;
+    }
+
+    mOverdraw.mOverdrawMaterial               = material;
+    mOverdraw.mFullScreenTriangleVertexBuffer = vertexBuffer;
+    mOverdraw.mFullScreenTriangleIndexBuffer  = indexBuffer;
+}
+
+static void onClick(GameDriver& app, View* view, ImVec2 pos)
+{
+    view->pick(pos.x, pos.y, [&app](View::PickingQueryResult const& result) {
+        if (const char* name = app.mAsset->getName(result.renderable); name)
+        {
+            app.mNotificationText = name;
+        }
+        else
+        {
+            app.mNotificationText.clear();
+        }
+    });
+}
+
+void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
+{
+    auto&       rcm           = mEngine->getRenderableManager();
+    auto        instance      = rcm.getInstance(mGround.mGroundPlane);
+    const auto  viewerOptions = mAutomationEngine->getViewerOptions();
+    const auto& dofOptions    = mViewer->getSettings().view.dof;
+    rcm.setLayerMask(instance, 0xff, viewerOptions.groundPlaneEnabled ? 0xff : 0x00);
+
+    mEngine->setAutomaticInstancingEnabled(viewerOptions.autoInstancingEnabled);
+
+    // Note that this focal length might be different from the slider value because the
+    // automation engine applies Camera::computeEffectiveFocalLength when DoF is enabled.
+    mCameraFocalLength = viewerOptions.cameraFocalLength;
+
+    const size_t cameraCount = mAsset->getCameraEntityCount();
+    view->setCamera(mMainCamera);
+
+    const int currentCamera = mViewer->getCurrentCamera();
+    if (currentCamera > 0 && currentCamera <= cameraCount)
+    {
+        const utils::Entity* cameras = mAsset->getCameraEntities();
+        Camera*              camera  = mEngine->getCameraComponent(cameras[currentCamera - 1]);
+        assert_invariant(camera);
+        view->setCamera(camera);
+
+        // Override the aspect ratio in the glTF file and adjust the aspect ratio of this
+        // camera to the viewport.
+        const Viewport& vp          = view->getViewport();
+        double          aspectRatio = (double)vp.width / vp.height;
+        camera->setScaling({1.0 / aspectRatio, 1.0});
+    }
+
+    mGround.mGroundMaterial->setDefaultParameter("strength", viewerOptions.groundShadowStrength);
+
+    // This applies clear options, the skybox mask, and some camera settings.
+    Camera& camera = view->getCamera();
+    Skybox* skybox = scene->getSkybox();
+    filament::viewer::applySettings(mEngine, mViewer->getSettings().viewer, &camera, skybox, renderer);
+
+    // Check if color grading has changed.
+    filament::viewer::ColorGradingSettings& options = mViewer->getSettings().view.colorGrading;
+    if (options.enabled)
+    {
+        if (options != mLastColorGradingOptions)
+        {
+            filament::ColorGrading* colorGrading = filament::viewer::createColorGrading(options, mEngine);
+            mEngine->destroy(mColorGrading);
+            mColorGrading            = colorGrading;
+            mLastColorGradingOptions = options;
+        }
+        view->setColorGrading(mColorGrading);
+    }
+    else
+    {
+        view->setColorGrading(nullptr);
+    }
+}
+void GameDriver::postRender(View* view, Scene* scene, Renderer* renderer)
+{
+    if (mAutomationEngine->shouldClose())
+    {
+        close();
+        return;
+    }
+    filament::viewer:: AutomationEngine::ViewerContent content = {
+        .view          = view,
+        .renderer      = renderer,
+        .materials     = mInstance->getMaterialInstances(),
+        .materialCount = mInstance->getMaterialInstanceCount(),
+    };
+    mAutomationEngine->tick(mEngine, content, ImGui::GetIO().DeltaTime);
+}
+
+void GameDriver::animate(filament::View* view, double now)
+{
+    mResourceLoader->asyncUpdateLoad();
+
+    // Optionally fit the model into a unit cube at the origin.
+    mViewer->updateRootTransform();
+
+    // Gradually add renderables to the scene as their textures become ready.
+    mViewer->populateScene();
+
+    mViewer->applyAnimation(now);
+}
+
+void GameDriver::resize(filament::View* view)
+{
+    Camera& camera = view->getCamera();
+    if (&camera == mMainCamera)
+    {
+        // Don't adjust the aspect ratio of the main camera, this is done inside of
+        // FilamentGameDriver.cpp
+        return;
+    }
+    const Viewport& vp          = view->getViewport();
+    double          aspectRatio = (double)vp.width / vp.height;
+    camera.setScaling({1.0 / aspectRatio, 1.0});
+}
+
+void GameDriver::gui(filament::Engine* ,filament::View* view)
+{
+    mViewer->updateUserInterface();
+
+    setSidebarWidth(mViewer->getSidebarWidth());
+}
+
+void GameDriver::setup(filament::View* view)
+{
+    mNames                                         = new utils::NameComponentManager(EntityManager::get());
+    mViewer                                        = new filament::viewer::ViewerGui(mEngine, mScene, view, 410);
+    mViewer->getSettings().viewer.autoScaleEnabled = !mActualSize;
+
+    const bool batchMode = !mBatchFile.empty();
+
+    // First check if a custom automation spec has been provided. If it fails to load, the app
+    // must be closed since it could be invoked from a script.
+    if (batchMode && mBatchFile != "default")
+    {
+        auto size = getFileSize(mBatchFile.c_str());
+        if (size > 0)
+        {
+            std::ifstream     in(mBatchFile, std::ifstream::binary | std::ifstream::in);
+            std::vector<char> json(static_cast<unsigned long>(size));
+            in.read(json.data(), size);
+            mAutomationSpec = filament::viewer::AutomationSpec::generate(json.data(), size);
+            if (!mAutomationSpec)
+            {
+                std::cerr << "Unable to parse automation spec: " << mBatchFile << std::endl;
+                exit(1);
+            }
+        }
+        else
+        {
+            std::cerr << "Unable to load automation spec: " << mBatchFile << std::endl;
+            exit(1);
+        }
+    }
+
+    // If no custom spec has been provided, or if in interactive mode, load the default spec.
+    if (!mAutomationSpec)
+    {
+        mAutomationSpec = filament::viewer::AutomationSpec::generateDefaultTestCases();
+    }
+
+    mAutomationEngine = new filament::viewer::AutomationEngine(mAutomationSpec, &mViewer->getSettings());
+
+    if (batchMode)
+    {
+        mAutomationEngine->startBatchMode();
+        auto options              = mAutomationEngine->getOptions();
+        options.sleepDuration     = 0.0;
+        options.exportScreenshots = true;
+        options.exportSettings    = true;
+        mAutomationEngine->setOptions(options);
+        mViewer->stopAnimation();
+    }
+
+    if (mSettingsFile.size() > 0)
+    {
+        bool success = loadSettings(mSettingsFile.c_str(), &mViewer->getSettings());
+        if (success)
+        {
+            std::cout << "Loaded settings from " << mSettingsFile << std::endl;
+        }
+        else
+        {
+            std::cerr << "Failed to load settings from " << mSettingsFile << std::endl;
+        }
+    }
+
+    mMaterials = (mMaterialSource == JITSHADER) ? filament::gltfio::createJitShaderProvider(mEngine) : filament::gltfio::createUbershaderProvider(mEngine, UBERARCHIVE_DEFAULT_DATA, UBERARCHIVE_DEFAULT_SIZE);
+
+    mAssetLoader = filament::gltfio::AssetLoader::create({mEngine, mMaterials, mNames});
+    mMainCamera  = &view->getCamera();
+
+    auto filename = utils::Path(mConfig.filename.c_str());
+
+    loadAsset(filename);
+    loadResources(filename);
+
+    mViewer->setAsset(mAsset, mInstance);
+
+    createGroundPlane();
+    createOverdrawVisualizerEntities();
+
+    mViewer->setUiCallback(
+        [this, view]() {
+            auto& automation = *mAutomationEngine;
+
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            {
+                ImVec2 pos = ImGui::GetMousePos();
+                pos.x -= mViewer->getSidebarWidth();
+                pos.x *= ImGui::GetIO().DisplayFramebufferScale.x;
+                pos.y *= ImGui::GetIO().DisplayFramebufferScale.y;
+                if (pos.x > 0)
+                {
+                    pos.y = view->getViewport().height - 1 - pos.y;
+                    onClick(*this, view, pos);
+                }
+            }
+
+            const ImVec4 yellow(1.0f, 1.0f, 0.0f, 1.0f);
+
+            if (!mNotificationText.empty())
+            {
+                ImGui::TextColored(yellow, "Picked %s", mNotificationText.c_str());
+                ImGui::Spacing();
+            }
+
+            float progress = mResourceLoader->asyncGetLoadProgress();
+            if (progress < 1.0)
+            {
+                ImGui::ProgressBar(progress);
+            }
+            else
+            {
+                // The model is now fully loaded, so let automation know.
+                automation.signalBatchMode();
+            }
+
+            // The screenshots do not include the UI, but we auto-open the Automation UI group
+            // when in batch mode. This is useful when a human is observing progress.
+            const int flags = automation.isBatchModeEnabled() ? ImGuiTreeNodeFlags_DefaultOpen : 0;
+
+            if (ImGui::CollapsingHeader("Automation", flags))
+            {
+                ImGui::Indent();
+
+                if (automation.isRunning())
+                {
+                    ImGui::TextColored(yellow, "Test case %zu / %zu", automation.currentTest(),
+                                       automation.testCount());
+                }
+                else
+                {
+                    ImGui::TextColored(yellow, "%zu test cases", automation.testCount());
+                }
+
+                auto options = automation.getOptions();
+
+                ImGui::PushItemWidth(150);
+                ImGui::SliderFloat("Sleep (seconds)", &options.sleepDuration, 0.0, 5.0);
+                ImGui::PopItemWidth();
+
+                // Hide the tooltip during automation to avoid photobombing the screenshot.
+                if (ImGui::IsItemHovered() && !automation.isRunning())
+                {
+                    ImGui::SetTooltip("Specifies the amount of time to sleep between test cases.");
+                }
+
+                ImGui::Checkbox("Export screenshot for each test", &options.exportScreenshots);
+                ImGui::Checkbox("Export settings JSON for each test", &options.exportSettings);
+
+                automation.setOptions(options);
+
+                if (automation.isRunning())
+                {
+                    if (ImGui::Button("Stop batch test"))
+                    {
+                        automation.stopRunning();
+                    }
+                }
+                else if (ImGui::Button("Run batch test"))
+                {
+                    automation.startRunning();
+                }
+
+                if (ImGui::Button("Export view settings"))
+                {
+                    automation.exportSettings(mViewer->getSettings(), "settings.json");
+                    mMessageBoxText = automation.getStatusMessage();
+                    ImGui::OpenPopup("MessageBox");
+                }
+                ImGui::Unindent();
+            }
+
+            if (ImGui::CollapsingHeader("Stats"))
+            {
+                ImGui::Indent();
+                ImGui::Text("%zu entities in the asset", mAsset->getEntityCount());
+                ImGui::Text("%zu renderables (excluding UI)", mScene->getRenderableCount());
+                ImGui::Text("%zu skipped frames", GameDriver::get().getSkippedFrameCount());
+                ImGui::Unindent();
+            }
+
+            if (ImGui::CollapsingHeader("Debug"))
+            {
+                auto& debug = mEngine->getDebugRegistry();
+                if (ImGui::Button("Capture frame"))
+                {
+                    bool* captureFrame = debug.getPropertyAddress<bool>("d.renderer.doFrameCapture");
+                    *captureFrame      = true;
+                }
+                ImGui::Checkbox("Disable buffer padding",
+                                debug.getPropertyAddress<bool>("d.renderer.disable_buffer_padding"));
+                ImGui::Checkbox("Camera at origin", debug.getPropertyAddress<bool>("d.view.camera_at_origin"));
+                auto dataSource = debug.getDataSource("d.view.frame_info");
+                if (dataSource.data)
+                {
+                    ImGuiExt::PlotLinesSeries(
+                        "FrameInfo", 6,
+                        [](int series) {
+                            const ImVec4 colors[] = {
+                                {1, 0, 0, 1},    // target
+                                {0, 0.5f, 0, 1}, // frame-time
+                                {0, 1, 0, 1},    // frame-time denoised
+                                {1, 1, 0, 1},    // i
+                                {1, 0, 1, 1},    // d
+                                {0, 1, 1, 1},    // e
+
+                            };
+                            ImGui::PushStyleColor(ImGuiCol_PlotLines, colors[series]);
+                        },
+                        [](int series, void* buffer, int i) -> float {
+                            auto const* p = (DebugRegistry::FrameHistory const*)buffer + i;
+                            switch (series)
+                            {
+                                case 0:
+                                    return 0.03f * p->target;
+                                case 1:
+                                    return 0.03f * p->frameTime;
+                                case 2:
+                                    return 0.03f * p->frameTimeDenoised;
+                                case 3:
+                                    return p->pid_i * 0.5f / 100.0f + 0.5f;
+                                case 4:
+                                    return p->pid_d * 0.5f / 0.100f + 0.5f;
+                                case 5:
+                                    return p->pid_e * 0.5f / 1.000f + 0.5f;
+                                default:
+                                    return 0.0f;
+                            }
+                        },
+                        [](int series) {
+                            if (series < 6)
+                                ImGui::PopStyleColor();
+                        },
+                        const_cast<void*>(dataSource.data), int(dataSource.count), 0, nullptr, 0.0f, 1.0f,
+                        {0, 100});
+                }
+#ifndef NDEBUG
+                ImGui::SliderFloat("Kp", debug.getPropertyAddress<float>("d.view.pid.kp"), 0, 2);
+                ImGui::SliderFloat("Ki", debug.getPropertyAddress<float>("d.view.pid.ki"), 0, 10);
+                ImGui::SliderFloat("Kd", debug.getPropertyAddress<float>("d.view.pid.kd"), 0, 10);
+#endif
+                const auto overdrawVisibilityBit = (1u << GameDriver::Overdraw::OVERDRAW_VISIBILITY_LAYER);
+                bool       visualizeOverdraw     = view->getVisibleLayers() & overdrawVisibilityBit;
+                // TODO: enable after stencil buffer supported is added for Vulkan.
+                const bool overdrawDisabled = mEngine->getBackend() == backend::Backend::VULKAN;
+                ImGui::BeginDisabled(overdrawDisabled);
+                ImGui::Checkbox(!overdrawDisabled ? "Visualize overdraw" : "Visualize overdraw (disabled for Vulkan)",
+                                &visualizeOverdraw);
+                ImGui::EndDisabled();
+                view->setVisibleLayers(overdrawVisibilityBit,
+                                       (uint8_t)visualizeOverdraw << GameDriver::Overdraw::OVERDRAW_VISIBILITY_LAYER);
+                view->setStencilBufferEnabled(visualizeOverdraw);
+            }
+
+            if (ImGui::BeginPopupModal("MessageBox", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                ImGui::Text("%s", mMessageBoxText.c_str());
+                if (ImGui::Button("OK", ImVec2(120, 0)))
+                {
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+        });
+}
+
+void GameDriver::cleanup()
+{
+
+    mAutomationEngine->terminate();
+    mResourceLoader->asyncCancelLoad();
+    mAssetLoader->destroyAsset(mAsset);
+    mMaterials->destroyMaterials();
+
+    mEngine->destroy(mGround.mGroundPlane);
+    mEngine->destroy(mGround.mGroundVertexBuffer);
+    mEngine->destroy(mGround.mGroundIndexBuffer);
+    mEngine->destroy(mGround.mGroundMaterial);
+    mEngine->destroy(mColorGrading);
+
+    mEngine->destroy(mOverdraw.mFullScreenTriangleVertexBuffer);
+    mEngine->destroy(mOverdraw.mFullScreenTriangleIndexBuffer);
+
+    auto& em = EntityManager::get();
+    for (auto e : mOverdraw.mOverdrawVisualizer)
+    {
+        mEngine->destroy(e);
+        em.destroy(e);
+    }
+
+    for (auto mi : mOverdraw.mOverdrawMaterialInstances)
+    {
+        mEngine->destroy(mi);
+    }
+    mEngine->destroy(mOverdraw.mOverdrawMaterial);
+
+    delete mViewer;
+    delete mMaterials;
+    delete mNames;
+    delete mResourceLoader;
+    delete mStbDecoder;
+    delete mKtxDecoder;
+
+    filament::gltfio::AssetLoader::destroy(&mAssetLoader);
+}

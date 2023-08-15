@@ -31,10 +31,42 @@ namespace filagui {
 class ImGuiHelper;
 } // namespace filagui
 
+
+enum MaterialSource
+{
+    JITSHADER,
+    UBERSHADER,
+};
+
+
+
 class IBL;
 class MeshAssimp;
 
 using CameraManipulator = filament::camutils::Manipulator<float>;
+
+static std::ifstream::pos_type getFileSize(const char* filename)
+{
+    std::ifstream in(filename, std::ifstream::ate | std::ifstream::binary);
+    return in.tellg();
+}
+
+static bool loadSettings(const char* filename, filament::viewer:: Settings* out)
+{
+    auto contentSize = getFileSize(filename);
+    if (contentSize <= 0)
+    {
+        return false;
+    }
+    std::ifstream     in(filename, std::ifstream::binary | std::ifstream::in);
+    std::vector<char> json(static_cast<unsigned long>(contentSize));
+    if (!in.read(json.data(), contentSize))
+    {
+        return false;
+    }
+    filament::viewer::JsonSerializer serializer;
+    return serializer.readJson(json.data(), contentSize, out);
+}
 
 /*!
  * \class CView
@@ -145,7 +177,7 @@ class Window
     friend class GameDriver;
 
 public:
-    Window(GameDriver* filamentApp, Config& config, std::string title, size_t w, size_t h);
+    Window(GameDriver* gd, Config& config);
     virtual ~Window();
 
     void mouseDown(int button, ssize_t x, ssize_t y);
@@ -223,7 +255,7 @@ private:
 class GameDriver
 {
 public:
-    using SetupCallback   = std::function<void(filament::Engine*, filament::View*, filament::Scene*)>;
+    using SetupCallback   = std::function<void(filament::Scene*)>;
     using CleanupCallback = std::function<void(filament::Engine*, filament::View*, filament::Scene*)>;
     using PreRenderCallback =
         std::function<void(filament::Engine*, filament::View*, filament::Scene*, filament::Renderer*)>;
@@ -237,17 +269,25 @@ public:
     static bool manipulatorKeyFromKeycode(SDL_Scancode scancode, CameraManipulator::Key& key);
 
     SINGLE_INSTANCE_FLAG(GameDriver)
+private: 
+
+    ///临时存放 TODO
+
+    void createGroundPlane();
+    void createOverdrawVisualizerEntities();
+
+    void preRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
+    void postRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
+    void animate(filament::View* view, double now);
+    void resize(filament::View* view);
+    void gui(filament::Engine* ,filament::View* view);
 
 public:
 
-    void initConfig(const Config& config)
-    {
-        mConfig = config;
-    }
-
-    filament::Engine* getRenderEngine() {
-        return mEngine;
-    }
+    void loadAsset(utils::Path filename);
+    void loadResources(utils::Path filename);
+    void setup(filament::View *view);
+    void cleanup();
 
 public:
     void animate(AnimCallback animation) { mAnimation = animation; }
@@ -256,7 +296,7 @@ public:
 
     void setDropHandler(DropCallback handler) { mDropHandler = handler; }
 
-    void run(SetupCallback setup, CleanupCallback cleanup, ImGuiCallback imgui = ImGuiCallback(), PreRenderCallback preRender = PreRenderCallback(), PostRenderCallback postRender = PostRenderCallback(), size_t width = 1280, size_t height = 720);
+    void mainLoop();
 
     filament::Material const* getDefaultMaterial() const noexcept { return mDefaultMaterial; }
     filament::Material const* getTransparentMaterial() const noexcept { return mTransparentMaterial; }
@@ -268,7 +308,6 @@ public:
 
     void   setSidebarWidth(int width) { mSidebarWidth = width; }
     void   setWindowTitle(const char* title) { mWindowTitle = title; }
-    float& getCameraFocalLength() { return mCameraFocalLength; }
 
     void addOffscreenView(filament::View* view) { mOffscreenViews.push_back(view); }
 
@@ -278,8 +317,8 @@ private:
     friend class Window;
     void initSDL();
 
-    void loadIBL(const Config& config);
-    void loadDirt(const Config& config);
+    void loadIBL();
+    void loadDirt();
 
 
     Config mConfig;
@@ -304,9 +343,61 @@ private:
     std::string                           mWindowTitle;
     std::vector<filament::View*>          mOffscreenViews;
     float                                 mCameraFocalLength = 28.0f;
-};
 
-int entry(int argc, char** argv);
+
+
+    //////////////////////////////////////////////////////////////////////////
+public:
+    filament::viewer::ViewerGui* mViewer;
+    filament::Camera*            mMainCamera;
+
+    filament::gltfio::AssetLoader*      mAssetLoader;
+    filament::gltfio::FilamentAsset*    mAsset    = nullptr;
+    filament::gltfio::FilamentInstance* mInstance = nullptr;
+    utils::NameComponentManager*        mNames;
+
+    filament::gltfio::MaterialProvider* mMaterials;
+    MaterialSource                      mMaterialSource = UBERSHADER; //A57 ,powervr 8xxx
+
+    filament::gltfio::ResourceLoader*  mResourceLoader = nullptr;
+    filament::gltfio::TextureProvider* mStbDecoder     = nullptr;
+    filament::gltfio::TextureProvider* mKtxDecoder     = nullptr;
+    bool                     mRecomputeAabb  = false;
+
+    bool mActualSize = false;
+
+    struct Ground
+    {
+        utils::Entity        mGroundPlane;
+        filament::VertexBuffer* mGroundVertexBuffer;
+        filament::IndexBuffer*  mGroundIndexBuffer;
+        filament::Material*     mGroundMaterial;
+    } mGround;
+
+    struct Overdraw
+    {
+        filament::Material* mOverdrawMaterial;
+        // use layer 7 because 0, 1 and 2 are used by FilamentApp
+        static constexpr auto                          OVERDRAW_VISIBILITY_LAYER = 7u; // overdraw renderables View layer
+        static constexpr auto                          OVERDRAW_LAYERS           = 4u; // unique overdraw colors
+        std::array<utils::Entity, OVERDRAW_LAYERS>     mOverdrawVisualizer;
+        std::array<filament::MaterialInstance*, OVERDRAW_LAYERS> mOverdrawMaterialInstances;
+        filament::VertexBuffer*                        mFullScreenTriangleVertexBuffer;
+        filament::IndexBuffer*                         mFullScreenTriangleIndexBuffer;
+    } mOverdraw;
+
+    // zero-initialized so that the first time through is always dirty.
+    filament::viewer::ColorGradingSettings mLastColorGradingOptions = {0};
+    filament::ColorGrading* mColorGrading = nullptr;
+    std::string mNotificationText;
+    std::string mMessageBoxText;
+    std::string mSettingsFile;
+    std::string mBatchFile;
+
+    filament::viewer::AutomationSpec*   mAutomationSpec   = nullptr;
+    filament::viewer::AutomationEngine* mAutomationEngine = nullptr;
+
+};
 
 
 #endif // __GAMEDRIVER_H__

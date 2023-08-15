@@ -173,7 +173,7 @@ endif()
     # ==================================================================================================
     # Link the core library with additional dependencies to create the "full" library
     # ==================================================================================================
-    add_library(${TARGET} STATIC ${PUBLIC_HDRS} src/JitShaderProvider.cpp)
+    add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS} src/JitShaderProvider.cpp)
     target_link_libraries(${TARGET} PUBLIC filamat gltfio_core)
     target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
     set_target_properties(${TARGET} PROPERTIES FOLDER Libs)

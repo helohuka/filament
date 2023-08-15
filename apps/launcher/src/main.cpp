@@ -3,5 +3,6 @@
 
 int main(int argc, char* argv[])
 {
-	return entry(argc, argv);
+    GameDriver::get().mainLoop();
+    return 0;
 }

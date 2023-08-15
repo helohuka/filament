@@ -36,7 +36,6 @@ set(SRCS
         src/IcoSphere.cpp
         src/MeshAssimp.cpp
         src/Sphere.cpp
-        src/AppEntry.cpp
 
         src/Window.cpp
         src/View.cpp

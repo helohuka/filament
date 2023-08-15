@@ -9,9 +9,10 @@ using namespace filament::math;
 using namespace utils;
 // ------------------------------------------------------------------------------------------------
 
-Window::Window(GameDriver* filamentApp,
-         Config& config, std::string title, size_t w, size_t h)
-        : mGameDriver(filamentApp), mIsHeadless(config.headless) {
+Window::Window(GameDriver* gd,
+         Config& config) :
+    mGameDriver(gd), mIsHeadless(config.headless)
+{
     const int x = SDL_WINDOWPOS_CENTERED;
     const int y = SDL_WINDOWPOS_CENTERED;
     uint32_t windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
@@ -25,13 +26,13 @@ Window::Window(GameDriver* filamentApp,
 
     // Even if we're in headless mode, we still need to create a window, otherwise SDL will not poll
     // events.
-    mWindow = SDL_CreateWindow(title.c_str(), x, y, (int) w, (int) h, windowFlags);
+    mWindow = SDL_CreateWindow(config.title.c_str(), x, y, config.width, config.height, windowFlags);
 
     if (config.headless) {
         mGameDriver->mEngine = Engine::create(config.backend);
-        mSwapChain = mGameDriver->mEngine->createSwapChain((uint32_t) w, (uint32_t) h);
-        mWidth = w;
-        mHeight = h;
+        mSwapChain           = mGameDriver->mEngine->createSwapChain(config.width, config.height);
+        mWidth               = config.width;
+        mHeight              = config.height;
     } else {
 
         void* nativeWindow = ::getNativeWindow(mWindow);
