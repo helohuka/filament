@@ -491,9 +491,7 @@ void GameDriver::loadAsset(utils::Path filename)
         std::cerr << "Unable to open " << filename << std::endl;
         exit(1);
     }
-    std::map<std::string, filament::MaterialInstance*> materials;
-    MeshAssimp ma(*mEngine);
-    ma.addFromFile(filename, materials);
+    
 
     // Consume the glTF file.
     std::ifstream        in(filename.c_str(), std::ifstream::binary | std::ifstream::in);

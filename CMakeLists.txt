@@ -723,6 +723,7 @@ add_subdirectory(${EXTERNAL}/jsmn/tnt)
 add_subdirectory(${EXTERNAL}/stb/tnt)
 add_subdirectory(${EXTERNAL}/getopt)
 add_subdirectory(${EXTERNAL}/libassimp/tnt)
+add_subdirectory(${EXTERNAL}/libcurl)
 #使用SDL2作为平台抽象层 | 排除 OPENGLES
 add_subdirectory(${EXTERNAL}/libsdl2)
 

@@ -17,6 +17,7 @@ struct Config {
 
     float scale = 1.0f;
     
+    std::string projectURI = "E:/1/filament/third_party/models/";
     std::string title = "23";
     std::string iblDirectory;
     std::string dirt;
