@@ -70,6 +70,7 @@ set(LIBS
         Luau.VM
         rapidxml
         flatbuffers
+        CURL::libcurl
         gamedriver-resources
       )
 

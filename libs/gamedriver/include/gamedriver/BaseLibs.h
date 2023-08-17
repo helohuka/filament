@@ -3,6 +3,7 @@
 
 
 // C++ 标准库
+#include <stdio.h>
 #include <iostream>
 #include <functional>
 #include <memory>
@@ -12,6 +13,9 @@
 #include <cmath>
 #include <array>
 #include <fstream>
+#include <sstream>
+//curl 库
+#include <curl/curl.h>
 
 // SDL 库
 #include <SDL.h>
@@ -19,6 +23,8 @@
 #    include <SDL_syswm.h>
 #    include <utils/unwindows.h>
 #endif
+
+
 
 // 数学库
 #include <math/vec3.h>

@@ -348,7 +348,7 @@ private:
 
     //////////////////////////////////////////////////////////////////////////
 public:
-    filament::viewer::ViewerGui* mViewer;
+    filament::viewer::ViewerGui* mViewerGUI;
     filament::Camera*            mMainCamera;
 
     filament::gltfio::AssetLoader*      mAssetLoader;
