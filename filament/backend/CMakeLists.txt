@@ -31,6 +31,7 @@ set(SRCS
         src/CircularBuffer.cpp
         src/CommandBufferQueue.cpp
         src/CommandStream.cpp
+        src/CompilerThreadPool.cpp
         src/Driver.cpp
         src/Handle.cpp
         src/HandleAllocator.cpp
@@ -55,6 +56,7 @@ set(PRIVATE_HDRS
         include/private/backend/PlatformFactory.h
         include/private/backend/SamplerGroup.h
         src/CommandStreamDispatcher.h
+        src/CompilerThreadPool.h
         src/DataReshaper.h
         src/DriverBase.h
 )
@@ -66,6 +68,8 @@ set(PRIVATE_HDRS
 if (FILAMENT_SUPPORTS_OPENGL AND NOT FILAMENT_USE_EXTERNAL_GLES3 AND NOT FILAMENT_USE_SWIFTSHADER)
     list(APPEND SRCS
             include/backend/platforms/OpenGLPlatform.h
+            src/opengl/CallbackManager.h
+            src/opengl/CallbackManager.cpp
             src/opengl/gl_headers.cpp
             src/opengl/gl_headers.h
             src/opengl/GLUtils.cpp
@@ -195,6 +199,8 @@ if (FILAMENT_SUPPORTS_VULKAN)
             src/vulkan/VulkanStagePool.h
             src/vulkan/VulkanSwapChain.cpp
             src/vulkan/VulkanSwapChain.h
+            src/vulkan/VulkanReadPixels.cpp
+            src/vulkan/VulkanReadPixels.h
             src/vulkan/VulkanTexture.cpp
             src/vulkan/VulkanTexture.h
             src/vulkan/VulkanUtility.cpp

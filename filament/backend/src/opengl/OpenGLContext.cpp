@@ -268,25 +268,13 @@ OpenGLContext::OpenGLContext() noexcept {
                 bugs.dont_use_timer_query = true;
             }
             if (strstr(state.renderer, "Mali-G")) {
-                // assume we don't have working timer queries
+                // We have run into several problems with timer queries on Mali-Gxx:
+                // - timer queries seem to cause memory corruptions in some cases on some devices
+                //   (see b/233754398)
+                //          - appeared at least in: "OpenGL ES 3.2 v1.r26p0-01eac0"
+                //          - wasn't present in: "OpenGL ES 3.2 v1.r32p1-00pxl1"
+                // - timer queries sometime crash with an NPE (see b/273759031)
                 bugs.dont_use_timer_query = true;
-
-                int maj, min, driverVersion, driverRevision, driverPatch;
-                int const c = sscanf(state.version, "OpenGL ES %d.%d v%d.r%dp%d", // NOLINT(cert-err34-c)
-                        &maj, &min, &driverVersion, &driverRevision, &driverPatch);
-                if (c == 5) {
-                    // Workarounds based on version here.
-                    // notes:
-                    //  bugs.dont_use_timer_query : on some Mali-Gxx drivers timer query seems
-                    //  to cause memory corruptions in some cases on some devices (see b/233754398).
-                    //  - appeared at least in
-                    //      "OpenGL ES 3.2 v1.r26p0-01eac0"
-                    //  - wasn't present in
-                    //      "OpenGL ES 3.2 v1.r32p1-00pxl1"
-                    if (driverVersion >= 2 || (driverVersion == 1 && driverRevision >= 32)) {
-                        bugs.dont_use_timer_query = false;
-                    }
-                }
             }
             // Mali seems to have no problem with this (which is good for us)
             bugs.allow_read_only_ancillary_feedback_loop = true;
@@ -295,6 +283,19 @@ OpenGLContext::OpenGLContext() noexcept {
             bugs.vao_doesnt_store_element_array_buffer_binding = true;
         } else if (strstr(state.renderer, "PowerVR")) {
             // PowerVR GPU
+            // On PowerVR (Rogue GE8320) glFlush doesn't seem to do anything, in particular,
+            // it doesn't kick the GPU earlier, so don't issue these calls as they seem to slow
+            // things down.
+            bugs.disable_glFlush = true;
+            // On PowerVR (Rogue GE8320) using gl_InstanceID too early in the shader doesn't work.
+            bugs.powervr_shader_workarounds = true;
+            // On PowerVR (Rogue GE8320) destroying a fbo after glBlitFramebuffer is effectively
+            // equivalent to glFinish.
+            bugs.delay_fbo_destruction = true;
+            // PowerVR seems to have no problem with this (which is good for us)
+            bugs.allow_read_only_ancillary_feedback_loop = true;
+            // PowerVR has a shader compiler thread pinned on the last core
+            bugs.disable_thread_affinity = true;
         } else if (strstr(state.renderer, "Apple")) {
             // Apple GPU
         } else if (strstr(state.renderer, "Tegra") ||
@@ -453,6 +454,10 @@ void OpenGLContext::setDefaultState() noexcept {
         glClipControlEXT(GL_LOWER_LEFT_EXT, GL_ZERO_TO_ONE_EXT);
 #endif
     }
+
+    if (ext.EXT_clip_cull_distance) {
+        glEnable(GL_CLIP_DISTANCE0);
+    }
 }
 
 #ifdef BACKEND_OPENGL_VERSION_GLES
@@ -471,6 +476,7 @@ void OpenGLContext::initExtensionsGLES() noexcept {
     using namespace std::literals;
     ext.APPLE_color_buffer_packed_float = exts.has("GL_APPLE_color_buffer_packed_float"sv);
     ext.EXT_clip_control = exts.has("GL_EXT_clip_control"sv);
+    ext.EXT_clip_cull_distance = exts.has("GL_EXT_clip_cull_distance"sv);
     ext.EXT_color_buffer_float = exts.has("GL_EXT_color_buffer_float"sv);
     ext.EXT_color_buffer_half_float = exts.has("GL_EXT_color_buffer_half_float"sv);
     ext.EXT_debug_marker = exts.has("GL_EXT_debug_marker"sv);
@@ -511,7 +517,7 @@ void OpenGLContext::initExtensionsGLES() noexcept {
 
     // ES 3.x implies EXT_discard_framebuffer and OES_vertex_array_object
     if (state.major >= 3) {
-        ext.EXT_color_buffer_float = true;
+        ext.EXT_discard_framebuffer = true;
         ext.OES_vertex_array_object = true;
     }
 }
@@ -539,6 +545,7 @@ void OpenGLContext::initExtensionsGL() noexcept {
     ext.ARB_shading_language_packing = exts.has("GL_ARB_shading_language_packing"sv);
     ext.EXT_color_buffer_float = true;  // Assumes core profile.
     ext.EXT_color_buffer_half_float = true;  // Assumes core profile.
+    ext.EXT_clip_cull_distance = true;
     ext.EXT_debug_marker = exts.has("GL_EXT_debug_marker"sv);
     ext.EXT_discard_framebuffer = false;
     ext.EXT_disjoint_timer_query = true;
@@ -888,65 +895,6 @@ void OpenGLContext::resetState() noexcept {
     );
     glDepthRangef(state.window.depthRange.x, state.window.depthRange.y);
     
-}
-
-OpenGLContext::FenceSync OpenGLContext::createFenceSync(
-        OpenGLPlatform& platform) noexcept {
-
-    if (UTILS_UNLIKELY(isES2())) {
-        assert_invariant(platform.canCreateFence());
-        return { .fence = platform.createFence() };
-    }
-
-#ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
-    auto sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-    CHECK_GL_ERROR(utils::slog.e)
-    return { .sync = sync };
-#else
-    return {};
-#endif
-}
-
-void OpenGLContext::destroyFenceSync(
-        OpenGLPlatform& platform, FenceSync sync) noexcept {
-
-    if (UTILS_UNLIKELY(isES2())) {
-        platform.destroyFence(static_cast<Platform::Fence*>(sync.fence));
-        return;
-    }
-
-#ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
-    glDeleteSync(sync.sync);
-    CHECK_GL_ERROR(utils::slog.e)
-#endif
-}
-
-OpenGLContext::FenceSync::Status OpenGLContext::clientWaitSync(
-        OpenGLPlatform& platform, FenceSync sync) const noexcept {
-
-    if (UTILS_UNLIKELY(isES2())) {
-        using Status = OpenGLContext::FenceSync::Status;
-        auto const status = platform.waitFence(static_cast<Platform::Fence*>(sync.fence), 0u);
-        switch (status) {
-            case FenceStatus::ERROR:                return Status::FAILURE;
-            case FenceStatus::CONDITION_SATISFIED:  return Status::CONDITION_SATISFIED;
-            case FenceStatus::TIMEOUT_EXPIRED:      return Status ::TIMEOUT_EXPIRED;
-        }
-    }
-
-#ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
-    GLenum const status = glClientWaitSync(sync.sync, 0, 0u);
-    CHECK_GL_ERROR(utils::slog.e)
-    using Status = OpenGLContext::FenceSync::Status;
-    switch (status) {
-        case GL_ALREADY_SIGNALED:       return Status::ALREADY_SIGNALED;
-        case GL_TIMEOUT_EXPIRED:        return Status::TIMEOUT_EXPIRED;
-        case GL_CONDITION_SATISFIED:    return Status::CONDITION_SATISFIED;
-        default:                        return Status::FAILURE;
-    }
-#else
-    return FenceSync::Status::FAILURE;
-#endif
 }
 
 } // namesapce filament

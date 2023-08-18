@@ -59,6 +59,7 @@ set(PRIVATE_HDRS
         src/GLSLPostProcessor.h
         src/MetalArgumentBuffer.h
         src/ShaderMinifier.h
+        src/SpirvFixup.h
         src/sca/ASTHelpers.h
         src/sca/GLSLTools.h
         src/sca/builtinResource.h)
@@ -72,7 +73,8 @@ set(SRCS
         src/sca/ASTHelpers.cpp
         src/sca/GLSLTools.cpp
         src/GLSLPostProcessor.cpp
-        src/ShaderMinifier.cpp)
+        src/ShaderMinifier.cpp
+        src/SpirvFixup.cpp)
 
 # Sources and headers for filamat lite
 
@@ -166,13 +168,14 @@ install(TARGETS filamat_lite ARCHIVE DESTINATION lib/${DIST_DIR})
 # Tests
 # ==================================================================================================
 if(FILAMENT_ENABLE_BUILD_TEST)
+project(test_filamat)
+set(TARGET test_filamat)
+set(SRCS
+        tests/test_filamat.cpp
+        tests/test_argBufferFixup.cpp
+        tests/test_clipDistanceFixup.cpp
+        tests/test_includes.cpp)
 
-    project(test_filamat)
-    set(TARGET test_filamat)
-    set(SRCS
-            tests/test_filamat.cpp
-            tests/test_argBufferFixup.cpp
-            tests/test_includes.cpp)
 
     add_executable(${TARGET} ${SRCS})
 

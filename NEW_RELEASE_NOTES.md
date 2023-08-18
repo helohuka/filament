@@ -7,5 +7,3 @@ for next branch cut* header.
 appropriate header in [RELEASE_NOTES.md](./RELEASE_NOTES.md).
 
 ## Release notes for next branch cut
-
-- Java/Kotlin: user callbacks were not invoked on successful texture upload

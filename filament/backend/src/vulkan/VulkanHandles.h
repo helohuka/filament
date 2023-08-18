@@ -14,10 +14,12 @@
  * limitations under the License.
  */
 
- #ifndef TNT_FILAMENT_BACKEND_VULKANHANDLES_H
- #define TNT_FILAMENT_BACKEND_VULKANHANDLES_H
+#ifndef TNT_FILAMENT_BACKEND_VULKANHANDLES_H
+#define TNT_FILAMENT_BACKEND_VULKANHANDLES_H
 
-#include "VulkanDriver.h"
+// This needs to be at the top
+#include "DriverBase.h"
+
 #include "VulkanPipelineCache.h"
 #include "VulkanBuffer.h"
 #include "VulkanSwapChain.h"
@@ -25,6 +27,8 @@
 #include "VulkanUtility.h"
 
 #include "private/backend/SamplerGroup.h"
+
+#include <utils/Mutex.h>
 
 namespace filament::backend {
 
@@ -106,7 +110,7 @@ struct VulkanBufferObject : public HwBufferObject {
             VulkanStagePool& stagePool, uint32_t byteCount, BufferObjectBinding bindingType,
             BufferUsage usage);
     void terminate() {
-	buffer.terminate();
+        buffer.terminate();
     }
     VulkanBuffer buffer;
     const BufferObjectBinding bindingType;
@@ -127,13 +131,9 @@ struct VulkanRenderPrimitive : public HwRenderPrimitive {
 };
 
 struct VulkanFence : public HwFence {
-    explicit VulkanFence(const VulkanCommandBuffer& commands) : fence(commands.fence) {}
-    std::shared_ptr<VulkanCmdFence> fence;
-};
+    VulkanFence() = default;
+    explicit VulkanFence(std::shared_ptr<VulkanCmdFence> fence) : fence(fence) {}
 
-struct VulkanSync : public HwSync {
-    VulkanSync() = default;
-    explicit VulkanSync(const VulkanCommandBuffer& commands) : fence(commands.fence) {}
     std::shared_ptr<VulkanCmdFence> fence;
 };
 
@@ -141,14 +141,24 @@ struct VulkanTimerQuery : public HwTimerQuery {
     explicit VulkanTimerQuery(std::tuple<uint32_t, uint32_t> indices);
     ~VulkanTimerQuery();
 
-    bool isCompleted() const noexcept;
+    void setFence(std::shared_ptr<VulkanCmdFence> fence) noexcept;
+
+    bool isCompleted() noexcept;
+
+    uint32_t getStartingQueryIndex() const {
+        return mStartingQueryIndex;
+    }
+
+    uint32_t getStoppingQueryIndex() const {
+        return mStoppingQueryIndex;
+    }
 
 private:
-    uint32_t startingQueryIndex;
-    uint32_t stoppingQueryIndex;
+    uint32_t mStartingQueryIndex;
+    uint32_t mStoppingQueryIndex;
 
-    std::shared_ptr<VulkanCmdFence> fence;
-    friend class VulkanTimestamps;
+    std::shared_ptr<VulkanCmdFence> mFence;
+    utils::Mutex mFenceMutex;
 };
 
 inline constexpr VkBufferUsageFlagBits getBufferObjectUsage(

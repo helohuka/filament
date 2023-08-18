@@ -18,6 +18,7 @@
 
 #include <GlslangToSpv.h>
 #include <SPVRemapper.h>
+#include <spirv-tools/libspirv.hpp>
 
 #include <spirv_glsl.hpp>
 #include <spirv_msl.hpp>
@@ -30,6 +31,7 @@
 #include "shaders/SibGenerator.h"
 
 #include "MetalArgumentBuffer.h"
+#include "SpirvFixup.h"
 
 #include <filament/MaterialEnums.h>
 
@@ -331,6 +333,10 @@ bool GLSLPostProcessor::process(const std::string& inputShader, Config const& co
     const char* shaderCString = inputShader.c_str();
     tShader.setStrings(&shaderCString, 1);
 
+    // This allows shaders to query if they will be run through glslang.
+    // OpenGL shaders without optimization, for example, won't have this define.
+    tShader.setPreamble("#define FILAMENT_GLSLANG\n");
+
     internalConfig.langVersion = GLSLTools::getGlslDefaultVersion(config.shaderModel);
     GLSLTools::prepareShaderParser(config.targetApi, config.targetLanguage, tShader,
             internalConfig.shLang, internalConfig.langVersion);
@@ -372,6 +378,7 @@ bool GLSLPostProcessor::process(const std::string& inputShader, Config const& co
                 options.generateDebugInfo = mGenerateDebugInfo;
                 GlslangToSpv(*program.getIntermediate(internalConfig.shLang),
                         *internalConfig.spirvOutput, &options);
+                fixupClipDistance(*internalConfig.spirvOutput, config);
                 if (internalConfig.mslOutput) {
                     auto sibs = SibVector::with_capacity(CONFIG_SAMPLER_BINDING_COUNT);
                     msl::collectSibs(config, sibs);
@@ -454,6 +461,7 @@ void GLSLPostProcessor::preprocessOptimization(glslang::TShader& tShader,
             options.generateDebugInfo = mGenerateDebugInfo;
             GlslangToSpv(*program.getIntermediate(internalConfig.shLang),
                     *internalConfig.spirvOutput, &options);
+            fixupClipDistance(*internalConfig.spirvOutput, config);
         }
     }
 
@@ -502,6 +510,8 @@ void GLSLPostProcessor::fullOptimization(const TShader& tShader,
         }
     }
 
+    fixupClipDistance(spirv, config);
+
     if (internalConfig.spirvOutput) {
         *internalConfig.spirvOutput = spirv;
     }
@@ -547,6 +557,17 @@ void GLSLPostProcessor::fullOptimization(const TShader& tShader,
         }
 
         *internalConfig.glslOutput = glslCompiler.compile();
+
+        // spirv-cross automatically redeclares gl_ClipDistance if it's used. Some drivers don't
+        // like this, so we simply remove it.
+        // According to EXT_clip_cull_distance, gl_ClipDistance can be
+        // "implicitly sized by indexing it only with integral constant expressions".
+        std::string& str = *internalConfig.glslOutput;
+        const std::string clipDistanceDefinition = "out float gl_ClipDistance[1];";
+        size_t found = str.find(clipDistanceDefinition);
+        if (found != std::string::npos) {
+            str.replace(found, clipDistanceDefinition.length(), "");
+        }
     }
 }
 
@@ -590,36 +611,50 @@ void GLSLPostProcessor::optimizeSpirv(OptimizerPtr optimizer, SpirvBlob& spirv) 
     remapper.remap(spirv, spv::spirvbin_base_t::DCE_ALL);
 }
 
-void GLSLPostProcessor::registerPerformancePasses(Optimizer& optimizer, Config const& config) {
-    optimizer
-            .RegisterPass(CreateWrapOpKillPass())
-            .RegisterPass(CreateDeadBranchElimPass());
-
-    if (config.shaderModel != ShaderModel::DESKTOP ||
-            config.targetApi != MaterialBuilder::TargetApi::OPENGL) {
-        // this triggers a segfault with AMD OpenGL drivers on MacOS
-        // note that Metal also requires this pass in order to correctly generate half-precision MSL
-        optimizer.RegisterPass(CreateMergeReturnPass());
+void GLSLPostProcessor::fixupClipDistance(
+        SpirvBlob& spirv, GLSLPostProcessor::Config const& config) const {
+    if (!config.usesClipDistance) {
+        return;
     }
+    // This should match the version of SPIR-V used in GLSLTools::prepareShaderParser.
+    SpirvTools tools(SPV_ENV_UNIVERSAL_1_3);
+    std::string disassembly;
+    const bool result = tools.Disassemble(spirv, &disassembly);
+    assert_invariant(result);
+    if (filamat::fixupClipDistance(disassembly)) {
+        spirv.clear();
+        tools.Assemble(disassembly, &spirv);
+        assert_invariant(tools.Validate(spirv));
+    }
+}
 
-    // CreateSimplificationPass() creates a lot of problems:
-    // - Adreno GPU show artifacts after running simplication passes (Vulkan)
-    // - spirv-cross fails generating working glsl
-    //      (https://github.com/KhronosGroup/SPIRV-Cross/issues/2162)
-    // - generally it makes the code more complicated, e.g.: replacing for loops with
-    //   while-if-break, unclear if it helps for anything.
-    // However, the simplification passes below are necessary when targeting Metal, otherwise the
-    // result is mismatched half / float assignments in MSL.
+// CreateMergeReturnPass() causes these issues:
+// - triggers a segfault with AMD OpenGL drivers on macOS
+// - triggers a crash on some Adreno drivers (b/291140208, b/289401984, b/289393290)
+// However Metal requires this pass in order to correctly generate half-precision MSL
+//
+// CreateSimplificationPass() creates a lot of problems:
+// - Adreno GPU show artifacts after running simplification passes (Vulkan)
+// - spirv-cross fails generating working glsl
+//      (https://github.com/KhronosGroup/SPIRV-Cross/issues/2162)
+// - generally it makes the code more complicated, e.g.: replacing for loops with
+//   while-if-break, unclear if it helps for anything.
+// However, the simplification passes below are necessary when targeting Metal, otherwise the
+// result is mismatched half / float assignments in MSL.
 
+
+void GLSLPostProcessor::registerPerformancePasses(Optimizer& optimizer, Config const& config) {
     auto RegisterPass = [&](spvtools::Optimizer::PassToken&& pass,
-                                MaterialBuilder::TargetApi apiFilter =
-                                        MaterialBuilder::TargetApi::ALL) {
+            MaterialBuilder::TargetApi apiFilter = MaterialBuilder::TargetApi::ALL) {
         if (!(config.targetApi & apiFilter)) {
             return;
         }
         optimizer.RegisterPass(std::move(pass));
     };
 
+    RegisterPass(CreateWrapOpKillPass());
+    RegisterPass(CreateDeadBranchElimPass());
+    RegisterPass(CreateMergeReturnPass(), MaterialBuilder::TargetApi::METAL);
     RegisterPass(CreateInlineExhaustivePass());
     RegisterPass(CreateAggressiveDCEPass());
     RegisterPass(CreatePrivateToLocalPass());
@@ -654,47 +689,48 @@ void GLSLPostProcessor::registerPerformancePasses(Optimizer& optimizer, Config c
 }
 
 void GLSLPostProcessor::registerSizePasses(Optimizer& optimizer, Config const& config) {
-    optimizer
-            .RegisterPass(CreateWrapOpKillPass())
-            .RegisterPass(CreateDeadBranchElimPass());
+    auto RegisterPass = [&](spvtools::Optimizer::PassToken&& pass,
+            MaterialBuilder::TargetApi apiFilter = MaterialBuilder::TargetApi::ALL) {
+        if (!(config.targetApi & apiFilter)) {
+            return;
+        }
+        optimizer.RegisterPass(std::move(pass));
+    };
 
-    if (config.shaderModel != ShaderModel::DESKTOP) {
-        // this triggers a segfault with AMD drivers on MacOS
-        optimizer.RegisterPass(CreateMergeReturnPass());
-    }
-
-    optimizer
-            .RegisterPass(CreateInlineExhaustivePass())
-            .RegisterPass(CreateEliminateDeadFunctionsPass())
-            .RegisterPass(CreatePrivateToLocalPass())
-            .RegisterPass(CreateScalarReplacementPass(0))
-            .RegisterPass(CreateLocalMultiStoreElimPass())
-            .RegisterPass(CreateCCPPass())
-            .RegisterPass(CreateLoopUnrollPass(true))
-            .RegisterPass(CreateDeadBranchElimPass())
-            .RegisterPass(CreateSimplificationPass())
-            .RegisterPass(CreateScalarReplacementPass(0))
-            .RegisterPass(CreateLocalSingleStoreElimPass())
-            .RegisterPass(CreateIfConversionPass())
-            .RegisterPass(CreateSimplificationPass())
-            .RegisterPass(CreateAggressiveDCEPass())
-            .RegisterPass(CreateDeadBranchElimPass())
-            .RegisterPass(CreateBlockMergePass())
-            .RegisterPass(CreateLocalAccessChainConvertPass())
-            .RegisterPass(CreateLocalSingleBlockLoadStoreElimPass())
-            .RegisterPass(CreateAggressiveDCEPass())
-            .RegisterPass(CreateCopyPropagateArraysPass())
-            .RegisterPass(CreateVectorDCEPass())
-            .RegisterPass(CreateDeadInsertElimPass())
-            // this breaks UBO layout
-            //.RegisterPass(CreateEliminateDeadMembersPass())
-            .RegisterPass(CreateLocalSingleStoreElimPass())
-            .RegisterPass(CreateBlockMergePass())
-            .RegisterPass(CreateLocalMultiStoreElimPass())
-            .RegisterPass(CreateRedundancyEliminationPass())
-            .RegisterPass(CreateSimplificationPass())
-            .RegisterPass(CreateAggressiveDCEPass())
-            .RegisterPass(CreateCFGCleanupPass());
+    RegisterPass(CreateWrapOpKillPass());
+    RegisterPass(CreateDeadBranchElimPass());
+    RegisterPass(CreateMergeReturnPass(), MaterialBuilder::TargetApi::METAL);
+    RegisterPass(CreateInlineExhaustivePass());
+    RegisterPass(CreateEliminateDeadFunctionsPass());
+    RegisterPass(CreatePrivateToLocalPass());
+    RegisterPass(CreateScalarReplacementPass(0));
+    RegisterPass(CreateLocalMultiStoreElimPass());
+    RegisterPass(CreateCCPPass());
+    RegisterPass(CreateLoopUnrollPass(true));
+    RegisterPass(CreateDeadBranchElimPass());
+    RegisterPass(CreateSimplificationPass(), MaterialBuilder::TargetApi::METAL);
+    RegisterPass(CreateScalarReplacementPass(0));
+    RegisterPass(CreateLocalSingleStoreElimPass());
+    RegisterPass(CreateIfConversionPass());
+    RegisterPass(CreateSimplificationPass(), MaterialBuilder::TargetApi::METAL);
+    RegisterPass(CreateAggressiveDCEPass());
+    RegisterPass(CreateDeadBranchElimPass());
+    RegisterPass(CreateBlockMergePass());
+    RegisterPass(CreateLocalAccessChainConvertPass());
+    RegisterPass(CreateLocalSingleBlockLoadStoreElimPass());
+    RegisterPass(CreateAggressiveDCEPass());
+    RegisterPass(CreateCopyPropagateArraysPass());
+    RegisterPass(CreateVectorDCEPass());
+    RegisterPass(CreateDeadInsertElimPass());
+    // this breaks UBO layout
+    //RegisterPass(CreateEliminateDeadMembersPass());
+    RegisterPass(CreateLocalSingleStoreElimPass());
+    RegisterPass(CreateBlockMergePass());
+    RegisterPass(CreateLocalMultiStoreElimPass());
+    RegisterPass(CreateRedundancyEliminationPass());
+    RegisterPass(CreateSimplificationPass(), MaterialBuilder::TargetApi::METAL);
+    RegisterPass(CreateAggressiveDCEPass());
+    RegisterPass(CreateCFGCleanupPass());
 }
 
 } // namespace filamat

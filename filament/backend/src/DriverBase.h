@@ -135,9 +135,6 @@ struct HwFence : public HwBase {
     Platform::Fence* fence = nullptr;
 };
 
-struct HwSync : public HwBase {
-};
-
 struct HwSwapChain : public HwBase {
     Platform::SwapChain* swapChain = nullptr;
 };
@@ -168,13 +165,6 @@ public:
 
     void purge() noexcept final;
 
-    // --------------------------------------------------------------------------------------------
-    // Privates
-    // --------------------------------------------------------------------------------------------
-
-protected:
-    class CallbackDataDetails;
-
     // Helpers...
     struct CallbackData {
         CallbackData(CallbackData const &) = delete;
@@ -204,6 +194,13 @@ protected:
     }
 
     void scheduleCallback(CallbackHandler* handler, void* user, CallbackHandler::Callback callback);
+
+    // --------------------------------------------------------------------------------------------
+    // Privates
+    // --------------------------------------------------------------------------------------------
+
+protected:
+    class CallbackDataDetails;
 
     inline void scheduleDestroy(BufferDescriptor&& buffer) noexcept {
         if (buffer.hasCallback()) {

@@ -264,7 +264,7 @@ public:
 
     FScene* createScene() noexcept;
     FView* createView() noexcept;
-    FFence* createFence(FFence::Type type) noexcept;
+    FFence* createFence() noexcept;
     FSwapChain* createSwapChain(void* nativeWindow, uint64_t flags) noexcept;
     FSwapChain* createSwapChain(uint32_t width, uint32_t height, uint64_t flags) noexcept;
 
@@ -292,6 +292,26 @@ public:
     bool destroy(const FSwapChain* p);
     bool destroy(const FView* p);
     bool destroy(const FInstanceBuffer* p);
+
+    bool isValid(const FBufferObject* p);
+    bool isValid(const FVertexBuffer* p);
+    bool isValid(const FFence* p);
+    bool isValid(const FIndexBuffer* p);
+    bool isValid(const FSkinningBuffer* p);
+    bool isValid(const FMorphTargetBuffer* p);
+    bool isValid(const FIndirectLight* p);
+    bool isValid(const FMaterial* p);
+    bool isValid(const FMaterialInstance* p);
+    bool isValid(const FRenderer* p);
+    bool isValid(const FScene* p);
+    bool isValid(const FSkybox* p);
+    bool isValid(const FColorGrading* p);
+    bool isValid(const FSwapChain* p);
+    bool isValid(const FStream* p);
+    bool isValid(const FTexture* p);
+    bool isValid(const FRenderTarget* p);
+    bool isValid(const FView* p);
+    bool isValid(const FInstanceBuffer* p);
 
     void destroy(utils::Entity e);
 
@@ -391,6 +411,9 @@ private:
     void flushCommandBuffer(backend::CommandBufferQueue& commandBufferQueue);
 
     backend::Driver& getDriver() const noexcept { return *mDriver; }
+
+    template<typename T>
+    bool isValid(const T* ptr, ResourceList<T>& list);
 
     template<typename T>
     bool terminateAndDestroy(const T* p, ResourceList<T>& list);

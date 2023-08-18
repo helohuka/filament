@@ -870,6 +870,7 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
                         .domain = mMaterialDomain,
                         .materialInfo = &info,
                         .hasFramebufferFetch = mEnableFramebufferFetch,
+                        .usesClipDistance = v.variant.hasInstancedStereo(),
                         .glsl = {},
                 };
 
@@ -1159,6 +1160,7 @@ error:
         mVariantFilter |= uint32_t(UserVariantFilterBit::SKINNING);
         mVariantFilter |= uint32_t(UserVariantFilterBit::VSM);
         mVariantFilter |= uint32_t(UserVariantFilterBit::SSR);
+        mVariantFilter |= uint32_t(UserVariantFilterBit::STE);
     }
 
     std::vector<Variant> variants;

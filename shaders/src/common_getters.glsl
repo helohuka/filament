@@ -24,7 +24,12 @@ highp mat4 getViewFromClipMatrix() {
 
 /** @public-api */
 highp mat4 getClipFromWorldMatrix() {
-    return frameUniforms.clipFromWorldMatrix;
+#if defined(VARIANT_HAS_INSTANCED_STEREO)
+    int eye = instance_index % CONFIG_STEREOSCOPIC_EYES;
+    return frameUniforms.clipFromWorldMatrix[eye];
+#else
+    return frameUniforms.clipFromWorldMatrix[0];
+#endif
 }
 
 /** @public-api */
@@ -65,7 +70,7 @@ highp float getUserTimeMod(float m) {
  *
  * @public-api
  */
-highp vec2 uvToRenderTargetUV(const highp vec2 uv) {
+highp vec2 uvToRenderTargetUV(highp vec2 uv) {
 #if defined(TARGET_METAL_ENVIRONMENT) || defined(TARGET_VULKAN_ENVIRONMENT)
     return vec2(uv.x, 1.0 - uv.y);
 #else

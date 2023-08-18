@@ -44,7 +44,9 @@
 #include <filament/DebugRegistry.h>
 #endif
 
+#if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
 #include <backend/platforms/VulkanPlatform.h>
+#endif
 
 #include <filagui/ImGuiHelper.h>
 
@@ -64,6 +66,7 @@ namespace {
 
 using namespace filament::backend;
 
+#if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
 class FilamentAppVulkanPlatform : public VulkanPlatform {
 public:
     FilamentAppVulkanPlatform(std::string const& gpuHint) {
@@ -85,6 +88,7 @@ public:
 private:
     VulkanPlatform::GPUPreference mPreference;
 };
+#endif
 
 } // anonymous namespace
 
@@ -480,9 +484,11 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
     Engine::destroy(&mEngine);
     mEngine = nullptr;
 
+#if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
     if (mVulkanPlatform) {
         delete mVulkanPlatform;
     }
+#endif
 }
 
 // RELATIVE_ASSET_PATH is set inside samples/CMakeLists.txt and used to support multi-configuration
@@ -591,11 +597,13 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
         #endif
 
         if (backend == Engine::Backend::VULKAN) {
-            mFilamentApp->mVulkanPlatform = new FilamentAppVulkanPlatform(config.vulkanGPUHint);
-            return Engine::Builder()
-                    .backend(backend)
-                    .platform(mFilamentApp->mVulkanPlatform)
-                    .build();
+            #if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
+                mFilamentApp->mVulkanPlatform = new FilamentAppVulkanPlatform(config.vulkanGPUHint);
+                return Engine::Builder()
+                        .backend(backend)
+                        .platform(mFilamentApp->mVulkanPlatform)
+                        .build();
+            #endif
         }
         return Engine::Builder().backend(backend).build();
     };
@@ -863,8 +871,14 @@ void FilamentApp::Window::configureCamerasForWindow() {
 
     double near = mFilamentApp->mCameraNear;
     double far = mFilamentApp->mCameraFar;
-    mMainCamera->setLensProjection(mFilamentApp->mCameraFocalLength, double(mainWidth) / height, near, far);
+    mMainCamera->setLensProjection(mFilamentApp->mCameraFocalLength, 1.0, near, far);
     mDebugCamera->setProjection(45.0, double(width) / height, 0.0625, 4096, Camera::Fov::VERTICAL);
+
+    auto aspectRatio = double(mainWidth) / height;
+    if (mMainView->getView()->getStereoscopicOptions().enabled) {
+        aspectRatio = double(mainWidth) / 2.0 / height;
+    }
+    mMainCamera->setScaling({1.0 / aspectRatio, 1.0});
 
     // We're in split view when there are more views than just the Main and UI views.
     if (splitview) {

@@ -6,7 +6,7 @@
 #define SUN_AS_AREA_LIGHT
 #endif
 
-vec3 sampleSunAreaLight(const vec3 lightDirection) {
+vec3 sampleSunAreaLight(vec3 lightDirection) {
 #if defined(SUN_AS_AREA_LIGHT)
     if (frameUniforms.sun.w >= 0.0) {
         // simulate sun as disc area light
@@ -31,12 +31,12 @@ Light getDirectionalLight() {
     return light;
 }
 
-void evaluateDirectionalLight(const MaterialInputs material,
-        const PixelParams pixel, inout vec3 color) {
+void evaluateDirectionalLight(MaterialInputs material,
+        PixelParams pixel, inout vec3 color) {
 
     Light light = getDirectionalLight();
 
-    int channels = object_uniforms.flagsChannels & 0xFF;
+    int channels = object_uniforms_flagsChannels & 0xFF;
     if ((light.channels & channels) == 0) {
         return;
     }
@@ -60,7 +60,7 @@ void evaluateDirectionalLight(const MaterialInputs material,
             visibility = shadow(true, light_shadowMap, cascade, shadowPosition, 0.0);
         }
         if ((frameUniforms.directionalShadows & 0x2) != 0 && visibility > 0.0) {
-            if ((object_uniforms.flagsChannels & FILAMENT_OBJECT_CONTACT_SHADOWS_BIT) != 0) {
+            if ((object_uniforms_flagsChannels & FILAMENT_OBJECT_CONTACT_SHADOWS_BIT) != 0) {
                 ssContactShadowOcclusion = screenSpaceContactShadow(light.l);
             }
         }

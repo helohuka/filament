@@ -105,7 +105,7 @@ void Engine::destroyCameraComponent(utils::Entity entity) noexcept {
 }
 
 Fence* Engine::createFence() noexcept {
-    return downcast(this)->createFence(FFence::Type::SOFT);
+    return downcast(this)->createFence();
 }
 
 SwapChain* Engine::createSwapChain(void* nativeWindow, uint64_t flags) noexcept {
@@ -194,6 +194,61 @@ bool Engine::destroy(const InstanceBuffer* p) {
 
 void Engine::destroy(Entity e) {
     downcast(this)->destroy(e);
+}
+
+bool Engine::isValid(const BufferObject* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const VertexBuffer* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const Fence* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const IndexBuffer* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const SkinningBuffer* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const MorphTargetBuffer* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const IndirectLight* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const Material* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const Renderer* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const Scene* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const Skybox* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const ColorGrading* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const SwapChain* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const Stream* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const Texture* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const RenderTarget* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const View* p) {
+    return downcast(this)->isValid(downcast(p));
+}
+bool Engine::isValid(const InstanceBuffer* p) {
+    return downcast(this)->isValid(downcast(p));
 }
 
 void Engine::flushAndWait() {

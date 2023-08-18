@@ -50,6 +50,8 @@ void ShaderGenerator::generateSurfaceMaterialVariantDefines(utils::io::sstream& 
             litVariants && filament::Variant::isShadowReceiverVariant(variant));
     CodeGenerator::generateDefine(out, "VARIANT_HAS_VSM",
             filament::Variant::isVSMVariant(variant));
+    CodeGenerator::generateDefine(out, "VARIANT_HAS_INSTANCED_STEREO",
+            filament::Variant::isStereoVariant(variant));
 
     switch (stage) {
         case ShaderStage::VERTEX:
@@ -367,7 +369,7 @@ std::string ShaderGenerator::createVertexProgram(ShaderModel shaderModel,
 
     const CodeGenerator cg(shaderModel, targetApi, targetLanguage, material.featureLevel);
 
-    cg.generateProlog(vs, ShaderStage::VERTEX, material);
+    cg.generateProlog(vs, ShaderStage::VERTEX, material, variant);
 
     generateUserSpecConstants(cg, vs, mConstants);
 
@@ -487,7 +489,7 @@ std::string ShaderGenerator::createFragmentProgram(ShaderModel shaderModel,
     const CodeGenerator cg(shaderModel, targetApi, targetLanguage, material.featureLevel);
 
     io::sstream fs;
-    cg.generateProlog(fs, ShaderStage::FRAGMENT, material);
+    cg.generateProlog(fs, ShaderStage::FRAGMENT, material, variant);
 
     generateUserSpecConstants(cg, fs, mConstants);
 
@@ -606,7 +608,7 @@ std::string ShaderGenerator::createComputeProgram(filament::backend::ShaderModel
     const CodeGenerator cg(shaderModel, targetApi, targetLanguage, material.featureLevel);
     io::sstream s;
 
-    cg.generateProlog(s, ShaderStage::COMPUTE, material);
+    cg.generateProlog(s, ShaderStage::COMPUTE, material, {});
 
     generateUserSpecConstants(cg, s, mConstants);
 
@@ -644,7 +646,7 @@ std::string ShaderGenerator::createPostProcessVertexProgram(ShaderModel sm,
         MaterialInfo const& material, const filament::Variant::type_t variantKey) const noexcept {
     const CodeGenerator cg(sm, targetApi, targetLanguage, material.featureLevel);
     io::sstream vs;
-    cg.generateProlog(vs, ShaderStage::VERTEX, material);
+    cg.generateProlog(vs, ShaderStage::VERTEX, material, {});
 
     generateUserSpecConstants(cg, vs, mConstants);
 
@@ -685,7 +687,7 @@ std::string ShaderGenerator::createPostProcessFragmentProgram(ShaderModel sm,
         MaterialInfo const& material, uint8_t variant) const noexcept {
     const CodeGenerator cg(sm, targetApi, targetLanguage, material.featureLevel);
     io::sstream fs;
-    cg.generateProlog(fs, ShaderStage::FRAGMENT, material);
+    cg.generateProlog(fs, ShaderStage::FRAGMENT, material, {});
 
     generateUserSpecConstants(cg, fs, mConstants);
 

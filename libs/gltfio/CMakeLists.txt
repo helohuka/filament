@@ -4,6 +4,8 @@ project(gltfio C ASM)
 set(TARGET gltfio)
 set(PUBLIC_HDR_DIR include)
 
+set(ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+
 # ==================================================================================================
 # Sources and headers
 # ==================================================================================================
@@ -190,6 +192,40 @@ endif()
 
 #endif()
 
+# ==================================================================================================
+# Tests
+# ==================================================================================================
+if(FILAMENT_ENABLE_BUILD_TEST)
+set(GLTF_TEST_FILES)
+function(add_test_gltf SOURCE TARGET)
+    set(source_path "${ROOT_DIR}/${SOURCE}")
+    set(target_path "${CMAKE_CURRENT_BINARY_DIR}/${TARGET}")
+    add_custom_command(
+        OUTPUT ${target_path}
+        DEPENDS ${source_path}
+        COMMAND ${CMAKE_COMMAND} -E copy ${source_path} ${target_path}
+    )
+    list(APPEND GLTF_TEST_FILES "${target_path}")
+    set(GLTF_TEST_FILES ${GLTF_TEST_FILES} PARENT_SCOPE)
+endfunction()
+
+add_test_gltf("third_party/models/AnimatedMorphCube/AnimatedMorphCube.glb" "AnimatedMorphCube.glb")
+
+add_custom_target(test_gltfio_files DEPENDS ${GLTF_TEST_FILES})
+
+# The following tests rely on private APIs that are stripped
+# away in Release builds
+if (TNT_DEV AND NOT WEBGL AND NOT ANDROID AND NOT IOS)
+    set(TEST_TARGET test_gltfio)
+
+    add_executable(${TEST_TARGET} test/gltfio_test.cpp)
+    add_dependencies(${TEST_TARGET} test_gltfio_files)
+
+    target_link_libraries(${TEST_TARGET} PRIVATE ${TARGET} filament filabridge gtest uberarchive)
+    target_compile_options(${TEST_TARGET} PRIVATE -Wno-deprecated-register)
+    set_target_properties(${TEST_TARGET} PROPERTIES FOLDER Tests)
+endif()
+endif(FILAMENT_ENABLE_BUILD_TEST)
 # ==================================================================================================
 # Installation
 # ==================================================================================================

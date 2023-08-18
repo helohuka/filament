@@ -170,6 +170,8 @@ export class MaterialInstance {
     public setFloat2Parameter(name: string, value: float2): void;
     public setFloat3Parameter(name: string, value: float3): void;
     public setFloat4Parameter(name: string, value: float4): void;
+    public setMat3Parameter(name: string, value: mat4): void;
+    public setMat4Parameter(name: string, value: mat3): void;
     public setTextureParameter(name: string, value: Texture, sampler: TextureSampler): void;
     public setColor3Parameter(name: string, ctype: RgbType, value: float3): void;
     public setColor4Parameter(name: string, ctype: RgbaType, value: float4): void;
@@ -181,6 +183,7 @@ export class MaterialInstance {
     public setDepthWrite(enable: boolean): void;
     public setStencilWrite(enable: boolean): void;
     public setDepthCulling(enable: boolean): void;
+    public setDepthFunc(func: CompareFunc): void;
     public setStencilCompareFunction(func: CompareFunc, face?: StencilFace): void;
     public setStencilOpStencilFail(op: StencilOperation, face?: StencilFace): void;
     public setStencilOpDepthFail(op: StencilOperation, face?: StencilFace): void;

@@ -7,6 +7,42 @@ A new header is inserted each time a *tag* is created.
 Instead, if you are authoring a PR for the main branch, add your release note to
 [NEW_RELEASE_NOTES.md](./NEW_RELEASE_NOTES.md).
 
+## v1.42.0
+
+- engine: add preliminary support for instanced stereoscopic rendering [⚠️ **Recompile materials**]
+
+## v1.41.0
+
+- backend: fix #6997 : picking can fail on Adreno [⚠️ **New Material Version**]
+- backend: A partial workaround for PowerVR devices (#5118, b/190221124) [⚠️ **Recompile Materials**]
+
+## v1.40.5
+
+- backend: Disable timer queries on all Mali GPUs (fixes b/233754398)
+- engine: Add a way to query the validity of most filament objects (see `Engine::isValid`)
+- opengl: fix b/290388359 : possible crash when shutting down the engine
+- engine: Improve precision of frame time measurement when using emulated TimerQueries
+- backend: Improve frame pacing on Android and Vulkan.
+- backend: workaround b/291140208 (gltf_viewer crashes on Nexus 6P)
+- engine: support `setDepthFunc` for `MaterialInstance`
+- web: Added setDepthFunc()/getDepthFunc() to MaterialInstance
+- android: Added setDepthFunc()/getDepthFunc() to MaterialInstance
+
+## v1.40.4
+
+- gltfio: fix crash when compute morph target without material
+- matc: fix buggy `variant-filter` flag
+- web: Added missing setMat3Parameter()/setMat4Parameter() to MaterialInstance
+- opengl: fix b/290670707 : crash when using the blob cache
+- engine: fix a crash with `Material::compile()` when a callback is specified
+
+## v1.40.3
+
+## v1.40.2
+
+- rendering: dynamic resolution would not work with a translucent render target and quality > low
+- Java/Kotlin: user callbacks were not invoked on successful texture upload
+
 ## v1.40.1
 
 ## v1.40.0

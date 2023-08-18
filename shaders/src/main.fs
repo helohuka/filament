@@ -5,7 +5,7 @@ layout(location = 0) out vec4 fragColor;
 #endif
 
 #if defined(MATERIAL_HAS_POST_LIGHTING_COLOR)
-void blendPostLightingColor(const MaterialInputs material, inout vec4 color) {
+void blendPostLightingColor(MaterialInputs material, inout vec4 color) {
 #if defined(POST_LIGHTING_BLEND_MODE_OPAQUE)
     color = material.postLightingColor;
 #elif defined(POST_LIGHTING_BLEND_MODE_TRANSPARENT)
@@ -22,8 +22,11 @@ void blendPostLightingColor(const MaterialInputs material, inout vec4 color) {
 
 void main() {
     filament_lodBias = frameUniforms.lodBias;
+#if defined(FILAMENT_HAS_FEATURE_INSTANCING)
+    logical_instance_index = instance_index;
+#endif
 
-    initObjectUniforms(object_uniforms);
+    initObjectUniforms();
 
     // See shading_parameters.fs
     // Computes global variables we need to evaluate material and lighting

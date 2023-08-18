@@ -1009,9 +1009,8 @@ void FView::executePickingQueries(backend::DriverApi& driver,
                     &pQuery->result.renderable, 4u * 4u, // 4*float
                     backend::PixelDataFormat::RG, backend::PixelDataType::FLOAT,
                     pQuery->handler, [](void*, size_t, void* user) {
-                        FPickingQuery* pQuery = static_cast<FPickingQuery*>(user);
-                        float const identity = *((float*)((char*)&pQuery->result.renderable));
-                        pQuery->result.renderable = Entity::import(int32_t(identity));
+                        FPickingQuery* const pQuery = static_cast<FPickingQuery*>(user);
+                        // pQuery->result.renderable already contains the right value!
                         pQuery->result.fragCoords = {
                                 pQuery->x, pQuery->y, float(1.0 - pQuery->result.depth) };
                         pQuery->callback(pQuery->result, pQuery);
@@ -1116,6 +1115,10 @@ View::PickingQuery& FView::pick(uint32_t x, uint32_t y, backend::CallbackHandler
     pQuery->next = mActivePickingQueriesList;
     mActivePickingQueriesList = pQuery;
     return *pQuery;
+}
+
+void FView::setStereoscopicOptions(const StereoscopicOptions& options) noexcept {
+    mStereoscopicOptions = options;
 }
 
 void FView::setMaterialGlobal(uint32_t index, float4 const& value) {

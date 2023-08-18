@@ -107,9 +107,6 @@ void NoopDriver::destroyStream(Handle<HwStream> sh) {
 void NoopDriver::destroyTimerQuery(Handle<HwTimerQuery> tqh) {
 }
 
-void NoopDriver::destroySync(Handle<HwSync> fh) {
-}
-
 Handle<HwStream> NoopDriver::createStreamNative(void* nativeStream) {
     return {};
 }
@@ -135,7 +132,7 @@ void NoopDriver::updateStreams(CommandStream* driver) {
 void NoopDriver::destroyFence(Handle<HwFence> fh) {
 }
 
-FenceStatus NoopDriver::wait(Handle<HwFence> fh, uint64_t timeout) {
+FenceStatus NoopDriver::getFenceStatus(Handle<HwFence> fh) {
     return FenceStatus::CONDITION_SATISFIED;
 }
 
@@ -174,6 +171,10 @@ bool NoopDriver::isAutoDepthResolveSupported() {
 }
 
 bool NoopDriver::isSRGBSwapChainSupported() {
+    return false;
+}
+
+bool NoopDriver::isParallelShaderCompileSupported() {
     return false;
 }
 
@@ -236,10 +237,6 @@ bool NoopDriver::getTimerQueryValue(Handle<HwTimerQuery> tqh, uint64_t* elapsedT
     return false;
 }
 
-SyncStatus NoopDriver::getSyncStatus(Handle<HwSync> sh) {
-    return SyncStatus::SIGNALED;
-}
-
 void NoopDriver::setExternalImage(Handle<HwTexture> th, void* image) {
 }
 
@@ -260,8 +257,8 @@ void NoopDriver::updateSamplerGroup(Handle<HwSamplerGroup> sbh,
     scheduleDestroy(std::move(data));
 }
 
-void NoopDriver::compilePrograms(CallbackHandler* handler,
-        CallbackHandler::Callback callback, void* user) {
+void NoopDriver::compilePrograms(CompilerPriorityQueue priority,
+        CallbackHandler* handler, CallbackHandler::Callback callback, void* user) {
     if (callback) {
         scheduleCallback(handler, user, callback);
     }

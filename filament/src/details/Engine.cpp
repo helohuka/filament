@@ -465,7 +465,7 @@ void FEngine::shutdown() {
         getDriverApi().terminate();
     } else {
         mDriverThread.join();
-
+        // Driver::terminate() has been called here.
     }
 
     // Finally, call user callbacks that might have been scheduled.
@@ -536,7 +536,7 @@ void FEngine::flushAndWait() {
 
     // then create a fence that will trigger when we're past the finish() above
     size_t tryCount = 8;
-    FFence* fence = FEngine::createFence(FFence::Type::SOFT);
+    FFence* fence = FEngine::createFence();
     UTILS_NOUNROLL
     do {
         FenceStatus status = fence->wait(FFence::Mode::FLUSH,250000000u);
@@ -556,8 +556,7 @@ void FEngine::flushAndWait() {
 
 #else
 
-    FFence::waitAndDestroy(
-            FEngine::createFence(FFence::Type::SOFT), FFence::Mode::FLUSH);
+    FFence::waitAndDestroy(FEngine::createFence(), FFence::Mode::FLUSH);
 
 #endif
 
@@ -617,15 +616,18 @@ int FEngine::loop() {
         return 0;
     }
 
-    // We use the highest affinity bit, assuming this is a Big core in a  big.little
-    // configuration. This is also a core not used by the JobSystem.
-    // Either way the main reason to do this is to avoid this thread jumping from core to core
-    // and lose its caches in the process.
-    uint32_t const id = std::thread::hardware_concurrency() - 1;
+    // Set thread affinity for the backend thread.
+    //  see https://developer.android.com/agi/sys-trace/threads-scheduling#cpu_core_affinity
+    // Certain backends already have some threads pinned, and we can't easily know on which core.
+    const bool disableThreadAffinity
+            = mDriver->isWorkaroundNeeded(Workaround::DISABLE_THREAD_AFFINITY);
 
+    uint32_t const id = std::thread::hardware_concurrency() - 1;
     while (true) {
         // looks like thread affinity needs to be reset regularly (on Android)
-        JobSystem::setThreadAffinityById(id);
+        if (!disableThreadAffinity) {
+            JobSystem::setThreadAffinityById(id);
+        }
         if (!execute()) {
             break;
         }
@@ -759,8 +761,8 @@ FView* FEngine::createView() noexcept {
     return p;
 }
 
-FFence* FEngine::createFence(FFence::Type type) noexcept {
-    FFence* p = mHeapAllocator.make<FFence>(*this, type);
+FFence* FEngine::createFence() noexcept {
+    FFence* p = mHeapAllocator.make<FFence>(*this);
     if (p) {
         std::lock_guard const guard(mFenceListLock);
         mFences.insert(p);
@@ -851,6 +853,12 @@ void FEngine::cleanupResourceListLocked(Lock& lock, ResourceList<T>&& list) {
 }
 
 // -----------------------------------------------------------------------------------------------
+
+template<typename T>
+UTILS_ALWAYS_INLINE
+inline bool FEngine::isValid(const T* ptr, ResourceList<T>& list) {
+    return list.find(ptr) != list.end();
+}
 
 template<typename T>
 UTILS_ALWAYS_INLINE
@@ -1019,6 +1027,79 @@ void FEngine::destroy(Entity e) {
     mCameraManager.destroy(e);
 }
 
+bool FEngine::isValid(const FBufferObject* p) {
+    return isValid(p, mBufferObjects);
+}
+
+bool FEngine::isValid(const FVertexBuffer* p) {
+    return isValid(p, mVertexBuffers);
+}
+
+bool FEngine::isValid(const FFence* p) {
+    return isValid(p, mFences);
+}
+
+bool FEngine::isValid(const FIndexBuffer* p) {
+    return isValid(p, mIndexBuffers);
+}
+
+bool FEngine::isValid(const FSkinningBuffer* p) {
+    return isValid(p, mSkinningBuffers);
+}
+
+bool FEngine::isValid(const FMorphTargetBuffer* p) {
+    return isValid(p, mMorphTargetBuffers);
+}
+
+bool FEngine::isValid(const FIndirectLight* p) {
+    return isValid(p, mIndirectLights);
+}
+
+bool FEngine::isValid(const FMaterial* p) {
+    return isValid(p, mMaterials);
+}
+
+bool FEngine::isValid(const FRenderer* p) {
+    return isValid(p, mRenderers);
+}
+
+bool FEngine::isValid(const FScene* p) {
+    return isValid(p, mScenes);
+}
+
+bool FEngine::isValid(const FSkybox* p) {
+    return isValid(p, mSkyboxes);
+}
+
+bool FEngine::isValid(const FColorGrading* p) {
+    return isValid(p, mColorGradings);
+}
+
+bool FEngine::isValid(const FSwapChain* p) {
+    return isValid(p, mSwapChains);
+}
+
+bool FEngine::isValid(const FStream* p) {
+    return isValid(p, mStreams);
+}
+
+bool FEngine::isValid(const FTexture* p) {
+    return isValid(p, mTextures);
+}
+
+bool FEngine::isValid(const FRenderTarget* p) {
+    return isValid(p, mRenderTargets);
+}
+
+bool FEngine::isValid(const FView* p) {
+    return isValid(p, mViews);
+}
+
+bool FEngine::isValid(const FInstanceBuffer* p) {
+    return isValid(p, mInstanceBuffers);
+}
+
+
 void* FEngine::streamAlloc(size_t size, size_t alignment) noexcept {
     // we allow this only for small allocations
     if (size > 65536) {
@@ -1035,9 +1116,10 @@ bool FEngine::execute() {
     }
 
     // execute all command buffers
+    auto& driver = getDriverApi();
     for (auto& item : buffers) {
         if (UTILS_LIKELY(item.begin)) {
-            getDriverApi().execute(item.begin);
+            driver.execute(item.begin);
             mCommandBufferQueue.releaseBuffer(item);
         }
     }

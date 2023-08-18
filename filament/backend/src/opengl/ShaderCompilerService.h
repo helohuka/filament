@@ -19,12 +19,16 @@
 
 #include "gl_headers.h"
 
+#include "CallbackManager.h"
+#include "CompilerThreadPool.h"
+
 #include <backend/CallbackHandler.h>
 #include <backend/Program.h>
 
 #include <utils/CString.h>
-#include <utils/Invocable.h>
 #include <utils/FixedCapacityVector.h>
+#include <utils/Invocable.h>
+#include <utils/JobSystem.h>
 
 #include <atomic>
 #include <condition_variable>
@@ -33,6 +37,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace filament::backend {
@@ -47,10 +52,10 @@ class CallbackHandler;
  * A class handling shader compilation that supports asynchronous compilation.
  */
 class ShaderCompilerService {
-    struct ProgramToken;
+    struct OpenGLProgramToken;
 
 public:
-    using program_token_t = std::shared_ptr<ProgramToken>;
+    using program_token_t = std::shared_ptr<OpenGLProgramToken>;
 
     explicit ShaderCompilerService(OpenGLDriver& driver);
 
@@ -61,15 +66,13 @@ public:
 
     ~ShaderCompilerService() noexcept;
 
+    bool isParallelShaderCompileSupported() const noexcept;
+
     void init() noexcept;
     void terminate() noexcept;
 
     // creates a program (compile + link) asynchronously if supported
     program_token_t createProgram(utils::CString const& name, Program&& program);
-
-    // Returns true if the program is linked (successfully or not). Guarantees that
-    // getProgram() won't block. Does not block.
-    bool isProgramReady(const program_token_t& token) const noexcept;
 
     // Return the GL program, blocks if necessary. The Token is destroyed and becomes invalid.
     GLuint getProgram(program_token_t& token);
@@ -87,37 +90,16 @@ public:
     static void* getUserData(const program_token_t& token) noexcept;
 
     // call the callback when all active programs are ready
-    void notifyWhenAllProgramsAreReady(CallbackHandler* handler,
-            CallbackHandler::Callback callback, void* user);
+    void notifyWhenAllProgramsAreReady(
+            CallbackHandler* handler, CallbackHandler::Callback callback, void* user);
 
 private:
-    class CompilerThreadPool {
-    public:
-        using Job = utils::Invocable<void()>;
-        void init(bool useSharedContexts, uint32_t threadCount, OpenGLPlatform& platform) noexcept;
-        void exit() noexcept;
-        void queue(program_token_t const& token, Job&& job);
-        void makeUrgent(program_token_t const& token);
-
-    private:
-        std::vector<std::thread> mCompilerThreads;
-        std::atomic_bool mExitRequested{ false };
-        std::mutex mQueueLock;
-        std::condition_variable mQueueCondition;
-        std::array<std::deque<std::pair<program_token_t, Job>>, 2> mQueues;
-        Job mUrgentJob;
-        Job dequeue(program_token_t const& token); // lock must be held
-    };
-
     OpenGLDriver& mDriver;
+    CallbackManager mCallbackManager;
     CompilerThreadPool mCompilerThreadPool;
 
     const bool KHR_parallel_shader_compile;
     uint32_t mShaderCompilerThreadCount = 0u;
-
-    // For now, we assume shared contexts are supported everywhere. If they are not,
-    // we don't use the shader compiler pool. However, the code supports it.
-    static constexpr bool mUseSharedContext = true;
 
     GLuint initialize(ShaderCompilerService::program_token_t& token) noexcept;
 
@@ -143,11 +125,27 @@ private:
 
     static bool checkProgramStatus(program_token_t const& token) noexcept;
 
-    void runAtNextTick(const program_token_t& token, std::function<bool()> fn) noexcept;
+    struct Job {
+        template<typename FUNC>
+        Job(FUNC&& fn) : fn(std::forward<FUNC>(fn)) {}
+        Job(std::function<bool(Job const& job)> fn,
+                CallbackHandler* handler, void* user, CallbackHandler::Callback callback)
+                : fn(std::move(fn)), handler(handler), user(user), callback(callback) {
+        }
+        std::function<bool(Job const& job)> fn;
+        CallbackHandler* handler = nullptr;
+        void* user = nullptr;
+        CallbackHandler::Callback callback{};
+    };
+
+    void runAtNextTick(CompilerPriorityQueue priority,
+            const program_token_t& token, Job job) noexcept;
     void executeTickOps() noexcept;
     void cancelTickOp(program_token_t token) noexcept;
     // order of insertion is important
-    std::vector<std::pair<program_token_t, std::function<bool()>>> mRunAtNextTickOps;
+
+    using ContainerType = std::tuple<CompilerPriorityQueue, program_token_t, Job>;
+    std::vector<ContainerType> mRunAtNextTickOps;
 };
 
 } // namespace filament::backend
