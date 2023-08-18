@@ -105,10 +105,7 @@ void GameDriver::mainLoop()
             Resource::get().getRootPath() + "assets/fonts/Roboto-Medium.ttf");
         ImGuiIO& io = ImGui::GetIO();
         #ifdef WIN32
-            SDL_SysWMinfo wmInfo;
-            SDL_VERSION(&wmInfo.version);
-            SDL_GetWindowWMInfo(window->getSDLWindow(), &wmInfo);
-            io.ImeWindowHandle = wmInfo.info.win.window;
+            io.ImeWindowHandle = window->getNativeWindow();
         #endif
         io.KeyMap[ImGuiKey_Tab] = SDL_SCANCODE_TAB;
         io.KeyMap[ImGuiKey_LeftArrow] = SDL_SCANCODE_LEFT;
@@ -272,7 +269,7 @@ void GameDriver::mainLoop()
                     break;
                 case SDL_APP_DIDENTERFOREGROUND:
                     mEngine->setActiveFeatureLevel(mConfig.featureLevel);
-                    window->mSwapChain = mEngine->createSwapChain(::getNativeWindow(window->mWindow));
+                    window->mSwapChain = mEngine->createSwapChain(window->getNativeWindow());
                     break;
                 default:
                     break;

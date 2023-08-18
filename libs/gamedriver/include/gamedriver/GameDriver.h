@@ -193,7 +193,7 @@ public:
 
     SDL_Window* getSDLWindow() { return mWindow; }
     void*       getNativeWindow();
-
+    void*       getNativeSurface();
     void setWindowTitle(const char* title)
     {
         mWindowTitle = title;

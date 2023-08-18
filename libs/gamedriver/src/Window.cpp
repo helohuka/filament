@@ -144,6 +144,17 @@ void* Window::getNativeWindow()
     return (void*)win;
 }
 
+void* Window::getNativeSurface()
+{
+    //SDL_SysWMinfo wmi;
+    //SDL_VERSION(&wmi.version);
+    //ASSERT_POSTCONDITION(SDL_GetWindowWMInfo(mWindow, &wmi), "SDL version unsupported!");
+
+    //return wmi.info.;
+
+    return nullptr;
+}
+
 void Window::mouseDown(int button, ssize_t x, ssize_t y) {
     fixupMouseCoordinatesForHdpi(x, y);
     y = mHeight - y;

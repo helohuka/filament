@@ -120,7 +120,6 @@ if (LINUX)
 endif()
 
 if (WIN32)
-    list(APPEND SRCS src/NativeWindowHelperWindows.cpp)
     list(APPEND LIBS SDL2main)
 endif()
 

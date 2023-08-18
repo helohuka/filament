@@ -134,24 +134,30 @@ bool IBL::loadFromKtx(const std::string& prefix) {
     return true;
 }
 
-bool IBL::loadFromDirectory(const utils::Path& path) {
+bool IBL::loadFromDirectory(const utils::Path& path)
+{
     // First check if KTX files are available.
-    if (loadFromKtx(Path::concat(path, path.getName()))) {
+    if (loadFromKtx(Path::concat(path, path.getName())))
+    {
         return true;
     }
     // Read spherical harmonics
     Path sh(Path::concat(path, "sh.txt"));
-    if (sh.exists()) {
+    if (sh.exists())
+    {
         std::ifstream shReader(sh);
         shReader >> std::skipws;
 
         std::string line;
-        for (float3& band : mBands) {
+        for (float3& band : mBands)
+        {
             std::getline(shReader, line);
             int n = sscanf(line.c_str(), "(%f,%f,%f)", &band.r, &band.g, &band.b); // NOLINT(cert-err34-c)
             if (n != 3) return false;
         }
-    } else {
+    }
+    else
+    {
         return false;
     }
 
@@ -160,7 +166,8 @@ bool IBL::loadFromDirectory(const utils::Path& path) {
     if (!loadCubemapLevel(&mTexture, path, 0, prefix + "0_")) return false;
 
     size_t numLevels = mTexture->getLevels();
-    for (size_t i = 1; i<numLevels; i++) {
+    for (size_t i = 1; i < numLevels; i++)
+    {
         const std::string levelPrefix = prefix + std::to_string(i) + "_";
         loadCubemapLevel(&mTexture, path, i, levelPrefix);
     }
@@ -168,10 +175,10 @@ bool IBL::loadFromDirectory(const utils::Path& path) {
     if (!loadCubemapLevel(&mSkyboxTexture, path)) return false;
 
     mIndirectLight = IndirectLight::Builder()
-            .reflections(mTexture)
-            .irradiance(3, mBands)
-            .intensity(IBL_INTENSITY)
-            .build(mEngine);
+                         .reflections(mTexture)
+                         .irradiance(3, mBands)
+                         .intensity(IBL_INTENSITY)
+                         .build(mEngine);
 
     mSkybox = Skybox::Builder().environment(mSkyboxTexture).showSun(true).build(mEngine);
 
