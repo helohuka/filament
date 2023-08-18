@@ -9,7 +9,8 @@
 
 #include <string>
 
-namespace filament {
+namespace filament
+{
 class Engine;
 class IndexBuffer;
 class IndirectLight;
@@ -18,13 +19,15 @@ class MaterialInstance;
 class Renderable;
 class Texture;
 class Skybox;
+} // namespace filament
+
+namespace utils
+{
+class Path;
 }
 
-namespace utils {
-    class Path;
-}
-
-class IBL {
+class IBL
+{
 public:
     explicit IBL(filament::Engine& engine);
     ~IBL();
@@ -33,35 +36,34 @@ public:
     bool loadFromDirectory(const utils::Path& path);
     bool loadFromKtx(const std::string& prefix);
 
-    filament::IndirectLight* getIndirectLight() const noexcept {
+    filament::IndirectLight* getIndirectLight() const noexcept
+    {
         return mIndirectLight;
     }
 
-    filament::Skybox* getSkybox() const noexcept {
+    filament::Skybox* getSkybox() const noexcept
+    {
         return mSkybox;
     }
 
     filament::math::float3 const* getSphericalHarmonics() const { return mBands; }
 
 private:
-    bool loadCubemapLevel(filament::Texture** texture, const utils::Path& path,
-            size_t level = 0, std::string const& levelPrefix = "") const;
+    bool loadCubemapLevel(filament::Texture** texture, const utils::Path& path, size_t level = 0, std::string const& levelPrefix = "") const;
 
+    bool loadCubemapLevel(filament::Texture**                       texture,
+                          filament::Texture::PixelBufferDescriptor* outBuffer,
+                          uint32_t*                                 dim,
+                          const utils::Path&                        path,
+                          size_t                                    level       = 0,
+                          std::string const&                        levelPrefix = "") const;
 
-    bool loadCubemapLevel(filament::Texture** texture,
-            filament::Texture::PixelBufferDescriptor* outBuffer,
-            uint32_t* dim,
-            const utils::Path& path,
-            size_t level = 0, std::string const& levelPrefix = "") const;
-
-    filament::Engine& mEngine;
-
-    filament::math::float3 mBands[9] = {};
-
-    filament::Texture* mTexture = nullptr;
+    filament::Engine&        mEngine;
+    filament::math::float3   mBands[9]      = {};
+    filament::Texture*       mTexture       = nullptr;
     filament::IndirectLight* mIndirectLight = nullptr;
-    filament::Texture* mSkyboxTexture = nullptr;
-    filament::Skybox* mSkybox = nullptr;
+    filament::Texture*       mSkyboxTexture = nullptr;
+    filament::Skybox*        mSkybox        = nullptr;
 };
 
 #endif // __IBL_H

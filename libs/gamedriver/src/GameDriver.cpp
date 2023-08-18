@@ -16,7 +16,7 @@ using namespace utils;
 
 
 GameDriver::GameDriver() {
-    initSDL();
+    ASSERT_POSTCONDITION(SDL_Init(SDL_INIT_EVERYTHING) == 0, "SDL_Init Failure");
 }
 
 GameDriver::~GameDriver() {
@@ -405,8 +405,6 @@ void GameDriver::mainLoop()
     mEngine = nullptr;
 }
 
-
-
 void GameDriver::loadIBL()
 {
     if (!mConfig.iblDirectory.empty())
@@ -477,11 +475,6 @@ void GameDriver::loadDirt() {
     }
 }
 
-void GameDriver::initSDL() {
-    ASSERT_POSTCONDITION(SDL_Init(SDL_INIT_EVERYTHING) == 0, "SDL_Init Failure");
-}
-
-
 void GameDriver::loadAsset(utils::Path filename)
 {
     // Peek at the file size to allow pre-allocation.
@@ -514,7 +507,6 @@ void GameDriver::loadAsset(utils::Path filename)
         exit(1);
     }
 };
-
 
 void GameDriver::loadResources( utils::Path filename)
 {
@@ -562,8 +554,6 @@ void GameDriver::loadResources( utils::Path filename)
         mViewerGUI->setIndirectLight(mIBL->getIndirectLight(), mIBL->getSphericalHarmonics());
     }
 };
-
-
 
 void GameDriver::createGroundPlane()
 {
@@ -648,8 +638,6 @@ void GameDriver::createGroundPlane()
     mGround.mGroundIndexBuffer  = indexBuffer;
     mGround.mGroundMaterial     = shadowMaterial;
 }
-
-
 
 void GameDriver::createOverdrawVisualizerEntities()
 {

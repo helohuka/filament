@@ -71,6 +71,10 @@ include(CheckCCompilerFlag)
 
 project(CURL C)
 
+macro(set_option name desc opt)
+	set(${name} ${opt})
+endmacro()
+
 file(STRINGS ${CURL_SOURCE_DIR}/include/curl/curlver.h CURL_VERSION_H_CONTENTS REGEX "#define LIBCURL_VERSION( |_NUM )")
 string(REGEX MATCH "#define LIBCURL_VERSION \"[^\"]*"
   CURL_VERSION ${CURL_VERSION_H_CONTENTS})
@@ -99,14 +103,14 @@ include_directories(${CURL_SOURCE_DIR}/include)
 
 set(CMAKE_UNITY_BUILD_BATCH_SIZE 0)
 
-option(CURL_WERROR "Turn compiler warnings into errors" OFF)
-option(PICKY_COMPILER "Enable picky compiler options" ON)
-option(BUILD_CURL_EXE "Set to ON to build curl executable." ON)
-option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+set_option(CURL_WERROR "Turn compiler warnings into errors" OFF)
+set_option(PICKY_COMPILER "Enable picky compiler options" ON)
+set_option(BUILD_CURL_EXE "Set to ON to build curl executable." OFF)
+set_option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(ENABLE_ARES "Set to ON to enable c-ares support" OFF)
 if(WIN32)
-  option(CURL_STATIC_CRT "Set to ON to build libcurl with static CRT on Windows (/MT)." OFF)
-  option(ENABLE_UNICODE "Set to ON to use the Unicode version of the Windows API functions" OFF)
+  set_option(CURL_STATIC_CRT "Set to ON to build libcurl with static CRT on Windows (/MT)." ON)
+  set_option(ENABLE_UNICODE "Set to ON to use the Unicode version of the Windows API functions" OFF)
   set(CURL_TARGET_WINDOWS_VERSION "" CACHE STRING "Minimum target Windows version as hex string")
   if(CURL_TARGET_WINDOWS_VERSION)
     add_definitions(-D_WIN32_WINNT=${CURL_TARGET_WINDOWS_VERSION})
@@ -1409,9 +1413,11 @@ if(BUILD_CURL_EXE)
   add_subdirectory(src)
 endif()
 
-cmake_dependent_option(BUILD_TESTING "Build tests"
-  ON "PERL_FOUND;NOT CURL_DISABLE_TESTS"
-  OFF)
+#cmake_dependent_option(BUILD_TESTING "Build tests"
+#  ON "PERL_FOUND;NOT CURL_DISABLE_TESTS"
+#  OFF)
+set_option(BUILD_TESTING "Build tests" OFF)
+
 if(BUILD_TESTING)
   add_subdirectory(tests)
 endif()

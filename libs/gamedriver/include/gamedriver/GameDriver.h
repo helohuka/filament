@@ -315,7 +315,6 @@ public:
 
 private:
     friend class Window;
-    void initSDL();
 
     void loadIBL();
     void loadDirt();
