@@ -29,13 +29,10 @@ View* GameDriver::getGuiView() const noexcept {
 
 void GameDriver::mainLoop()
 {
-
     static const char* DEFAULT_IBL = "assets/ibl/lightroom_14b";
     mConfig.iblDirectory = Resource::get().getRootPath() + DEFAULT_IBL;
   
-    mWindowTitle = mConfig.title;
-    std::unique_ptr<Window> window(
-        new Window(this, mConfig));
+    std::unique_ptr<Window> window(new Window(this, mConfig));
 
     mDepthMaterial = Material::Builder()
             .package(GAMEDRIVER_DEPTHVISUALIZER_DATA, GAMEDRIVER_DEPTHVISUALIZER_SIZE)
@@ -99,8 +96,6 @@ void GameDriver::mainLoop()
         }
     }
 
-
-
     setup(window->mMainView->getView());
 
     ImGuiCallback imguiCallback = std::bind(&GameDriver::gui, this, mEngine, std::placeholders::_2);
@@ -151,13 +146,9 @@ void GameDriver::mainLoop()
     float cameraFocalLength = mCameraFocalLength;
 
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
-    SDL_Window* sdlWindow = window->getSDLWindow();
 
     while (!mClosed) {
-        if (mWindowTitle != SDL_GetWindowTitle(sdlWindow)) {
-            SDL_SetWindowTitle(sdlWindow, mWindowTitle.c_str());
-        }
-
+        
         if (mSidebarWidth != sidebarWidth || mCameraFocalLength != cameraFocalLength) {
             window->configureCamerasForWindow();
             sidebarWidth = mSidebarWidth;
@@ -300,10 +291,7 @@ void GameDriver::mainLoop()
         if (mImGuiHelper) {
 
             // Inform ImGui of the current window size in case it was resized.
-            if (mConfig.headless)
-            {
-                mImGuiHelper->setDisplaySize(window->mWidth, window->mHeight);
-            } else {
+            
                 int windowWidth, windowHeight;
                 int displayWidth, displayHeight;
                 SDL_GetWindowSize(window->mWindow, &windowWidth, &windowHeight);
@@ -311,7 +299,7 @@ void GameDriver::mainLoop()
                 mImGuiHelper->setDisplaySize(windowWidth, windowHeight,
                         windowWidth > 0 ? ((float)displayWidth / windowWidth) : 0,
                         displayHeight > 0 ? ((float)displayHeight / windowHeight) : 0);
-            }
+            
 
             // Setup mouse inputs (we already got mouse wheel, keyboard keys & characters
             // from our event handler)
@@ -440,20 +428,20 @@ void GameDriver::loadIBL()
     }
 }
 
-void GameDriver::loadDirt() {
-    
-
-
+void GameDriver::loadDirt()
+{
     if (!mConfig.dirt.empty())
     {
         Path dirtPath(mConfig.dirt);
 
-        if (!dirtPath.exists()) {
+        if (!dirtPath.exists())
+        {
             std::cerr << "The specified dirt file does not exist: " << dirtPath << std::endl;
             return;
         }
 
-        if (!dirtPath.isFile()) {
+        if (!dirtPath.isFile())
+        {
             std::cerr << "The specified dirt path is not a file: " << dirtPath << std::endl;
             return;
         }
@@ -464,14 +452,12 @@ void GameDriver::loadDirt() {
         assert(n == 3);
 
         mDirt = Texture::Builder()
-                .width(w)
-                .height(h)
-                .format(Texture::InternalFormat::RGB8)
-                .build(*mEngine);
+                    .width(w)
+                    .height(h)
+                    .format(Texture::InternalFormat::RGB8)
+                    .build(*mEngine);
 
-        mDirt->setImage(*mEngine, 0, { data, size_t(w * h * 3),
-                Texture::Format::RGB, Texture::Type::UBYTE,
-                (Texture::PixelBufferDescriptor::Callback)&stbi_image_free });
+        mDirt->setImage(*mEngine, 0, {data, size_t(w * h * 3), Texture::Format::RGB, Texture::Type::UBYTE, (Texture::PixelBufferDescriptor::Callback)&stbi_image_free});
     }
 }
 

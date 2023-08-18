@@ -8,7 +8,6 @@
 struct Config {
 
     bool resizeable = true;
-    bool headless   = false;
     bool splitView  = false;
 
 

@@ -188,46 +188,58 @@ public:
     void keyUp(SDL_Scancode scancode);
     void resize();
 
-    filament::Renderer* getRenderer() { return mRenderer; }
+    filament::Renderer*  getRenderer() { return mRenderer; }
     filament::SwapChain* getSwapChain() { return mSwapChain; }
 
     SDL_Window* getSDLWindow() { return mWindow; }
+    void*       getNativeWindow();
+
+    void setWindowTitle(const char* title)
+    {
+        mWindowTitle = title;
+        if (mWindowTitle != SDL_GetWindowTitle(mWindow))
+        {
+            SDL_SetWindowTitle(mWindow, mWindowTitle.c_str());
+        }
+    }
 
 private:
     void configureCamerasForWindow();
     void fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const;
 
-    GameDriver* const mGameDriver = nullptr;
-    const bool mIsHeadless;
+    bool mIsResizeable = true;
+    bool mIsSplitView = false;
 
-    SDL_Window* mWindow = nullptr;
-    filament::Renderer* mRenderer = nullptr;
+    GameDriver* const mGameDriver = nullptr;
+
+    SDL_Window*               mWindow   = nullptr;
+    filament::Renderer*       mRenderer = nullptr;
     filament::Engine::Backend mBackend;
 
-    CameraManipulator* mMainCameraMan;
-    CameraManipulator* mDebugCameraMan;
+    CameraManipulator*   mMainCameraMan;
+    CameraManipulator*   mDebugCameraMan;
     filament::SwapChain* mSwapChain = nullptr;
 
-    utils::Entity mCameraEntities[3];
+    utils::Entity     mCameraEntities[3];
     filament::Camera* mCameras[3] = {nullptr};
     filament::Camera* mMainCamera;
     filament::Camera* mDebugCamera;
     filament::Camera* mOrthoCamera;
 
     std::vector<std::unique_ptr<CView>> mViews;
-    CView* mMainView;
-    CView* mUiView;
-    CView* mDepthView;
-    GodView* mGodView;
-    CView* mOrthoView;
+    CView*                              mMainView;
+    CView*                              mUiView;
+    CView*                              mDepthView;
+    GodView*                            mGodView;
+    CView*                              mOrthoView;
 
-    size_t mWidth = 0;
-    size_t mHeight = 0;
-    ssize_t mLastX = 0;
-    ssize_t mLastY = 0;
+    int     mWidth  = 0;
+    int     mHeight = 0;
+    ssize_t mLastX  = 0;
+    ssize_t mLastY  = 0;
 
-    CView* mMouseEventTarget = nullptr;
-
+    CView*      mMouseEventTarget = nullptr;
+    std::string mWindowTitle;
     // Keep track of which view should receive a key's keyUp event.
     std::unordered_map<SDL_Scancode, CView*> mKeyEventTarget;
 };
@@ -307,7 +319,7 @@ public:
     void close() { mClosed = true; }
 
     void   setSidebarWidth(int width) { mSidebarWidth = width; }
-    void   setWindowTitle(const char* title) { mWindowTitle = title; }
+   
 
     void addOffscreenView(filament::View* view) { mOffscreenViews.push_back(view); }
 
@@ -339,7 +351,6 @@ private:
     DropCallback                          mDropHandler;
     int                                   mSidebarWidth  = 0;
     size_t                                mSkippedFrames = 0;
-    std::string                           mWindowTitle;
     std::vector<filament::View*>          mOffscreenViews;
     float                                 mCameraFocalLength = 28.0f;
 

@@ -9,70 +9,60 @@ using namespace filament::math;
 using namespace utils;
 // ------------------------------------------------------------------------------------------------
 
-Window::Window(GameDriver* gd,
-         Config& config) :
-    mGameDriver(gd), mIsHeadless(config.headless)
+Window::Window(GameDriver* gd, Config& config) :
+    mIsResizeable(config.resizeable),mIsSplitView(config.splitView), mGameDriver(gd), mWindowTitle(config.title), mWidth(config.width), mHeight(config.height), mBackend(config.backend)
 {
-    const int x = SDL_WINDOWPOS_CENTERED;
-    const int y = SDL_WINDOWPOS_CENTERED;
-    uint32_t windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
-    if (config.resizeable) {
+    const int x           = SDL_WINDOWPOS_CENTERED;
+    const int y           = SDL_WINDOWPOS_CENTERED;
+    uint32_t  windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
+    if (mIsResizeable)
+    {
         windowFlags |= SDL_WINDOW_RESIZABLE;
-    }
-
-    if (config.headless) {
-        windowFlags |= SDL_WINDOW_HIDDEN;
     }
 
     // Even if we're in headless mode, we still need to create a window, otherwise SDL will not poll
     // events.
-    mWindow = SDL_CreateWindow(config.title.c_str(), x, y, config.width, config.height, windowFlags);
+    mWindow = SDL_CreateWindow(mWindowTitle.c_str(), x, y, mWidth, mHeight, windowFlags);
 
-    if (config.headless) {
-        mGameDriver->mEngine = Engine::create(config.backend);
-        mSwapChain           = mGameDriver->mEngine->createSwapChain(config.width, config.height);
-        mWidth               = config.width;
-        mHeight              = config.height;
-    } else {
+    // Create the Engine after the window in case this happens to be a single-threaded platform.
+    // For single-threaded platforms, we need to ensure that Filament's OpenGL context is
+    // current, rather than the one created by SDL.
+    mGameDriver->mEngine = Engine::create(mBackend);
 
-        void* nativeWindow = ::getNativeWindow(mWindow);
+    // get the resolved backend
+    mBackend = mGameDriver->mEngine->getBackend();
 
-        // Create the Engine after the window in case this happens to be a single-threaded platform.
-        // For single-threaded platforms, we need to ensure that Filament's OpenGL context is
-        // current, rather than the one created by SDL.
-        mGameDriver->mEngine = Engine::create(config.backend);
+    void* nativeSwapChain = getNativeWindow();
 
-        // get the resolved backend
-        mBackend = config.backend = mGameDriver->mEngine->getBackend();
-
-        void* nativeSwapChain = nativeWindow;
 
 #if defined(__APPLE__)
-        ::prepareNativeWindow(mWindow);
+    ::prepareNativeWindow(mWindow);
 
-        void* metalLayer = nullptr;
-        if (config.backend == filament::Engine::Backend::METAL) {
-            metalLayer = setUpMetalLayer(nativeWindow);
-            // The swap chain on Metal is a CAMetalLayer.
-            nativeSwapChain = metalLayer;
-        }
-
-#if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
-        if (config.backend == filament::Engine::Backend::VULKAN) {
-            // We request a Metal layer for rendering via MoltenVK.
-            setUpMetalLayer(nativeWindow);
-        }
-#endif
-
-#endif
-
-        // Select the feature level to use
-        //config.featureLevel = std::min(config.featureLevel,
-        //        mGameDriver->mEngine->getSupportedFeatureLevel());
-        mGameDriver->mEngine->setActiveFeatureLevel(config.featureLevel);
-
-        mSwapChain = mGameDriver->mEngine->createSwapChain(nativeSwapChain);
+    void* metalLayer = nullptr;
+    if (config.backend == filament::Engine::Backend::METAL)
+    {
+        metalLayer = setUpMetalLayer(nativeWindow);
+        // The swap chain on Metal is a CAMetalLayer.
+        nativeSwapChain = metalLayer;
     }
+
+#    if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
+    if (config.backend == filament::Engine::Backend::VULKAN)
+    {
+        // We request a Metal layer for rendering via MoltenVK.
+        setUpMetalLayer(nativeWindow);
+    }
+#    endif
+
+#endif
+
+    // Select the feature level to use
+    //config.featureLevel = std::min(config.featureLevel,
+    //        mGameDriver->mEngine->getSupportedFeatureLevel());
+    mGameDriver->mEngine->setActiveFeatureLevel(config.featureLevel);
+
+    mSwapChain = mGameDriver->mEngine->createSwapChain(nativeSwapChain);
+
     mRenderer = mGameDriver->mEngine->createRenderer();
 
     // create cameras
@@ -83,13 +73,15 @@ Window::Window(GameDriver* gd,
     mCameras[2] = mOrthoCamera = mGameDriver->mEngine->createCamera(mCameraEntities[2]);
 
     // set exposure
-    for (auto camera : mCameras) {
+    for (auto camera : mCameras)
+    {
         camera->setExposure(16.0f, 1 / 125.0f, 100.0f);
     }
 
     // create views
     mViews.emplace_back(mMainView = new CView(*mRenderer, "Main View"));
-    if (config.splitView) {
+    if (mIsSplitView)
+    {
         mViews.emplace_back(mDepthView = new CView(*mRenderer, "Depth View"));
         mViews.emplace_back(mGodView = new GodView(*mRenderer, "God View"));
         mViews.emplace_back(mOrthoView = new CView(*mRenderer, "Shadow View"));
@@ -98,17 +90,18 @@ Window::Window(GameDriver* gd,
 
     // set-up the camera manipulators
     mMainCameraMan = CameraManipulator::Builder()
-            .targetPosition(0, 0, -4)
-            .flightMoveDamping(15.0)
-            .build(config.cameraMode);
+                         .targetPosition(0, 0, -4)
+                         .flightMoveDamping(15.0)
+                         .build(config.cameraMode);
     mDebugCameraMan = CameraManipulator::Builder()
-            .targetPosition(0, 0, -4)
-            .flightMoveDamping(15.0)
-            .build(config.cameraMode);
+                          .targetPosition(0, 0, -4)
+                          .flightMoveDamping(15.0)
+                          .build(config.cameraMode);
 
     mMainView->setCamera(mMainCamera);
     mMainView->setCameraManipulator(mMainCameraMan);
-    if (config.splitView) {
+    if (mIsSplitView)
+    {
         // Depth view always uses the main camera
         mDepthView->setCamera(mMainCamera);
         mDepthView->setCameraManipulator(mMainCameraMan);
@@ -119,7 +112,7 @@ Window::Window(GameDriver* gd,
         mGodView->setCameraManipulator(mDebugCameraMan);
 
         // Ortho view obviously uses an ortho camera
-        mOrthoView->setCamera( (Camera *)mMainView->getView()->getDirectionalLightCamera() );
+        mOrthoView->setCamera((Camera*)mMainView->getView()->getDirectionalLightCamera());
     }
 
     // configure the cameras
@@ -140,6 +133,15 @@ Window::~Window() {
     SDL_DestroyWindow(mWindow);
     delete mMainCameraMan;
     delete mDebugCameraMan;
+}
+
+void* Window::getNativeWindow()
+{
+    SDL_SysWMinfo wmi;
+    SDL_VERSION(&wmi.version);
+    ASSERT_POSTCONDITION(SDL_GetWindowWMInfo(mWindow, &wmi), "SDL version unsupported!");
+    HWND win = (HWND)wmi.info.win.window;
+    return (void*)win;
 }
 
 void Window::mouseDown(int button, ssize_t x, ssize_t y) {
@@ -186,12 +188,14 @@ void Window::mouseMoved(ssize_t x, ssize_t y) {
     mLastY = y;
 }
 
-void Window::keyDown(SDL_Scancode key) {
+void Window::keyDown(SDL_Scancode key)
+{
     auto& eventTarget = mKeyEventTarget[key];
 
     // keyDown events can be sent multiple times per key (for key repeat)
     // If this key is already down, do nothing.
-    if (eventTarget) {
+    if (eventTarget)
+    {
         return;
     }
 
@@ -199,18 +203,24 @@ void Window::keyDown(SDL_Scancode key) {
     // If we're currently in a mouse grap session, it should be the mouse grab's target view.
     // Otherwise, it should be whichever view we're currently hovering over.
     CView* targetView = nullptr;
-    if (mMouseEventTarget) {
+    if (mMouseEventTarget)
+    {
         targetView = mMouseEventTarget;
-    } else {
-        for (auto const& view : mViews) {
-            if (view->intersects(mLastX, mLastY)) {
+    }
+    else
+    {
+        for (auto const& view : mViews)
+        {
+            if (view->intersects(mLastX, mLastY))
+            {
                 targetView = view.get();
                 break;
             }
         }
     }
 
-    if (targetView) {
+    if (targetView)
+    {
         targetView->keyDown(key);
         eventTarget = targetView;
     }
@@ -234,7 +244,7 @@ void Window::fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const {
 }
 
 void Window::resize() {
-    void* nativeWindow = ::getNativeWindow(mWindow);
+    void* nativeWindow = getNativeWindow();
 
 #if defined(__APPLE__)
 
@@ -259,51 +269,49 @@ void Window::resize() {
     }
 }
 
-void Window::configureCamerasForWindow() {
+void Window::configureCamerasForWindow()
+{
     float dpiScaleX = 1.0f;
     float dpiScaleY = 1.0f;
 
     // If the app is not headless, query the window for its physical & virtual sizes.
-    if (!mIsHeadless) {
-        uint32_t width, height;
-        SDL_GL_GetDrawableSize(mWindow, (int*) &width, (int*) &height);
-        mWidth = (size_t) width;
-        mHeight = (size_t) height;
 
-        int virtualWidth, virtualHeight;
-        SDL_GetWindowSize(mWindow, &virtualWidth, &virtualHeight);
-        dpiScaleX = (float) width / virtualWidth;
-        dpiScaleY = (float) height / virtualHeight;
-    }
+    SDL_GL_GetDrawableSize(mWindow, &mWidth, &mHeight);
+ 
+    int virtualWidth, virtualHeight;
+    SDL_GetWindowSize(mWindow, &virtualWidth, &virtualHeight);
+    dpiScaleX = (float)mWidth / virtualWidth;
+    dpiScaleY = (float)mHeight / virtualHeight;
 
-    const uint32_t width = mWidth;
-    const uint32_t height = mHeight;
 
     const float3 at(0, 0, -4);
-    const double ratio = double(height) / double(width);
-    const int sidebar = mGameDriver->mSidebarWidth * dpiScaleX;
+    const double ratio   = double(mHeight) / double(mWidth);
+    const int    sidebar = mGameDriver->mSidebarWidth * dpiScaleX;
 
     const bool splitview = mViews.size() > 2;
 
     // To trigger a floating-point exception, users could shrink the window to be smaller than
     // the sidebar. To prevent this we simply clamp the width of the main viewport.
-    const uint32_t mainWidth = splitview ? width : std::max(1, (int) width - sidebar);
+    const uint32_t mainWidth = splitview ? mWidth : std::max(1, (int)mWidth - sidebar);
 
     double near = 0.1;
-    double far = 100;
-    mMainCamera->setLensProjection(mGameDriver->mCameraFocalLength, double(mainWidth) / height, near, far);
-    mDebugCamera->setProjection(45.0, double(width) / height, 0.0625, 4096, Camera::Fov::VERTICAL);
+    double far  = 100;
+    mMainCamera->setLensProjection(mGameDriver->mCameraFocalLength, double(mainWidth) / mHeight, near, far);
+    mDebugCamera->setProjection(45.0, double(mWidth) / mHeight, 0.0625, 4096, Camera::Fov::VERTICAL);
 
     // We're in split view when there are more views than just the Main and UI views.
-    if (splitview) {
-        uint32_t vpw = width / 2;
-        uint32_t vph = height / 2;
-        mMainView->setViewport ({            0,            0, vpw,         vph          });
-        mDepthView->setViewport({ int32_t(vpw),            0, width - vpw, vph          });
-        mGodView->setViewport  ({ int32_t(vpw), int32_t(vph), width - vpw, height - vph });
-        mOrthoView->setViewport({            0, int32_t(vph), vpw,         height - vph });
-    } else {
-        mMainView->setViewport({ sidebar, 0, mainWidth, height });
+    if (splitview)
+    {
+        uint32_t vpw = mWidth / 2;
+        uint32_t vph = mHeight / 2;
+        mMainView->setViewport({0, 0, vpw, vph});
+        mDepthView->setViewport({int32_t(vpw), 0, mWidth - vpw, vph});
+        mGodView->setViewport({int32_t(vpw), int32_t(vph), mWidth - vpw, mHeight - vph});
+        mOrthoView->setViewport({0, int32_t(vph), vpw, mHeight - vph});
     }
-    mUiView->setViewport({ 0, 0, width, height });
+    else
+    {
+        mMainView->setViewport({sidebar, 0, (uint32_t)mainWidth, (uint32_t)mHeight});
+    }
+    mUiView->setViewport({0, 0, (uint32_t)mWidth, (uint32_t)mHeight});
 }
