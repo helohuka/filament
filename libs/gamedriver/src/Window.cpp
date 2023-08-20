@@ -9,16 +9,15 @@ using namespace filament::math;
 using namespace utils;
 // ------------------------------------------------------------------------------------------------
 
-void GameDriver::initWindow() 
-   
+void GameDriver::initWindow()
 {
 
-     mIsResizeable = mConfig.resizeable;
+    mIsResizeable = mConfig.resizeable;
     mIsSplitView  = mConfig.splitView;
-     mWindowTitle  = mConfig.title;
-    mWidth         = mConfig.width; 
-     mHeight        = mConfig.height;
-    mBackend       = mConfig.backend;
+    mWindowTitle  = mConfig.title;
+    mWidth        = mConfig.width;
+    mHeight       = mConfig.height;
+    mBackend      = mConfig.backend;
 
     const int x           = SDL_WINDOWPOS_CENTERED;
     const int y           = SDL_WINDOWPOS_CENTERED;
@@ -276,15 +275,17 @@ void GameDriver::resize()
 
 #if defined(__APPLE__)
 
-    if (mBackend == filament::Engine::Backend::METAL) {
+    if (mBackend == filament::Engine::Backend::METAL)
+    {
         resizeMetalLayer(nativeWindow);
     }
 
-#if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
-    if (mBackend == filament::Engine::Backend::VULKAN) {
+#    if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
+    if (mBackend == filament::Engine::Backend::VULKAN)
+    {
         resizeMetalLayer(nativeWindow);
     }
-#endif
+#    endif
 
 #endif
 
@@ -292,8 +293,18 @@ void GameDriver::resize()
 
     // Call the resize callback, if this GameDriver has one. This must be done after
     // configureCamerasForWindow, so the viewports are correct.
-    if (mResize) {
-        mResize(mEngine, mMainView->getView());
+    {
+        auto    view   = mMainView->getView();
+        Camera& camera = view->getCamera();
+        if (&camera == mMainCamera)
+        {
+            // Don't adjust the aspect ratio of the main camera, this is done inside of
+            // FilamentGameDriver.cpp
+            return;
+        }
+        const Viewport& vp          = view->getViewport();
+        double          aspectRatio = (double)vp.width / vp.height;
+        camera.setScaling({1.0 / aspectRatio, 1.0});
     }
 }
 

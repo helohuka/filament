@@ -199,7 +199,7 @@ private:
     void preRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
     void postRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
     void animate(filament::View* view, double now);
-    void resize(filament::View* view);
+
     void gui(filament::Engine*, filament::View* view);
 
 
@@ -235,11 +235,6 @@ public:
     void cleanup();
 
 public:
-    void animate(AnimCallback animation) { mAnimation = animation; }
-
-    void resize(ResizeCallback resize) { mResize = resize; }
-
-    void setDropHandler(DropCallback handler) { mDropHandler = handler; }
 
     void mainLoop();
 
@@ -277,9 +272,6 @@ private:
     filament::Material const*             mDepthMaterial       = nullptr;
     filament::MaterialInstance*           mDepthMI             = nullptr;
     std::unique_ptr<filagui::ImGuiHelper> mImGuiHelper;
-    AnimCallback                          mAnimation;
-    ResizeCallback                        mResize;
-    DropCallback                          mDropHandler;
     int                                   mSidebarWidth  = 0;
     size_t                                mSkippedFrames = 0;
     std::vector<filament::View*>          mOffscreenViews;

@@ -164,12 +164,10 @@ void GameDriver::mainLoop()
         }
 
         // Allow the app to animate the scene if desired.
-        //if (mAnimation) {
         {
             double now = (double)SDL_GetPerformanceCounter() / SDL_GetPerformanceFrequency();
             animate(mMainView->getView(), now);
         }
-        //}
 
         // Loop over fresh events twice: first stash them and let ImGui process them, then allow
         // the app to process the stashed events. This is done because ImGui might wish to block
@@ -266,13 +264,6 @@ void GameDriver::mainLoop()
                 case SDL_MOUSEMOTION:
                     if (!io || !io->WantCaptureMouse)
                         mouseMoved(event.motion.x, event.motion.y);
-                    break;
-                case SDL_DROPFILE:
-                    if (mDropHandler)
-                    {
-                        mDropHandler(event.drop.file);
-                    }
-                    SDL_free(event.drop.file);
                     break;
                 case SDL_WINDOWEVENT:
                     switch (event.window.event)
@@ -825,20 +816,6 @@ void GameDriver::animate(filament::View* view, double now)
     mViewerGUI->populateScene();
 
     mViewerGUI->applyAnimation(now);
-}
-
-void GameDriver::resize(filament::View* view)
-{
-    Camera& camera = view->getCamera();
-    if (&camera == mMainCamera)
-    {
-        // Don't adjust the aspect ratio of the main camera, this is done inside of
-        // FilamentGameDriver.cpp
-        return;
-    }
-    const Viewport& vp          = view->getViewport();
-    double          aspectRatio = (double)vp.width / vp.height;
-    camera.setScaling({1.0 / aspectRatio, 1.0});
 }
 
 void GameDriver::gui(filament::Engine* ,filament::View* view)
