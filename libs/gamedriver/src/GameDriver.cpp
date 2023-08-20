@@ -822,8 +822,8 @@ void GameDriver::gui(filament::Engine* ,filament::View* view)
 
 void GameDriver::setup()
 {
-    mNames                                         = new utils::NameComponentManager(EntityManager::get());
-    mViewerGUI                                        = new filament::viewer::ViewerGui(mEngine, mScene, mMainView->getView(), 410);
+    mNames                                            = new utils::NameComponentManager(EntityManager::get());
+    mViewerGUI                                        = new filament::viewer::ViewerGui(mEngine, mScene, mMainView->getView(), mSidebarWidth);
     mViewerGUI->getSettings().viewer.autoScaleEnabled = !mActualSize;
 
     const bool batchMode = !mBatchFile.empty();

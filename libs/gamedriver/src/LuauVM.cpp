@@ -1,17 +1,5 @@
 
 #include "gamedriver/LuauVM.h"
-#include "utils/FileUtils.h"
-#include "utils/Log.h"
-
-#include <memory>
-
-#include <lua.h>
-#include <luacode.h>
-#include <lualib.h>
-
-#include <Luau/Compiler.h>
-#include <Luau/BytecodeBuilder.h>
-#include <Luau/Parser.h>
 
 //-----------------------------------------------------------------------
 

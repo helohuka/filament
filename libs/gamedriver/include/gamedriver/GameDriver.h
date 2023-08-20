@@ -226,7 +226,7 @@ private:
     filament::Material const*             mDepthMaterial       = nullptr;
     filament::MaterialInstance*           mDepthMI             = nullptr;
     std::unique_ptr<filagui::ImGuiHelper> mImGuiHelper;
-    int                                   mSidebarWidth  = 0;
+    int                                   mSidebarWidth  = 300;
     size_t                                mSkippedFrames = 0;
     std::vector<filament::View*>          mOffscreenViews;
     float                                 mCameraFocalLength = 28.0f;

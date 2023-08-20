@@ -19,8 +19,6 @@
 
 #include "BaseLibs.h"
 
-#include <lua.h>
-#include <luacode.h>
 
 class LuauVM {
 public:

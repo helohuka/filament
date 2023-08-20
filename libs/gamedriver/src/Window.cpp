@@ -325,22 +325,22 @@ void GameDriver::configureCamerasForWindow()
 
     // To trigger a floating-point exception, users could shrink the window to be smaller than
     // the sidebar. To prevent this we simply clamp the width of the main viewport.
-    const uint32_t mainWidth = splitview ? mWidth : std::max(1, (int)mWidth - sidebar);
+    const uint32_t mainWidth = splitview ? mWidth - sidebar : std::max(1, (int)mWidth - sidebar);
 
     double near = 0.1;
     double far  = 100;
     mMainCamera->setLensProjection(mCameraFocalLength, double(mainWidth) / mHeight, near, far);
-    mDebugCamera->setProjection(45.0, double(mWidth) / mHeight, 0.0625, 4096, filament::Camera::Fov::VERTICAL);
+    mDebugCamera->setProjection(45.0, double(mainWidth) / mHeight, 0.0625, 4096, filament::Camera::Fov::VERTICAL);
 
     // We're in split view when there are more views than just the Main and UI views.
     if (splitview)
     {
-        uint32_t vpw = mWidth / 2;
+        uint32_t vpw = mainWidth / 2;
         uint32_t vph = mHeight / 2;
-        mMainView->setViewport({0, 0, vpw, vph});
-        mDepthView->setViewport({int32_t(vpw), 0, mWidth - vpw, vph});
-        mGodView->setViewport({int32_t(vpw), int32_t(vph), mWidth - vpw, mHeight - vph});
-        mOrthoView->setViewport({0, int32_t(vph), vpw, mHeight - vph});
+        mMainView->setViewport({sidebar, 0, vpw, vph});
+        mDepthView->setViewport({int32_t(sidebar + vpw), 0, vpw, vph});
+        mGodView->setViewport({int32_t(sidebar + vpw), int32_t(vph), vpw, mHeight - vph});
+        mOrthoView->setViewport({sidebar, int32_t(vph), vpw, mHeight - vph});
     }
     else
     {

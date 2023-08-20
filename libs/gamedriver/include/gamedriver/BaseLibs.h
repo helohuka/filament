@@ -71,6 +71,7 @@
 #include <filament/TransformManager.h>
 #include <filament/VertexBuffer.h>
 #include <filament/View.h>
+#include <filament/Texture.h>
 
 #ifndef NDEBUG
 #include <filament/DebugRegistry.h>
@@ -106,6 +107,16 @@
 
 #include <flatbuffers/idl.h>
 #include <flatbuffers/flatbuffers.h>
+
+//lua
+#include <lua.h>
+#include <luacode.h>
+#include <lualib.h>
+
+#include <Luau/Compiler.h>
+#include <Luau/BytecodeBuilder.h>
+#include <Luau/Parser.h>
+
 
 #define SINGLE_INSTANCE_FLAG(T) \
 public:\

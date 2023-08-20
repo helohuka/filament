@@ -16,28 +16,8 @@
  * \note
 */
 
-#include <filament/Texture.h>
 
-#include <math/vec3.h>
-
-#include <string>
-
-namespace filament
-{
-class Engine;
-class IndexBuffer;
-class IndirectLight;
-class Material;
-class MaterialInstance;
-class Renderable;
-class Texture;
-class Skybox;
-} // namespace filament
-
-namespace utils
-{
-class Path;
-}
+#include "gamedriver/BaseLibs.h"
 
 class IBL
 {
