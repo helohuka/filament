@@ -152,97 +152,6 @@ public:
     void setGodCamera(filament::Camera* camera);
 };
 
-/*!
- * \class Window
- *
- * \ingroup Window
- *
- * \brief 
- *
- * TODO: long description
- *
- * \note 
- *
- * \author Helohuka
- *
- * \version 1.0
- *
- * \date 2023.08.15
- *
- * Contact: helohuka@outlook.com
- *
- */
-class Window
-{
-    friend class GameDriver;
-
-public:
-    Window(GameDriver* gd, Config& config);
-    virtual ~Window();
-
-    void mouseDown(int button, ssize_t x, ssize_t y);
-    void mouseUp(ssize_t x, ssize_t y);
-    void mouseMoved(ssize_t x, ssize_t y);
-    void mouseWheel(ssize_t x);
-    void keyDown(SDL_Scancode scancode);
-    void keyUp(SDL_Scancode scancode);
-    void resize();
-
-    filament::Renderer*  getRenderer() { return mRenderer; }
-    filament::SwapChain* getSwapChain() { return mSwapChain; }
-
-    SDL_Window* getSDLWindow() { return mWindow; }
-    void*       getNativeWindow();
-    void*       getNativeSurface();
-    void setWindowTitle(const char* title)
-    {
-        mWindowTitle = title;
-        if (mWindowTitle != SDL_GetWindowTitle(mWindow))
-        {
-            SDL_SetWindowTitle(mWindow, mWindowTitle.c_str());
-        }
-    }
-
-private:
-    void configureCamerasForWindow();
-    void fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const;
-
-    bool mIsResizeable = true;
-    bool mIsSplitView = false;
-
-    GameDriver* const mGameDriver = nullptr;
-
-    SDL_Window*               mWindow   = nullptr;
-    filament::Renderer*       mRenderer = nullptr;
-    filament::Engine::Backend mBackend;
-
-    CameraManipulator*   mMainCameraMan;
-    CameraManipulator*   mDebugCameraMan;
-    filament::SwapChain* mSwapChain = nullptr;
-
-    utils::Entity     mCameraEntities[3];
-    filament::Camera* mCameras[3] = {nullptr};
-    filament::Camera* mMainCamera;
-    filament::Camera* mDebugCamera;
-    filament::Camera* mOrthoCamera;
-
-    std::vector<std::unique_ptr<CView>> mViews;
-    CView*                              mMainView;
-    CView*                              mUiView;
-    CView*                              mDepthView;
-    GodView*                            mGodView;
-    CView*                              mOrthoView;
-
-    int     mWidth  = 0;
-    int     mHeight = 0;
-    ssize_t mLastX  = 0;
-    ssize_t mLastY  = 0;
-
-    CView*      mMouseEventTarget = nullptr;
-    std::string mWindowTitle;
-    // Keep track of which view should receive a key's keyUp event.
-    std::unordered_map<SDL_Scancode, CView*> mKeyEventTarget;
-};
 
 /*!
  * \class GameDriver
@@ -281,8 +190,7 @@ public:
     static bool manipulatorKeyFromKeycode(SDL_Scancode scancode, CameraManipulator::Key& key);
 
     SINGLE_INSTANCE_FLAG(GameDriver)
-private: 
-
+private:
     ///临时存放 TODO
 
     void createGroundPlane();
@@ -292,13 +200,38 @@ private:
     void postRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
     void animate(filament::View* view, double now);
     void resize(filament::View* view);
-    void gui(filament::Engine* ,filament::View* view);
+    void gui(filament::Engine*, filament::View* view);
+
+
+    void initWindow();
+    void releaseWindow();
+    void mouseDown(int button, ssize_t x, ssize_t y);
+    void mouseUp(ssize_t x, ssize_t y);
+    void mouseMoved(ssize_t x, ssize_t y);
+    void mouseWheel(ssize_t x);
+    void keyDown(SDL_Scancode scancode);
+    void keyUp(SDL_Scancode scancode);
+    void resize();
+
+    filament::Renderer*  getRenderer() { return mRenderer; }
+    filament::SwapChain* getSwapChain() { return mSwapChain; }
+
+    SDL_Window* getSDLWindow() { return mWindow; }
+    void*       getNativeWindow();
+    void*       getNativeSurface();
+    void        setWindowTitle(const char* title)
+    {
+        mWindowTitle = title;
+        if (mWindowTitle != SDL_GetWindowTitle(mWindow))
+        {
+            SDL_SetWindowTitle(mWindow, mWindowTitle.c_str());
+        }
+    }
 
 public:
-
     void loadAsset(utils::Path filename);
     void loadResources(utils::Path filename);
-    void setup(filament::View *view);
+    void setup();
     void cleanup();
 
 public:
@@ -318,15 +251,13 @@ public:
 
     void close() { mClosed = true; }
 
-    void   setSidebarWidth(int width) { mSidebarWidth = width; }
-   
+    void setSidebarWidth(int width) { mSidebarWidth = width; }
 
     void addOffscreenView(filament::View* view) { mOffscreenViews.push_back(view); }
 
     size_t getSkippedFrameCount() const { return mSkippedFrames; }
 
 private:
-    friend class Window;
 
     void loadIBL();
     void loadDirt();
@@ -359,7 +290,6 @@ private:
     //////////////////////////////////////////////////////////////////////////
 public:
     filament::viewer::ViewerGui* mViewerGUI;
-    filament::Camera*            mMainCamera;
 
     filament::gltfio::AssetLoader*      mAssetLoader;
     filament::gltfio::FilamentAsset*    mAsset    = nullptr;
@@ -372,13 +302,13 @@ public:
     filament::gltfio::ResourceLoader*  mResourceLoader = nullptr;
     filament::gltfio::TextureProvider* mStbDecoder     = nullptr;
     filament::gltfio::TextureProvider* mKtxDecoder     = nullptr;
-    bool                     mRecomputeAabb  = false;
+    bool                               mRecomputeAabb  = false;
 
     bool mActualSize = false;
 
     struct Ground
     {
-        utils::Entity        mGroundPlane;
+        utils::Entity           mGroundPlane;
         filament::VertexBuffer* mGroundVertexBuffer;
         filament::IndexBuffer*  mGroundIndexBuffer;
         filament::Material*     mGroundMaterial;
@@ -388,25 +318,64 @@ public:
     {
         filament::Material* mOverdrawMaterial;
         // use layer 7 because 0, 1 and 2 are used by FilamentApp
-        static constexpr auto                          OVERDRAW_VISIBILITY_LAYER = 7u; // overdraw renderables View layer
-        static constexpr auto                          OVERDRAW_LAYERS           = 4u; // unique overdraw colors
-        std::array<utils::Entity, OVERDRAW_LAYERS>     mOverdrawVisualizer;
+        static constexpr auto                                    OVERDRAW_VISIBILITY_LAYER = 7u; // overdraw renderables View layer
+        static constexpr auto                                    OVERDRAW_LAYERS           = 4u; // unique overdraw colors
+        std::array<utils::Entity, OVERDRAW_LAYERS>               mOverdrawVisualizer;
         std::array<filament::MaterialInstance*, OVERDRAW_LAYERS> mOverdrawMaterialInstances;
-        filament::VertexBuffer*                        mFullScreenTriangleVertexBuffer;
-        filament::IndexBuffer*                         mFullScreenTriangleIndexBuffer;
+        filament::VertexBuffer*                                  mFullScreenTriangleVertexBuffer;
+        filament::IndexBuffer*                                   mFullScreenTriangleIndexBuffer;
     } mOverdraw;
 
     // zero-initialized so that the first time through is always dirty.
     filament::viewer::ColorGradingSettings mLastColorGradingOptions = {0};
-    filament::ColorGrading* mColorGrading = nullptr;
-    std::string mNotificationText;
-    std::string mMessageBoxText;
-    std::string mSettingsFile;
-    std::string mBatchFile;
+    filament::ColorGrading*                mColorGrading            = nullptr;
+    std::string                            mNotificationText;
+    std::string                            mMessageBoxText;
+    std::string                            mSettingsFile;
+    std::string                            mBatchFile;
 
     filament::viewer::AutomationSpec*   mAutomationSpec   = nullptr;
     filament::viewer::AutomationEngine* mAutomationEngine = nullptr;
 
+
+private:
+    void configureCamerasForWindow();
+    void fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const;
+
+    bool mIsResizeable = true;
+    bool mIsSplitView  = false;
+
+
+    SDL_Window*               mWindow   = nullptr;
+    filament::Renderer*       mRenderer = nullptr;
+    filament::Engine::Backend mBackend;
+
+    CameraManipulator*   mMainCameraMan;
+    CameraManipulator*   mDebugCameraMan;
+    filament::SwapChain* mSwapChain = nullptr;
+
+    utils::Entity     mCameraEntities[3];
+    filament::Camera* mCameras[3] = {nullptr};
+    filament::Camera* mMainCamera;
+    filament::Camera* mDebugCamera;
+    filament::Camera* mOrthoCamera;
+
+    std::vector<std::unique_ptr<CView>> mViews;
+    CView*                              mMainView;
+    CView*                              mUiView;
+    CView*                              mDepthView;
+    GodView*                            mGodView;
+    CView*                              mOrthoView;
+
+    int     mWidth  = 0;
+    int     mHeight = 0;
+    ssize_t mLastX  = 0;
+    ssize_t mLastY  = 0;
+
+    CView*      mMouseEventTarget = nullptr;
+    std::string mWindowTitle;
+    // Keep track of which view should receive a key's keyUp event.
+    std::unordered_map<SDL_Scancode, CView*> mKeyEventTarget;
 };
 
 

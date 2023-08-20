@@ -30,31 +30,31 @@ View* GameDriver::getGuiView() const noexcept {
 void GameDriver::mainLoop()
 {
     static const char* DEFAULT_IBL = "assets/ibl/lightroom_14b";
-    mConfig.iblDirectory = Resource::get().getRootPath() + DEFAULT_IBL;
-  
-    std::unique_ptr<Window> window(new Window(this, mConfig));
+    mConfig.iblDirectory           = Resource::get().getRootPath() + DEFAULT_IBL;
+
+    initWindow();
 
     mDepthMaterial = Material::Builder()
-            .package(GAMEDRIVER_DEPTHVISUALIZER_DATA, GAMEDRIVER_DEPTHVISUALIZER_SIZE)
-            .build(*mEngine);
+                         .package(GAMEDRIVER_DEPTHVISUALIZER_DATA, GAMEDRIVER_DEPTHVISUALIZER_SIZE)
+                         .build(*mEngine);
 
     mDepthMI = mDepthMaterial->createInstance();
 
     mDefaultMaterial = Material::Builder()
-            .package(GAMEDRIVER_AIDEFAULTMAT_DATA, GAMEDRIVER_AIDEFAULTMAT_SIZE)
-            .build(*mEngine);
+                           .package(GAMEDRIVER_AIDEFAULTMAT_DATA, GAMEDRIVER_AIDEFAULTMAT_SIZE)
+                           .build(*mEngine);
 
     mTransparentMaterial = Material::Builder()
-            .package(GAMEDRIVER_TRANSPARENTCOLOR_DATA, GAMEDRIVER_TRANSPARENTCOLOR_SIZE)
-            .build(*mEngine);
+                               .package(GAMEDRIVER_TRANSPARENTCOLOR_DATA, GAMEDRIVER_TRANSPARENTCOLOR_SIZE)
+                               .build(*mEngine);
 
-    std::unique_ptr<Cube> cameraCube(new Cube(*mEngine, mTransparentMaterial, {1,0,0}));
+    std::unique_ptr<Cube> cameraCube(new Cube(*mEngine, mTransparentMaterial, {1, 0, 0}));
     // we can't cull the light-frustum because it's not applied a rigid transform
     // and currently, filament assumes that for culling
-    std::unique_ptr<Cube> lightmapCube(new Cube(*mEngine, mTransparentMaterial, {0,1,0}, false));
+    std::unique_ptr<Cube> lightmapCube(new Cube(*mEngine, mTransparentMaterial, {0, 1, 0}, false));
     mScene = mEngine->createScene();
 
-    window->mMainView->getView()->setVisibleLayers(0x4, 0x4);
+    mMainView->getView()->setVisibleLayers(0x4, 0x4);
     if (mConfig.splitView)
     {
         auto& rcm = mEngine->getRenderableManager();
@@ -72,63 +72,67 @@ void GameDriver::mainLoop()
         mScene->addEntity(lightmapCube->getWireFrameRenderable());
         mScene->addEntity(lightmapCube->getSolidRenderable());
 
-        window->mDepthView->getView()->setVisibleLayers(0x4, 0x4);
-        window->mGodView->getView()->setVisibleLayers(0x6, 0x6);
-        window->mOrthoView->getView()->setVisibleLayers(0x6, 0x6);
+        mDepthView->getView()->setVisibleLayers(0x4, 0x4);
+        mGodView->getView()->setVisibleLayers(0x6, 0x6);
+        mOrthoView->getView()->setVisibleLayers(0x6, 0x6);
 
         // only preserve the color buffer for additional views; depth and stencil can be discarded.
-        window->mDepthView->getView()->setShadowingEnabled(false);
-        window->mGodView->getView()->setShadowingEnabled(false);
-        window->mOrthoView->getView()->setShadowingEnabled(false);
+        mDepthView->getView()->setShadowingEnabled(false);
+        mGodView->getView()->setShadowingEnabled(false);
+        mOrthoView->getView()->setShadowingEnabled(false);
     }
 
     loadDirt();
     loadIBL();
-    if (mIBL != nullptr) {
+    if (mIBL != nullptr)
+    {
         mIBL->getSkybox()->setLayerMask(0x7, 0x4);
         mScene->setSkybox(mIBL->getSkybox());
         mScene->setIndirectLight(mIBL->getIndirectLight());
     }
 
-    for (auto& view : window->mViews) {
-        if (view.get() != window->mUiView) {
+    for (auto& view : mViews)
+    {
+        if (view.get() != mUiView)
+        {
             view->getView()->setScene(mScene);
         }
     }
 
-    setup(window->mMainView->getView());
+    setup();
 
     ImGuiCallback imguiCallback = std::bind(&GameDriver::gui, this, mEngine, std::placeholders::_2);
 
-    if (imguiCallback) {
-        mImGuiHelper = std::make_unique<ImGuiHelper>(mEngine, window->mUiView->getView(),
-            Resource::get().getRootPath() + "assets/fonts/Roboto-Medium.ttf");
-        ImGuiIO& io = ImGui::GetIO();
-        #ifdef WIN32
-            io.ImeWindowHandle = window->getNativeWindow();
-        #endif
-        io.KeyMap[ImGuiKey_Tab] = SDL_SCANCODE_TAB;
-        io.KeyMap[ImGuiKey_LeftArrow] = SDL_SCANCODE_LEFT;
+    if (imguiCallback)
+    {
+        mImGuiHelper = std::make_unique<ImGuiHelper>(mEngine, mUiView->getView(),
+                                                     Resource::get().getRootPath() + "assets/fonts/Roboto-Medium.ttf");
+        ImGuiIO& io  = ImGui::GetIO();
+#ifdef WIN32
+        io.ImeWindowHandle = getNativeWindow();
+#endif
+        io.KeyMap[ImGuiKey_Tab]        = SDL_SCANCODE_TAB;
+        io.KeyMap[ImGuiKey_LeftArrow]  = SDL_SCANCODE_LEFT;
         io.KeyMap[ImGuiKey_RightArrow] = SDL_SCANCODE_RIGHT;
-        io.KeyMap[ImGuiKey_UpArrow] = SDL_SCANCODE_UP;
-        io.KeyMap[ImGuiKey_DownArrow] = SDL_SCANCODE_DOWN;
-        io.KeyMap[ImGuiKey_PageUp] = SDL_SCANCODE_PAGEUP;
-        io.KeyMap[ImGuiKey_PageDown] = SDL_SCANCODE_PAGEDOWN;
-        io.KeyMap[ImGuiKey_Home] = SDL_SCANCODE_HOME;
-        io.KeyMap[ImGuiKey_End] = SDL_SCANCODE_END;
-        io.KeyMap[ImGuiKey_Insert] = SDL_SCANCODE_INSERT;
-        io.KeyMap[ImGuiKey_Delete] = SDL_SCANCODE_DELETE;
-        io.KeyMap[ImGuiKey_Backspace] = SDL_SCANCODE_BACKSPACE;
-        io.KeyMap[ImGuiKey_Space] = SDL_SCANCODE_SPACE;
-        io.KeyMap[ImGuiKey_Enter] = SDL_SCANCODE_RETURN;
-        io.KeyMap[ImGuiKey_Escape] = SDL_SCANCODE_ESCAPE;
-        io.KeyMap[ImGuiKey_A] = SDL_SCANCODE_A;
-        io.KeyMap[ImGuiKey_C] = SDL_SCANCODE_C;
-        io.KeyMap[ImGuiKey_V] = SDL_SCANCODE_V;
-        io.KeyMap[ImGuiKey_X] = SDL_SCANCODE_X;
-        io.KeyMap[ImGuiKey_Y] = SDL_SCANCODE_Y;
-        io.KeyMap[ImGuiKey_Z] = SDL_SCANCODE_Z;
-        io.SetClipboardTextFn = [](void*, const char* text) {
+        io.KeyMap[ImGuiKey_UpArrow]    = SDL_SCANCODE_UP;
+        io.KeyMap[ImGuiKey_DownArrow]  = SDL_SCANCODE_DOWN;
+        io.KeyMap[ImGuiKey_PageUp]     = SDL_SCANCODE_PAGEUP;
+        io.KeyMap[ImGuiKey_PageDown]   = SDL_SCANCODE_PAGEDOWN;
+        io.KeyMap[ImGuiKey_Home]       = SDL_SCANCODE_HOME;
+        io.KeyMap[ImGuiKey_End]        = SDL_SCANCODE_END;
+        io.KeyMap[ImGuiKey_Insert]     = SDL_SCANCODE_INSERT;
+        io.KeyMap[ImGuiKey_Delete]     = SDL_SCANCODE_DELETE;
+        io.KeyMap[ImGuiKey_Backspace]  = SDL_SCANCODE_BACKSPACE;
+        io.KeyMap[ImGuiKey_Space]      = SDL_SCANCODE_SPACE;
+        io.KeyMap[ImGuiKey_Enter]      = SDL_SCANCODE_RETURN;
+        io.KeyMap[ImGuiKey_Escape]     = SDL_SCANCODE_ESCAPE;
+        io.KeyMap[ImGuiKey_A]          = SDL_SCANCODE_A;
+        io.KeyMap[ImGuiKey_C]          = SDL_SCANCODE_C;
+        io.KeyMap[ImGuiKey_V]          = SDL_SCANCODE_V;
+        io.KeyMap[ImGuiKey_X]          = SDL_SCANCODE_X;
+        io.KeyMap[ImGuiKey_Y]          = SDL_SCANCODE_Y;
+        io.KeyMap[ImGuiKey_Z]          = SDL_SCANCODE_Z;
+        io.SetClipboardTextFn          = [](void*, const char* text) {
             SDL_SetClipboardText(text);
         };
         io.GetClipboardTextFn = [](void*) -> const char* {
@@ -137,22 +141,25 @@ void GameDriver::mainLoop()
         io.ClipboardUserData = nullptr;
     }
 
-    bool mousePressed[3] = { false };
+    bool mousePressed[3] = {false};
 
-    int sidebarWidth = mSidebarWidth;
+    int   sidebarWidth      = mSidebarWidth;
     float cameraFocalLength = mCameraFocalLength;
 
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
-    while (!mClosed) {
-        
-        if (mSidebarWidth != sidebarWidth || mCameraFocalLength != cameraFocalLength) {
-            window->configureCamerasForWindow();
-            sidebarWidth = mSidebarWidth;
+    while (!mClosed)
+    {
+
+        if (mSidebarWidth != sidebarWidth || mCameraFocalLength != cameraFocalLength)
+        {
+            configureCamerasForWindow();
+            sidebarWidth      = mSidebarWidth;
             cameraFocalLength = mCameraFocalLength;
         }
 
-        if (!UTILS_HAS_THREADING) {
+        if (!UTILS_HAS_THREADING)
+        {
             mEngine->execute();
         }
 
@@ -160,47 +167,54 @@ void GameDriver::mainLoop()
         //if (mAnimation) {
         {
             double now = (double)SDL_GetPerformanceCounter() / SDL_GetPerformanceFrequency();
-            animate(window->mMainView->getView(), now);
+            animate(mMainView->getView(), now);
         }
-            //}
+        //}
 
         // Loop over fresh events twice: first stash them and let ImGui process them, then allow
         // the app to process the stashed events. This is done because ImGui might wish to block
         // certain events from the app (e.g., when dragging the mouse over an obscuring window).
         constexpr int kMaxEvents = 16;
-        SDL_Event events[kMaxEvents];
-        int nevents = 0;
-        while (nevents < kMaxEvents && SDL_PollEvent(&events[nevents]) != 0) {
-            if (mImGuiHelper) {
-                ImGuiIO& io = ImGui::GetIO();
+        SDL_Event     events[kMaxEvents];
+        int           nevents = 0;
+        while (nevents < kMaxEvents && SDL_PollEvent(&events[nevents]) != 0)
+        {
+            if (mImGuiHelper)
+            {
+                ImGuiIO&   io    = ImGui::GetIO();
                 SDL_Event* event = &events[nevents];
-                switch (event->type) {
-                    case SDL_MOUSEWHEEL: {
+                switch (event->type)
+                {
+                    case SDL_MOUSEWHEEL:
+                    {
                         if (event->wheel.x > 0) io.MouseWheelH += 1;
                         if (event->wheel.x < 0) io.MouseWheelH -= 1;
                         if (event->wheel.y > 0) io.MouseWheel += 1;
                         if (event->wheel.y < 0) io.MouseWheel -= 1;
                         break;
                     }
-                    case SDL_MOUSEBUTTONDOWN: {
+                    case SDL_MOUSEBUTTONDOWN:
+                    {
                         if (event->button.button == SDL_BUTTON_LEFT) mousePressed[0] = true;
                         if (event->button.button == SDL_BUTTON_RIGHT) mousePressed[1] = true;
                         if (event->button.button == SDL_BUTTON_MIDDLE) mousePressed[2] = true;
                         break;
                     }
-                    case SDL_TEXTINPUT: {
+                    case SDL_TEXTINPUT:
+                    {
                         io.AddInputCharactersUTF8(event->text.text);
                         break;
                     }
                     case SDL_KEYDOWN:
-                    case SDL_KEYUP: {
+                    case SDL_KEYUP:
+                    {
                         int key = event->key.keysym.scancode;
                         IM_ASSERT(key >= 0 && key < IM_ARRAYSIZE(io.KeysDown));
                         io.KeysDown[key] = (event->type == SDL_KEYDOWN);
-                        io.KeyShift = ((SDL_GetModState() & KMOD_SHIFT) != 0);
-                        io.KeyAlt = ((SDL_GetModState() & KMOD_ALT) != 0);
-                        io.KeyCtrl = ((SDL_GetModState() & KMOD_CTRL) != 0);
-                        io.KeySuper = ((SDL_GetModState() & KMOD_GUI) != 0);
+                        io.KeyShift      = ((SDL_GetModState() & KMOD_SHIFT) != 0);
+                        io.KeyAlt        = ((SDL_GetModState() & KMOD_ALT) != 0);
+                        io.KeyCtrl       = ((SDL_GetModState() & KMOD_CTRL) != 0);
+                        io.KeySuper      = ((SDL_GetModState() & KMOD_GUI) != 0);
                         break;
                     }
                 }
@@ -209,56 +223,62 @@ void GameDriver::mainLoop()
         }
 
         // Now, loop over the events a second time for app-side processing.
-        for (int i = 0; i < nevents; i++) {
+        for (int i = 0; i < nevents; i++)
+        {
             const SDL_Event& event = events[i];
-            ImGuiIO* io = mImGuiHelper ? &ImGui::GetIO() : nullptr;
-            switch (event.type) {
+            ImGuiIO*         io    = mImGuiHelper ? &ImGui::GetIO() : nullptr;
+            switch (event.type)
+            {
                 case SDL_QUIT:
                     mClosed = true;
                     break;
                 case SDL_KEYDOWN:
-                    if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+                    if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
+                    {
                         mClosed = true;
                     }
 #ifndef NDEBUG
-                    if (event.key.keysym.scancode == SDL_SCANCODE_PRINTSCREEN) {
+                    if (event.key.keysym.scancode == SDL_SCANCODE_PRINTSCREEN)
+                    {
                         DebugRegistry& debug = mEngine->getDebugRegistry();
-                        bool* captureFrame =
-                                debug.getPropertyAddress<bool>("d.renderer.doFrameCapture");
+                        bool*          captureFrame =
+                            debug.getPropertyAddress<bool>("d.renderer.doFrameCapture");
                         *captureFrame = true;
                     }
 #endif
-                    window->keyDown(event.key.keysym.scancode);
+                    keyDown(event.key.keysym.scancode);
                     break;
                 case SDL_KEYUP:
-                    window->keyUp(event.key.keysym.scancode);
+                    keyUp(event.key.keysym.scancode);
                     break;
                 case SDL_MOUSEWHEEL:
                     if (!io || !io->WantCaptureMouse)
-                        window->mouseWheel(event.wheel.y);
+                        mouseWheel(event.wheel.y);
                     break;
                 case SDL_MOUSEBUTTONDOWN:
                     if (!io || !io->WantCaptureMouse)
-                        window->mouseDown(event.button.button, event.button.x, event.button.y);
+                        mouseDown(event.button.button, event.button.x, event.button.y);
                     break;
                 case SDL_MOUSEBUTTONUP:
                     if (!io || !io->WantCaptureMouse)
-                        window->mouseUp(event.button.x, event.button.y);
+                        mouseUp(event.button.x, event.button.y);
                     break;
                 case SDL_MOUSEMOTION:
                     if (!io || !io->WantCaptureMouse)
-                        window->mouseMoved(event.motion.x, event.motion.y);
+                        mouseMoved(event.motion.x, event.motion.y);
                     break;
                 case SDL_DROPFILE:
-                    if (mDropHandler) {
+                    if (mDropHandler)
+                    {
                         mDropHandler(event.drop.file);
                     }
                     SDL_free(event.drop.file);
                     break;
                 case SDL_WINDOWEVENT:
-                    switch (event.window.event) {
+                    switch (event.window.event)
+                    {
                         case SDL_WINDOWEVENT_RESIZED:
-                            window->resize();
+                            resize();
                             break;
                         default:
                             break;
@@ -269,7 +289,7 @@ void GameDriver::mainLoop()
                     break;
                 case SDL_APP_DIDENTERFOREGROUND:
                     mEngine->setActiveFeatureLevel(mConfig.featureLevel);
-                    window->mSwapChain = mEngine->createSwapChain(window->getNativeWindow());
+                    mSwapChain = mEngine->createSwapChain(getNativeWindow());
                     break;
                 default:
                     break;
@@ -278,40 +298,42 @@ void GameDriver::mainLoop()
 
         // Calculate the time step.
         static Uint64 frequency = SDL_GetPerformanceFrequency();
-        Uint64 now = SDL_GetPerformanceCounter();
-        const float timeStep = mTime > 0 ? (float)((double)(now - mTime) / frequency) :
-                (float)(1.0f / 60.0f);
-        mTime = now;
+        Uint64        now       = SDL_GetPerformanceCounter();
+        const float   timeStep  = mTime > 0 ? (float)((double)(now - mTime) / frequency) :
+                                              (float)(1.0f / 60.0f);
+        mTime                   = now;
 
         // Populate the UI scene, regardless of whether Filament wants to a skip frame. We should
         // always let ImGui generate a command list; if it skips a frame it'll destroy its widgets.
-        if (mImGuiHelper) {
+        if (mImGuiHelper)
+        {
 
             // Inform ImGui of the current window size in case it was resized.
-            
-                int windowWidth, windowHeight;
-                int displayWidth, displayHeight;
-                SDL_GetWindowSize(window->mWindow, &windowWidth, &windowHeight);
-                SDL_GL_GetDrawableSize(window->mWindow, &displayWidth, &displayHeight);
-                mImGuiHelper->setDisplaySize(windowWidth, windowHeight,
-                        windowWidth > 0 ? ((float)displayWidth / windowWidth) : 0,
-                        displayHeight > 0 ? ((float)displayHeight / windowHeight) : 0);
-            
+
+            int windowWidth, windowHeight;
+            int displayWidth, displayHeight;
+            SDL_GetWindowSize(mWindow, &windowWidth, &windowHeight);
+            SDL_GL_GetDrawableSize(mWindow, &displayWidth, &displayHeight);
+            mImGuiHelper->setDisplaySize(windowWidth, windowHeight,
+                                         windowWidth > 0 ? ((float)displayWidth / windowWidth) : 0,
+                                         displayHeight > 0 ? ((float)displayHeight / windowHeight) : 0);
+
 
             // Setup mouse inputs (we already got mouse wheel, keyboard keys & characters
             // from our event handler)
             ImGuiIO& io = ImGui::GetIO();
-            int mx, my;
-            Uint32 buttons = SDL_GetMouseState(&mx, &my);
-            io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
-            io.MouseDown[0] = mousePressed[0] || (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
-            io.MouseDown[1] = mousePressed[1] || (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
-            io.MouseDown[2] = mousePressed[2] || (buttons & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
+            int      mx, my;
+            Uint32   buttons = SDL_GetMouseState(&mx, &my);
+            io.MousePos      = ImVec2(-FLT_MAX, -FLT_MAX);
+            io.MouseDown[0]  = mousePressed[0] || (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+            io.MouseDown[1]  = mousePressed[1] || (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+            io.MouseDown[2]  = mousePressed[2] || (buttons & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
             mousePressed[0] = mousePressed[1] = mousePressed[2] = false;
 
             // TODO: Update to a newer SDL and use SDL_CaptureMouse() to retrieve mouse coordinates
             // outside of the client area; see the imgui SDL example.
-            if ((SDL_GetWindowFlags(window->mWindow) & SDL_WINDOW_INPUT_FOCUS) != 0) {
+            if ((SDL_GetWindowFlags(mWindow) & SDL_WINDOW_INPUT_FOCUS) != 0)
+            {
                 io.MousePos = ImVec2((float)mx, (float)my);
             }
 
@@ -320,57 +342,64 @@ void GameDriver::mainLoop()
         }
 
         // Update the camera manipulators for each view.
-        for (auto const& view : window->mViews) {
+        for (auto const& view : mViews)
+        {
             auto* cm = view->getCameraManipulator();
-            if (cm) {
+            if (cm)
+            {
                 cm->update(timeStep);
             }
         }
 
         // Update the position and orientation of the two cameras.
         filament::math::float3 eye, center, up;
-        window->mMainCameraMan->getLookAt(&eye, &center, &up);
-        window->mMainCamera->lookAt(eye, center, up);
-        window->mDebugCameraMan->getLookAt(&eye, &center, &up);
-        window->mDebugCamera->lookAt(eye, center, up);
+        mMainCameraMan->getLookAt(&eye, &center, &up);
+        mMainCamera->lookAt(eye, center, up);
+        mDebugCameraMan->getLookAt(&eye, &center, &up);
+        mDebugCamera->lookAt(eye, center, up);
 
         // Update the cube distortion matrix used for frustum visualization.
-        const Camera* lightmapCamera = window->mMainView->getView()->getDirectionalLightCamera();
+        const Camera* lightmapCamera = mMainView->getView()->getDirectionalLightCamera();
         lightmapCube->mapFrustum(*mEngine, lightmapCamera);
-        cameraCube->mapFrustum(*mEngine, window->mMainCamera);
+        cameraCube->mapFrustum(*mEngine, mMainCamera);
 
         // Delay rendering for roughly one monitor refresh interval
         // TODO: Use SDL_GL_SetSwapInterval for proper vsync
         SDL_DisplayMode Mode;
-        int refreshIntervalMS = (SDL_GetCurrentDisplayMode(
-            SDL_GetWindowDisplayIndex(window->mWindow), &Mode) == 0 &&
-            Mode.refresh_rate != 0) ? round(1000.0 / Mode.refresh_rate) : 16;
+        int             refreshIntervalMS = (SDL_GetCurrentDisplayMode(
+                                     SDL_GetWindowDisplayIndex(mWindow), &Mode) == 0 &&
+                                 Mode.refresh_rate != 0) ?
+                        round(1000.0 / Mode.refresh_rate) :
+                        16;
         SDL_Delay(refreshIntervalMS);
 
-        Renderer* renderer = window->getRenderer();
+        Renderer* renderer = getRenderer();
 
-        //if (preRender) {
-            preRender( window->mViews[0]->getView(), mScene, renderer);
-        //}
+        preRender(mViews[0]->getView(), mScene, renderer);
 
-        if (renderer->beginFrame(window->getSwapChain())) {
-            for (filament::View* offscreenView : mOffscreenViews) {
+        if (renderer->beginFrame(getSwapChain()))
+        {
+            for (filament::View* offscreenView : mOffscreenViews)
+            {
                 renderer->render(offscreenView);
             }
-            for (auto const& view : window->mViews) {
+            for (auto const& view : mViews)
+            {
                 renderer->render(view->getView());
             }
-            //if (postRender) {
-                postRender(window->mViews[0]->getView(), mScene, renderer);
-            //}
-            renderer->endFrame();
 
-        } else {
+            postRender(mViews[0]->getView(), mScene, renderer);
+
+            renderer->endFrame();
+        }
+        else
+        {
             ++mSkippedFrames;
         }
     }
 
-    if (mImGuiHelper) {
+    if (mImGuiHelper)
+    {
         mImGuiHelper.reset();
     }
 
@@ -378,7 +407,7 @@ void GameDriver::mainLoop()
 
     cameraCube.reset();
     lightmapCube.reset();
-    window.reset();
+    releaseWindow();
 
     mIBL.reset();
     mEngine->destroy(mDepthMI);
@@ -491,14 +520,14 @@ void GameDriver::loadAsset(utils::Path filename)
     }
 };
 
-void GameDriver::loadResources( utils::Path filename)
+void GameDriver::loadResources(utils::Path filename)
 {
     // Load external textures and buffers.
-    std::string           gltfPath         = filename.getAbsolutePath();
-    filament::gltfio::ResourceConfiguration configuration    = {};
-    configuration.engine                   = mEngine;
-    configuration.gltfPath                 = gltfPath.c_str();
-    configuration.normalizeSkinningWeights = true;
+    std::string                             gltfPath      = filename.getAbsolutePath();
+    filament::gltfio::ResourceConfiguration configuration = {};
+    configuration.engine                                  = mEngine;
+    configuration.gltfPath                                = gltfPath.c_str();
+    configuration.normalizeSkinningWeights                = true;
 
     if (!mResourceLoader)
     {
@@ -506,8 +535,8 @@ void GameDriver::loadResources( utils::Path filename)
         mStbDecoder     = filament::gltfio::createStbProvider(mEngine);
         mKtxDecoder     = filament::gltfio::createKtx2Provider(mEngine);
         mResourceLoader->addTextureProvider("image/png", mStbDecoder);
-        mResourceLoader->addTextureProvider("image/jpeg",mStbDecoder);
-        mResourceLoader->addTextureProvider("image/ktx2",mKtxDecoder);
+        mResourceLoader->addTextureProvider("image/jpeg", mStbDecoder);
+        mResourceLoader->addTextureProvider("image/ktx2", mKtxDecoder);
     }
 
     if (!mResourceLoader->asyncBeginLoad(mAsset))
@@ -524,7 +553,7 @@ void GameDriver::loadResources( utils::Path filename)
     mAsset->releaseSourceData();
 
     // Enable stencil writes on all material instances.
-    const size_t                   matInstanceCount = mInstance->getMaterialInstanceCount();
+    const size_t                             matInstanceCount = mInstance->getMaterialInstanceCount();
     filament::MaterialInstance* const* const instances        = mInstance->getMaterialInstances();
     for (int mi = 0; mi < matInstanceCount; mi++)
     {
@@ -536,7 +565,7 @@ void GameDriver::loadResources( utils::Path filename)
     {
         mViewerGUI->setIndirectLight(mIBL->getIndirectLight(), mIBL->getSphericalHarmonics());
     }
-};
+}
 
 void GameDriver::createGroundPlane()
 {
@@ -819,10 +848,10 @@ void GameDriver::gui(filament::Engine* ,filament::View* view)
     setSidebarWidth(mViewerGUI->getSidebarWidth());
 }
 
-void GameDriver::setup(filament::View* view)
+void GameDriver::setup()
 {
     mNames                                         = new utils::NameComponentManager(EntityManager::get());
-    mViewerGUI                                        = new filament::viewer::ViewerGui(mEngine, mScene, view, 410);
+    mViewerGUI                                        = new filament::viewer::ViewerGui(mEngine, mScene, mMainView->getView(), 410);
     mViewerGUI->getSettings().viewer.autoScaleEnabled = !mActualSize;
 
     const bool batchMode = !mBatchFile.empty();
@@ -886,7 +915,7 @@ void GameDriver::setup(filament::View* view)
     mMaterials = (mMaterialSource == JITSHADER) ? filament::gltfio::createJitShaderProvider(mEngine) : filament::gltfio::createUbershaderProvider(mEngine, UBERARCHIVE_DEFAULT_DATA, UBERARCHIVE_DEFAULT_SIZE);
 
     mAssetLoader = filament::gltfio::AssetLoader::create({mEngine, mMaterials, mNames});
-    mMainCamera  = &view->getCamera();
+    //mMainCamera  = &view->getCamera();
 
     auto filename = utils::Path(mConfig.filename.c_str());
 
@@ -899,9 +928,9 @@ void GameDriver::setup(filament::View* view)
     createOverdrawVisualizerEntities();
 
     mViewerGUI->setUiCallback(
-        [this, view]() {
+        [this]() {
             auto& automation = *mAutomationEngine;
-
+            auto  view       = mMainView->getView();
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
             {
                 ImVec2 pos = ImGui::GetMousePos();

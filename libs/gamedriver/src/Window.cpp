@@ -9,9 +9,17 @@ using namespace filament::math;
 using namespace utils;
 // ------------------------------------------------------------------------------------------------
 
-Window::Window(GameDriver* gd, Config& config) :
-    mIsResizeable(config.resizeable),mIsSplitView(config.splitView), mGameDriver(gd), mWindowTitle(config.title), mWidth(config.width), mHeight(config.height), mBackend(config.backend)
+void GameDriver::initWindow() 
+   
 {
+
+     mIsResizeable = mConfig.resizeable;
+    mIsSplitView  = mConfig.splitView;
+     mWindowTitle  = mConfig.title;
+    mWidth         = mConfig.width; 
+     mHeight        = mConfig.height;
+    mBackend       = mConfig.backend;
+
     const int x           = SDL_WINDOWPOS_CENTERED;
     const int y           = SDL_WINDOWPOS_CENTERED;
     uint32_t  windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
@@ -27,10 +35,10 @@ Window::Window(GameDriver* gd, Config& config) :
     // Create the Engine after the window in case this happens to be a single-threaded platform.
     // For single-threaded platforms, we need to ensure that Filament's OpenGL context is
     // current, rather than the one created by SDL.
-    mGameDriver->mEngine = Engine::create(mBackend);
+    mEngine = Engine::create(mBackend);
 
     // get the resolved backend
-    mBackend = mGameDriver->mEngine->getBackend();
+    mBackend = mEngine->getBackend();
 
     void* nativeSwapChain = getNativeWindow();
 
@@ -59,18 +67,18 @@ Window::Window(GameDriver* gd, Config& config) :
     // Select the feature level to use
     //config.featureLevel = std::min(config.featureLevel,
     //        mGameDriver->mEngine->getSupportedFeatureLevel());
-    mGameDriver->mEngine->setActiveFeatureLevel(config.featureLevel);
+    mEngine->setActiveFeatureLevel(mConfig.featureLevel);
 
-    mSwapChain = mGameDriver->mEngine->createSwapChain(nativeSwapChain);
+    mSwapChain = mEngine->createSwapChain(nativeSwapChain);
 
-    mRenderer = mGameDriver->mEngine->createRenderer();
+    mRenderer = mEngine->createRenderer();
 
     // create cameras
     utils::EntityManager& em = utils::EntityManager::get();
     em.create(3, mCameraEntities);
-    mCameras[0] = mMainCamera = mGameDriver->mEngine->createCamera(mCameraEntities[0]);
-    mCameras[1] = mDebugCamera = mGameDriver->mEngine->createCamera(mCameraEntities[1]);
-    mCameras[2] = mOrthoCamera = mGameDriver->mEngine->createCamera(mCameraEntities[2]);
+    mCameras[0] = mMainCamera = mEngine->createCamera(mCameraEntities[0]);
+    mCameras[1] = mDebugCamera = mEngine->createCamera(mCameraEntities[1]);
+    mCameras[2] = mOrthoCamera = mEngine->createCamera(mCameraEntities[2]);
 
     // set exposure
     for (auto camera : mCameras)
@@ -92,11 +100,11 @@ Window::Window(GameDriver* gd, Config& config) :
     mMainCameraMan = CameraManipulator::Builder()
                          .targetPosition(0, 0, -4)
                          .flightMoveDamping(15.0)
-                         .build(config.cameraMode);
+                         .build(mConfig.cameraMode);
     mDebugCameraMan = CameraManipulator::Builder()
                           .targetPosition(0, 0, -4)
                           .flightMoveDamping(15.0)
-                          .build(config.cameraMode);
+                          .build(mConfig.cameraMode);
 
     mMainView->setCamera(mMainCamera);
     mMainView->setCameraManipulator(mMainCameraMan);
@@ -121,21 +129,23 @@ Window::Window(GameDriver* gd, Config& config) :
     mMainCamera->lookAt({4, 0, -4}, {0, 0, -4}, {0, 1, 0});
 }
 
-Window::~Window() {
+void GameDriver::releaseWindow()
+{
     mViews.clear();
     utils::EntityManager& em = utils::EntityManager::get();
-    for (auto e : mCameraEntities) {
-        mGameDriver->mEngine->destroyCameraComponent(e);
+    for (auto e : mCameraEntities)
+    {
+        mEngine->destroyCameraComponent(e);
         em.destroy(e);
     }
-    mGameDriver->mEngine->destroy(mRenderer);
-    mGameDriver->mEngine->destroy(mSwapChain);
+    mEngine->destroy(mRenderer);
+    mEngine->destroy(mSwapChain);
     SDL_DestroyWindow(mWindow);
     delete mMainCameraMan;
     delete mDebugCameraMan;
 }
 
-void* Window::getNativeWindow()
+void* GameDriver::getNativeWindow()
 {
     SDL_SysWMinfo wmi;
     SDL_VERSION(&wmi.version);
@@ -144,7 +154,7 @@ void* Window::getNativeWindow()
     return (void*)win;
 }
 
-void* Window::getNativeSurface()
+void* GameDriver::getNativeSurface()
 {
     //SDL_SysWMinfo wmi;
     //SDL_VERSION(&wmi.version);
@@ -155,7 +165,8 @@ void* Window::getNativeSurface()
     return nullptr;
 }
 
-void Window::mouseDown(int button, ssize_t x, ssize_t y) {
+void GameDriver::mouseDown(int button, ssize_t x, ssize_t y)
+{
     fixupMouseCoordinatesForHdpi(x, y);
     y = mHeight - y;
     for (auto const& view : mViews) {
@@ -167,7 +178,8 @@ void Window::mouseDown(int button, ssize_t x, ssize_t y) {
     }
 }
 
-void Window::mouseWheel(ssize_t x) {
+void GameDriver::mouseWheel(ssize_t x)
+{
     if (mMouseEventTarget) {
         mMouseEventTarget->mouseWheel(x);
     } else {
@@ -180,7 +192,8 @@ void Window::mouseWheel(ssize_t x) {
     }
 }
 
-void Window::mouseUp(ssize_t x, ssize_t y) {
+void GameDriver::mouseUp(ssize_t x, ssize_t y)
+{
     fixupMouseCoordinatesForHdpi(x, y);
     if (mMouseEventTarget) {
         y = mHeight - y;
@@ -189,7 +202,8 @@ void Window::mouseUp(ssize_t x, ssize_t y) {
     }
 }
 
-void Window::mouseMoved(ssize_t x, ssize_t y) {
+void GameDriver::mouseMoved(ssize_t x, ssize_t y)
+{
     fixupMouseCoordinatesForHdpi(x, y);
     y = mHeight - y;
     if (mMouseEventTarget) {
@@ -199,7 +213,7 @@ void Window::mouseMoved(ssize_t x, ssize_t y) {
     mLastY = y;
 }
 
-void Window::keyDown(SDL_Scancode key)
+void GameDriver::keyDown(SDL_Scancode key)
 {
     auto& eventTarget = mKeyEventTarget[key];
 
@@ -237,7 +251,8 @@ void Window::keyDown(SDL_Scancode key)
     }
 }
 
-void Window::keyUp(SDL_Scancode key) {
+void GameDriver::keyUp(SDL_Scancode key)
+{
     auto& eventTarget = mKeyEventTarget[key];
     if (!eventTarget) {
         return;
@@ -246,7 +261,8 @@ void Window::keyUp(SDL_Scancode key) {
     eventTarget = nullptr;
 }
 
-void Window::fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const {
+void GameDriver::fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const
+{
     int dw, dh, ww, wh;
     SDL_GL_GetDrawableSize(mWindow, &dw, &dh);
     SDL_GetWindowSize(mWindow, &ww, &wh);
@@ -254,7 +270,8 @@ void Window::fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const {
     y = y * dh / wh;
 }
 
-void Window::resize() {
+void GameDriver::resize()
+{
     void* nativeWindow = getNativeWindow();
 
 #if defined(__APPLE__)
@@ -275,12 +292,12 @@ void Window::resize() {
 
     // Call the resize callback, if this GameDriver has one. This must be done after
     // configureCamerasForWindow, so the viewports are correct.
-    if (mGameDriver->mResize) {
-        mGameDriver->mResize(mGameDriver->mEngine, mMainView->getView());
+    if (mResize) {
+        mResize(mEngine, mMainView->getView());
     }
 }
 
-void Window::configureCamerasForWindow()
+void GameDriver::configureCamerasForWindow()
 {
     float dpiScaleX = 1.0f;
     float dpiScaleY = 1.0f;
@@ -297,7 +314,7 @@ void Window::configureCamerasForWindow()
 
     const float3 at(0, 0, -4);
     const double ratio   = double(mHeight) / double(mWidth);
-    const int    sidebar = mGameDriver->mSidebarWidth * dpiScaleX;
+    const int    sidebar = mSidebarWidth * dpiScaleX;
 
     const bool splitview = mViews.size() > 2;
 
@@ -307,7 +324,7 @@ void Window::configureCamerasForWindow()
 
     double near = 0.1;
     double far  = 100;
-    mMainCamera->setLensProjection(mGameDriver->mCameraFocalLength, double(mainWidth) / mHeight, near, far);
+    mMainCamera->setLensProjection(mCameraFocalLength, double(mainWidth) / mHeight, near, far);
     mDebugCamera->setProjection(45.0, double(mWidth) / mHeight, 0.0625, 4096, Camera::Fov::VERTICAL);
 
     // We're in split view when there are more views than just the Main and UI views.

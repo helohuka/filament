@@ -8,7 +8,7 @@
 struct Config {
 
     bool resizeable = true;
-    bool splitView  = false;
+    bool splitView  = true;
 
 
     int width = 1280;   //window 宽高
@@ -25,6 +25,7 @@ struct Config {
     filament::Engine::Backend backend               = filament::Engine::Backend::DEFAULT;
     filament::backend::FeatureLevel featureLevel    = filament::backend::FeatureLevel::FEATURE_LEVEL_1;
     filament::camutils::Mode cameraMode             = filament::camutils::Mode::ORBIT;
+    
     
 };
 

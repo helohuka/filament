@@ -42,7 +42,7 @@ enum RenderFeatureLevel : byte
 ///渲染后台配置
 struct RenderConfigure {
 	backend	: RenderBackend; 
-	feature : RenderFeatureLevel ;
+	feature : RenderFeatureLevel;
 }
 
 ///摄像机配置 filament::camutils::Mode
