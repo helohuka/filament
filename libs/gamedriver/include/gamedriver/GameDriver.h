@@ -97,6 +97,7 @@ public:
     void setCameraManipulator(CameraManipulator* cm);
     void setViewport(filament::Viewport const& viewport);
     void setCamera(filament::Camera* camera);
+    void setGodCamera(filament::Camera* camera);
     bool intersects(ssize_t x, ssize_t y);
 
     virtual void mouseDown(int button, ssize_t x, ssize_t y);
@@ -126,34 +127,6 @@ private:
 };
 
 /*!
- * \class GodView
- *
- * \ingroup Views
- *
- * \brief 
- *
- * TODO: long description
- *
- * \note 
- *
- * \author Helohuka
- *
- * \version 1.0
- *
- * \date 2023.08.15
- *
- * Contact: helohuka@outlook.com
- *
- */
-class GodView : public CView
-{
-public:
-    using CView::CView;
-    void setGodCamera(filament::Camera* camera);
-};
-
-
-/*!
  * \class GameDriver
  *
  * \ingroup Game
@@ -176,17 +149,7 @@ public:
 class GameDriver
 {
 public:
-    using SetupCallback   = std::function<void(filament::Scene*)>;
-    using CleanupCallback = std::function<void(filament::Engine*, filament::View*, filament::Scene*)>;
-    using PreRenderCallback =
-        std::function<void(filament::Engine*, filament::View*, filament::Scene*, filament::Renderer*)>;
-    using PostRenderCallback =
-        std::function<void(filament::Engine*, filament::View*, filament::Scene*, filament::Renderer*)>;
-    using ImGuiCallback  = std::function<void(filament::Engine*, filament::View*)>;
-    using AnimCallback   = std::function<void(filament::Engine*, filament::View*, double now)>;
-    using ResizeCallback = std::function<void(filament::Engine*, filament::View*)>;
-    using DropCallback   = std::function<void(std::string)>;
-
+    
     static bool manipulatorKeyFromKeycode(SDL_Scancode scancode, CameraManipulator::Key& key);
 
     SINGLE_INSTANCE_FLAG(GameDriver)
@@ -198,7 +161,9 @@ private:
 
     void preRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
     void postRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
-    void animate(filament::View* view, double now);
+    
+    
+    void animate(double now);
 
     void gui(filament::Engine*, filament::View* view);
 
@@ -212,9 +177,6 @@ private:
     void keyDown(SDL_Scancode scancode);
     void keyUp(SDL_Scancode scancode);
     void resize();
-
-    filament::Renderer*  getRenderer() { return mRenderer; }
-    filament::SwapChain* getSwapChain() { return mSwapChain; }
 
     SDL_Window* getSDLWindow() { return mWindow; }
     void*       getNativeWindow();
@@ -238,15 +200,7 @@ public:
 
     void mainLoop();
 
-    filament::Material const* getDefaultMaterial() const noexcept { return mDefaultMaterial; }
-    filament::Material const* getTransparentMaterial() const noexcept { return mTransparentMaterial; }
-    IBL*                      getIBL() const noexcept { return mIBL.get(); }
-    filament::Texture*        getDirtTexture() const noexcept { return mDirt; }
-    filament::View*           getGuiView() const noexcept;
-
     void close() { mClosed = true; }
-
-    void setSidebarWidth(int width) { mSidebarWidth = width; }
 
     void addOffscreenView(filament::View* view) { mOffscreenViews.push_back(view); }
 
@@ -258,7 +212,7 @@ private:
     void loadDirt();
 
 
-    Config mConfig;
+    Configure mConfig;
 
     filament::Engine*    mEngine = nullptr;
     filament::Scene*     mScene  = nullptr;
@@ -332,7 +286,7 @@ public:
 
 private:
     void configureCamerasForWindow();
-    void fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const;
+    void fixupCoordinatesForHdpi(ssize_t& x, ssize_t& y) const;
 
     bool mIsResizeable = true;
     bool mIsSplitView  = false;
@@ -356,7 +310,7 @@ private:
     CView*                              mMainView;
     CView*                              mUiView;
     CView*                              mDepthView;
-    GodView*                            mGodView;
+    CView*                              mGodView;
     CView*                              mOrthoView;
 
     int     mWidth  = 0;
@@ -368,6 +322,7 @@ private:
     std::string mWindowTitle;
     // Keep track of which view should receive a key's keyUp event.
     std::unordered_map<SDL_Scancode, CView*> mKeyEventTarget;
+
 };
 
 

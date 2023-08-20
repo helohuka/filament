@@ -1,6 +1,20 @@
+#ifndef __CUBE_H__
+#define __CUBE_H__ 1
 
-#ifndef __CUBE_H
-#define __CUBE_H
+/*!
+ * \file Cube.h
+ * \date 2023.08.20
+ *
+ * \author Helohuka
+ * 
+ * Contact: helohuka@outlook.com
+ *
+ * \brief 
+ *
+ * TODO: long description
+ *
+ * \note
+*/
 
 #include <vector>
 
@@ -47,5 +61,4 @@ private:
     utils::Entity               mWireFrameRenderable;
 };
 
-
-#endif // __CUBE_H
+#endif // __CUBE_H__

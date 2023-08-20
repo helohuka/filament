@@ -1,5 +1,5 @@
 
-#include "gamedriver/ScriptVM.h"
+#include "gamedriver/LuauVM.h"
 #include "utils/FileUtils.h"
 #include "utils/Log.h"
 
@@ -9,9 +9,9 @@
 #include <luacode.h>
 #include <lualib.h>
 
-#include "Luau/Compiler.h"
-#include "Luau/BytecodeBuilder.h"
-#include "Luau/Parser.h"
+#include <Luau/Compiler.h>
+#include <Luau/BytecodeBuilder.h>
+#include <Luau/Parser.h>
 
 //-----------------------------------------------------------------------
 
@@ -311,6 +311,8 @@ bool LuauVM::doString(const char* code)
 }
 
 //-----------------------------------------------------------------------
+
+
 LuauVM::~LuauVM()
 {
 
@@ -341,9 +343,4 @@ LuauVM::LuauVM()
     luaL_sandbox(L);
 }
 
-LuauVM& LuauVM::get()
-{
-	static LuauVM vm;
-	return vm;
-}
 

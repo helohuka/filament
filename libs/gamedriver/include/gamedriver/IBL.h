@@ -1,7 +1,20 @@
+#ifndef __IBL_H__
+#define __IBL_H__ 1
 
-
-#ifndef __IBL_H
-#define __IBL_H
+/*!
+ * \file IBL.h
+ * \date 2023.08.20
+ *
+ * \author Helohuka
+ * 
+ * Contact: helohuka@outlook.com
+ *
+ * \brief 
+ *
+ * TODO: long description
+ *
+ * \note
+*/
 
 #include <filament/Texture.h>
 
@@ -66,4 +79,4 @@ private:
     filament::Skybox*        mSkybox        = nullptr;
 };
 
-#endif // __IBL_H
+#endif // __IBL_H__

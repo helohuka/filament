@@ -1,6 +1,20 @@
-#ifndef __BASE_LIBS_H__
-#define __BASE_LIBS_H__ 1
+#ifndef __BASELIBS_H__
+#define __BASELIBS_H__ 1
 
+/*!
+ * \file BaseLibs.h
+ * \date 2023.08.20
+ *
+ * \author Helohuka
+ * 
+ * Contact: helohuka@outlook.com
+ *
+ * \brief 
+ *
+ * TODO: long description
+ *
+ * \note
+*/
 
 // C++ 标准库
 #include <stdio.h>
@@ -63,7 +77,8 @@
 #endif
 
 #include <camutils/Manipulator.h>
-
+#include <utils/FileUtils.h>
+#include <utils/Log.h>
 #include <utils/Panic.h>
 #include <utils/Path.h>
 #include <utils/Entity.h>
@@ -104,5 +119,4 @@ public:\
 private:\
 	T();
 
-
-#endif 
+#endif // __BASELIBS_H__

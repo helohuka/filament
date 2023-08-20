@@ -5,7 +5,7 @@
 #include "gamedriver/BaseLibs.h"
 #include "Configure_generated.h"
 
-struct Config {
+struct Configure {
 
     bool resizeable = true;
     bool splitView  = true;

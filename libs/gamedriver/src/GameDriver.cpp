@@ -2,7 +2,7 @@
 #include "gamedriver/BaseLibs.h"
 #include "gamedriver/GameDriver.h"
 
-#include "gamedriver/ScriptVM.h"
+#include "gamedriver/LuauVM.h"
 #include "gamedriver/Resource.h"
 #include "gamedriver/MeshAssimp.h"
 #include "gamedriver/Cube.h"
@@ -23,9 +23,6 @@ GameDriver::~GameDriver() {
     SDL_Quit();
 }
 
-View* GameDriver::getGuiView() const noexcept {
-    return mImGuiHelper->getView();
-}
 
 void GameDriver::mainLoop()
 {
@@ -101,7 +98,7 @@ void GameDriver::mainLoop()
 
     setup();
 
-    ImGuiCallback imguiCallback = std::bind(&GameDriver::gui, this, mEngine, std::placeholders::_2);
+    ImGuiHelper::Callback imguiCallback = std::bind(&GameDriver::gui, this, mEngine, std::placeholders::_2);
 
     if (imguiCallback)
     {
@@ -166,7 +163,7 @@ void GameDriver::mainLoop()
         // Allow the app to animate the scene if desired.
         {
             double now = (double)SDL_GetPerformanceCounter() / SDL_GetPerformanceFrequency();
-            animate(mMainView->getView(), now);
+            animate(now);
         }
 
         // Loop over fresh events twice: first stash them and let ImGui process them, then allow
@@ -364,24 +361,22 @@ void GameDriver::mainLoop()
                         16;
         SDL_Delay(refreshIntervalMS);
 
-        Renderer* renderer = getRenderer();
+        preRender(mViews[0]->getView(), mScene, mRenderer);
 
-        preRender(mViews[0]->getView(), mScene, renderer);
-
-        if (renderer->beginFrame(getSwapChain()))
+        if (mRenderer->beginFrame(mSwapChain))
         {
             for (filament::View* offscreenView : mOffscreenViews)
             {
-                renderer->render(offscreenView);
+                mRenderer->render(offscreenView);
             }
             for (auto const& view : mViews)
             {
-                renderer->render(view->getView());
+                mRenderer->render(view->getView());
             }
 
-            postRender(mViews[0]->getView(), mScene, renderer);
+            postRender(mViews[0]->getView(), mScene, mRenderer);
 
-            renderer->endFrame();
+            mRenderer->endFrame();
         }
         else
         {
@@ -805,7 +800,7 @@ void GameDriver::postRender(View* view, Scene* scene, Renderer* renderer)
     mAutomationEngine->tick(mEngine, content, ImGui::GetIO().DeltaTime);
 }
 
-void GameDriver::animate(filament::View* view, double now)
+void GameDriver::animate(double now)
 {
     mResourceLoader->asyncUpdateLoad();
 
@@ -822,7 +817,7 @@ void GameDriver::gui(filament::Engine* ,filament::View* view)
 {
     mViewerGUI->updateUserInterface();
 
-    setSidebarWidth(mViewerGUI->getSidebarWidth());
+    mSidebarWidth = mViewerGUI->getSidebarWidth();
 }
 
 void GameDriver::setup()

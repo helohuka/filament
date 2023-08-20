@@ -26,7 +26,7 @@ set(PUBLIC_HDRS
         include/gamedriver/Sphere.h
         
         include/gamedriver/Resource.h
-        include/gamedriver/ScriptVM.h
+        include/gamedriver/LuauVM.h
 )
 
 set(SRCS
@@ -42,7 +42,7 @@ set(SRCS
 
         
         src/Configure.cpp
-        src/ScriptVM.cpp
+        src/LuauVM.cpp
         src/Resource.cpp
 )
 

@@ -2,16 +2,10 @@
 #include "gamedriver/BaseLibs.h"
 #include "gamedriver/GameDriver.h"
 #include "gamedriver/NativeWindowHelper.h"
-
-using namespace filament;
-using namespace filagui;
-using namespace filament::math;
-using namespace utils;
 // ------------------------------------------------------------------------------------------------
 
 void GameDriver::initWindow()
 {
-
     mIsResizeable = mConfig.resizeable;
     mIsSplitView  = mConfig.splitView;
     mWindowTitle  = mConfig.title;
@@ -34,12 +28,12 @@ void GameDriver::initWindow()
     // Create the Engine after the window in case this happens to be a single-threaded platform.
     // For single-threaded platforms, we need to ensure that Filament's OpenGL context is
     // current, rather than the one created by SDL.
-    mEngine = Engine::create(mBackend);
+    mEngine = filament::Engine::create(mBackend);
 
     // get the resolved backend
     mBackend = mEngine->getBackend();
 
-    void* nativeSwapChain = getNativeWindow();
+    void* nativeWindow = getNativeWindow();
 
 
 #if defined(__APPLE__)
@@ -68,7 +62,7 @@ void GameDriver::initWindow()
     //        mGameDriver->mEngine->getSupportedFeatureLevel());
     mEngine->setActiveFeatureLevel(mConfig.featureLevel);
 
-    mSwapChain = mEngine->createSwapChain(nativeSwapChain);
+    mSwapChain = mEngine->createSwapChain(nativeWindow);
 
     mRenderer = mEngine->createRenderer();
 
@@ -90,7 +84,7 @@ void GameDriver::initWindow()
     if (mIsSplitView)
     {
         mViews.emplace_back(mDepthView = new CView(*mRenderer, "Depth View"));
-        mViews.emplace_back(mGodView = new GodView(*mRenderer, "God View"));
+        mViews.emplace_back(mGodView = new CView(*mRenderer, "God View"));
         mViews.emplace_back(mOrthoView = new CView(*mRenderer, "Shadow View"));
     }
     mViews.emplace_back(mUiView = new CView(*mRenderer, "UI View"));
@@ -119,7 +113,7 @@ void GameDriver::initWindow()
         mGodView->setCameraManipulator(mDebugCameraMan);
 
         // Ortho view obviously uses an ortho camera
-        mOrthoView->setCamera((Camera*)mMainView->getView()->getDirectionalLightCamera());
+        mOrthoView->setCamera((filament::Camera*)mMainView->getView()->getDirectionalLightCamera());
     }
 
     // configure the cameras
@@ -166,7 +160,7 @@ void* GameDriver::getNativeSurface()
 
 void GameDriver::mouseDown(int button, ssize_t x, ssize_t y)
 {
-    fixupMouseCoordinatesForHdpi(x, y);
+    fixupCoordinatesForHdpi(x, y);
     y = mHeight - y;
     for (auto const& view : mViews) {
         if (view->intersects(x, y)) {
@@ -193,7 +187,7 @@ void GameDriver::mouseWheel(ssize_t x)
 
 void GameDriver::mouseUp(ssize_t x, ssize_t y)
 {
-    fixupMouseCoordinatesForHdpi(x, y);
+    fixupCoordinatesForHdpi(x, y);
     if (mMouseEventTarget) {
         y = mHeight - y;
         mMouseEventTarget->mouseUp(x, y);
@@ -203,7 +197,7 @@ void GameDriver::mouseUp(ssize_t x, ssize_t y)
 
 void GameDriver::mouseMoved(ssize_t x, ssize_t y)
 {
-    fixupMouseCoordinatesForHdpi(x, y);
+    fixupCoordinatesForHdpi(x, y);
     y = mHeight - y;
     if (mMouseEventTarget) {
         mMouseEventTarget->mouseMoved(x, y);
@@ -260,7 +254,7 @@ void GameDriver::keyUp(SDL_Scancode key)
     eventTarget = nullptr;
 }
 
-void GameDriver::fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const
+void GameDriver::fixupCoordinatesForHdpi(ssize_t& x, ssize_t& y) const
 {
     int dw, dh, ww, wh;
     SDL_GL_GetDrawableSize(mWindow, &dw, &dh);
@@ -295,14 +289,14 @@ void GameDriver::resize()
     // configureCamerasForWindow, so the viewports are correct.
     {
         auto    view   = mMainView->getView();
-        Camera& camera = view->getCamera();
+        filament::Camera& camera = view->getCamera();
         if (&camera == mMainCamera)
         {
             // Don't adjust the aspect ratio of the main camera, this is done inside of
             // FilamentGameDriver.cpp
             return;
         }
-        const Viewport& vp          = view->getViewport();
+        const filament::Viewport& vp          = view->getViewport();
         double          aspectRatio = (double)vp.width / vp.height;
         camera.setScaling({1.0 / aspectRatio, 1.0});
     }
@@ -323,7 +317,7 @@ void GameDriver::configureCamerasForWindow()
     dpiScaleY = (float)mHeight / virtualHeight;
 
 
-    const float3 at(0, 0, -4);
+    const filament::math::float3 at(0, 0, -4);
     const double ratio   = double(mHeight) / double(mWidth);
     const int    sidebar = mSidebarWidth * dpiScaleX;
 
@@ -336,7 +330,7 @@ void GameDriver::configureCamerasForWindow()
     double near = 0.1;
     double far  = 100;
     mMainCamera->setLensProjection(mCameraFocalLength, double(mainWidth) / mHeight, near, far);
-    mDebugCamera->setProjection(45.0, double(mWidth) / mHeight, 0.0625, 4096, Camera::Fov::VERTICAL);
+    mDebugCamera->setProjection(45.0, double(mWidth) / mHeight, 0.0625, 4096, filament::Camera::Fov::VERTICAL);
 
     // We're in split view when there are more views than just the Main and UI views.
     if (splitview)

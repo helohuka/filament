@@ -1,7 +1,20 @@
+#ifndef __ICOSPHERE_H__
+#define __ICOSPHERE_H__ 1
 
-
-#ifndef __ICOSPHERE_H
-#define __ICOSPHERE_H
+/*!
+ * \file IcoSphere.h
+ * \date 2023.08.20
+ *
+ * \author Helohuka
+ * 
+ * Contact: helohuka@outlook.com
+ *
+ * \brief 
+ *
+ * TODO: long description
+ *
+ * \note
+*/
 
 #include <math/vec3.h>
 
@@ -40,4 +53,4 @@ private:
     IndexedMesh mMesh;
 };
 
-#endif //__ICOSPHERE_H
+#endif // __ICOSPHERE_H__

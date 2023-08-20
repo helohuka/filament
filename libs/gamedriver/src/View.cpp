@@ -2,14 +2,9 @@
 #include "gamedriver/BaseLibs.h"
 #include "gamedriver/GameDriver.h"
 
-
-using namespace filament;
-using namespace filagui;
-using namespace filament::math;
-using namespace utils;
 // ------------------------------------------------------------------------------------------------
 
-CView::CView(Renderer& renderer, std::string name)
+CView::CView(filament::Renderer& renderer, std::string name)
         : engine(*renderer.getEngine()), mName(name) {
     view = engine.createView();
     view->setName(name.c_str());
@@ -19,7 +14,8 @@ CView::~CView() {
     engine.destroy(view);
 }
 
-void CView::setViewport(Viewport const& viewport) {
+void CView::setViewport(filament::Viewport const& viewport)
+{
     mViewport = viewport;
     view->setViewport(viewport);
     if (mCameraManipulator) {
@@ -108,10 +104,13 @@ void CView::setCameraManipulator(CameraManipulator* cm) {
     mCameraManipulator = cm;
 }
 
-void CView::setCamera(Camera* camera) {
+void CView::setCamera(filament::Camera* camera)
+{
     view->setCamera(camera);
 }
 
-void GodView::setGodCamera(Camera* camera) {
-    getView()->setDebugCamera(camera);
+void CView::setGodCamera(filament::Camera* camera)
+{
+    view->setDebugCamera(camera);
 }
+
