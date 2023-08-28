@@ -27,6 +27,7 @@ set(PUBLIC_HDRS
         
         include/gamedriver/Resource.h
         include/gamedriver/LuauVM.h
+        include/gamedriver/ViewGui.h
 )
 
 set(SRCS
@@ -39,7 +40,7 @@ set(SRCS
 
         src/Window.cpp
         src/View.cpp
-
+        src/ViewGui.cpp
         
         src/Configure.cpp
         src/LuauVM.cpp

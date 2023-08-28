@@ -20,6 +20,7 @@
 #include "gamedriver/BaseLibs.h"
 #include "gamedriver/Configure.h"
 #include "gamedriver/IBL.h"
+#include "gamedriver/ViewGui.h"
 
 namespace filament {
 class Renderer;
@@ -126,6 +127,24 @@ private:
     std::string mName;
 };
 
+class Window
+{
+
+    SDL_Window*                 mWindowHandle = nullptr;
+    filament::Renderer*         mRenderer     = nullptr;
+    filament::SwapChain*        mSwapChain    = nullptr;
+    utils::Entity               mCameraEntity;
+    filament::Camera*           mCamera           = nullptr;
+    filament::View*             mView            = nullptr;
+    filament::Scene*            mScene            = nullptr;
+    filament::Material*         mMaterial         = nullptr;
+    filament::MaterialInstance* mMaterialInstance = nullptr;
+
+    bool   mNeedsDraw    = true;
+    double mTime         = 0.0;
+    double mLastDrawTime = 0.0;
+};
+
 /*!
  * \class GameDriver
  *
@@ -149,7 +168,6 @@ private:
 class GameDriver
 {
 public:
-    
     static bool manipulatorKeyFromKeycode(SDL_Scancode scancode, CameraManipulator::Key& key);
 
     SINGLE_INSTANCE_FLAG(GameDriver)
@@ -161,12 +179,10 @@ private:
 
     void preRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
     void postRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
-    
-    
+
     void animate(double now);
 
     void gui(filament::Engine*, filament::View* view);
-
 
     void initWindow();
     void releaseWindow();
@@ -197,17 +213,12 @@ public:
     void cleanup();
 
 public:
-
-    void mainLoop();
-
-    void close() { mClosed = true; }
-
-    void addOffscreenView(filament::View* view) { mOffscreenViews.push_back(view); }
-
+    void   mainLoop();
+    void   close() { mClosed = true; }
+    void   addOffscreenView(filament::View* view) { mOffscreenViews.push_back(view); }
     size_t getSkippedFrameCount() const { return mSkippedFrames; }
 
 private:
-
     void loadIBL();
     void loadDirt();
 
@@ -235,7 +246,6 @@ private:
 
     //////////////////////////////////////////////////////////////////////////
 public:
-    filament::viewer::ViewerGui* mViewerGUI;
 
     filament::gltfio::AssetLoader*      mAssetLoader;
     filament::gltfio::FilamentAsset*    mAsset    = nullptr;
@@ -243,7 +253,8 @@ public:
     utils::NameComponentManager*        mNames;
 
     filament::gltfio::MaterialProvider* mMaterials;
-    MaterialSource                      mMaterialSource = UBERSHADER; //A57 ,powervr 8xxx
+    MaterialSource                      mMaterialSource = JITSHADER;
+    //UBERSHADER; //A57 ,powervr 8xxx
 
     filament::gltfio::ResourceLoader*  mResourceLoader = nullptr;
     filament::gltfio::TextureProvider* mStbDecoder     = nullptr;
@@ -263,7 +274,7 @@ public:
     struct Overdraw
     {
         filament::Material* mOverdrawMaterial;
-        // use layer 7 because 0, 1 and 2 are used by FilamentApp
+        // use layer 7 because 0, 1 and 2 are used by GameDriver
         static constexpr auto                                    OVERDRAW_VISIBILITY_LAYER = 7u; // overdraw renderables View layer
         static constexpr auto                                    OVERDRAW_LAYERS           = 4u; // unique overdraw colors
         std::array<utils::Entity, OVERDRAW_LAYERS>               mOverdrawVisualizer;
@@ -323,6 +334,108 @@ private:
     // Keep track of which view should receive a key's keyUp event.
     std::unordered_map<SDL_Scancode, CView*> mKeyEventTarget;
 
+
+    //////////////////////////////////////////////////////////////////////////
+    static constexpr int DEFAULT_SIDEBAR_WIDTH = 350;
+
+    void initViewGui();
+    void releaseViewGui();
+    void setAsset(filament::gltfio::FilamentAsset* asset, filament::gltfio::FilamentInstance* instance);
+
+    void populateScene();
+
+    void removeAsset();
+
+    void setIndirectLight(filament::IndirectLight* ibl, filament::math::float3 const* sh3);
+
+    void applyAnimation(double currentTime, filament::gltfio::FilamentInstance* instance = nullptr);
+
+    void updateUserInterface();
+
+    void renderUserInterface(float timeStepInSeconds, filament::View* guiView, float pixelRatio);
+
+    void mouseEvent(float mouseX, float mouseY, bool mouseButton, float mouseWheelY, bool control);
+    void keyDownEvent(int keyCode);
+    void keyUpEvent(int keyCode);
+    void keyPressEvent(int charCode);
+
+    void setUiCallback(std::function<void()> callback) { mCustomUI = callback; }
+
+
+    void enableWireframe(bool b) { mEnableWireframe = b; }
+
+    void enableSunlight(bool b) { mSettings.lighting.enableSunlight = b; }
+
+    void enableDithering(bool b)
+    {
+        mSettings.view.dithering = b ? filament::Dithering::TEMPORAL : filament::Dithering::NONE;
+    }
+    void enableFxaa(bool b)
+    {
+        mSettings.view.antiAliasing = b ? filament::AntiAliasing::FXAA : filament::AntiAliasing::NONE;
+    }
+
+    void enableMsaa(bool b)
+    {
+        mSettings.view.msaa.sampleCount = 4;
+        mSettings.view.msaa.enabled     = b;
+    }
+
+    void enableSSAO(bool b) { mSettings.view.ssao.enabled = b; }
+
+    void enableBloom(bool bloom) { mSettings.view.bloom.enabled = bloom; }
+
+    void setIBLIntensity(float brightness) { mSettings.lighting.iblIntensity = brightness; }
+
+    void updateRootTransform();
+
+    void stopAnimation() { mCurrentAnimation = 0; }
+
+    int getCurrentCamera() const { return mCurrentCamera; }
+
+    float getOcularDistance() const { return mOcularDistance; }
+
+private:
+    using SceneMask = filament::gltfio::NodeManager::SceneMask;
+
+    bool isRemoteMode() const { return mAsset == nullptr; }
+
+    void sceneSelectionUI();
+
+    utils::Entity           mSunlight;
+
+    filament::IndirectLight* mIndirectLight = nullptr;
+    std::function<void()>    mCustomUI;
+
+    // Properties that can be changed from the UI.
+    int                                      mCurrentAnimation   = 1; // It is a 1-based index and 0 means not playing animation
+    int                                      mCurrentVariant     = 0;
+    bool                                     mEnableWireframe    = false;
+    int                                      mVsmMsaaSamplesLog2 = 1;
+    filament::viewer::Settings               mSettings;
+    uint32_t                                 mFlags;
+    utils::Entity                            mCurrentMorphingEntity;
+    std::vector<float>                       mMorphWeights;
+    filament::gltfio::NodeManager::SceneMask mVisibleScenes;
+    bool                                     mShowingRestPose = false;
+
+    // Stereoscopic debugging
+    float mOcularDistance = 0.0f;
+
+    // 0 is the default "free camera". Additional cameras come from the gltf file (1-based index).
+    int mCurrentCamera = 0;
+
+    // Cross fade animation parameters.
+    float  mCrossFadeDuration = 0.5f; // number of seconds to transition between animations
+    int    mPreviousAnimation = 0;    // one-based index of the previous animation
+    double mCurrentStartTime  = 0.0f; // start time of most recent cross-fade (seconds)
+    double mPreviousStartTime = 0.0f; // start time of previous cross-fade (seconds)
+    bool   mResetAnimation    = true; // set when building ImGui widgets, honored in applyAnimation
+
+    // Color grading UI state.
+    float mToneMapPlot[1024];
+    float mRangePlot[1024 * 3];
+    float mCurvePlot[1024 * 3];
 };
 
 

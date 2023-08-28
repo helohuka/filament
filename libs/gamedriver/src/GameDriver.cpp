@@ -16,7 +16,7 @@ using namespace utils;
 
 
 GameDriver::GameDriver() {
-    ASSERT_POSTCONDITION(SDL_Init(SDL_INIT_EVERYTHING) == 0, "SDL_Init Failure");
+    ASSERT_POSTCONDITION(SDL_Init(SDL_INIT_EVENTS) == 0, "SDL_Init Failure");
 }
 
 GameDriver::~GameDriver() {
@@ -482,8 +482,7 @@ void GameDriver::loadAsset(utils::Path filename)
         std::cerr << "Unable to open " << filename << std::endl;
         exit(1);
     }
-    
-
+   
     // Consume the glTF file.
     std::ifstream        in(filename.c_str(), std::ifstream::binary | std::ifstream::in);
     std::vector<uint8_t> buffer(static_cast<unsigned long>(contentSize));
@@ -549,7 +548,7 @@ void GameDriver::loadResources(utils::Path filename)
 
     if (mIBL)
     {
-        mViewerGUI->setIndirectLight(mIBL->getIndirectLight(), mIBL->getSphericalHarmonics());
+        setIndirectLight(mIBL->getIndirectLight(), mIBL->getSphericalHarmonics());
     }
 }
 
@@ -559,7 +558,7 @@ void GameDriver::createGroundPlane()
     Material* shadowMaterial = Material::Builder()
                                    .package(GAMEDRIVER_GROUNDSHADOW_DATA, GAMEDRIVER_GROUNDSHADOW_SIZE)
                                    .build(*mEngine);
-    auto& viewerOptions = mViewerGUI->getSettings().viewer;
+    auto& viewerOptions = mSettings.viewer;
     shadowMaterial->setDefaultParameter("strength", viewerOptions.groundShadowStrength);
 
     const static uint32_t indices[] = {
@@ -732,7 +731,7 @@ void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
     auto&       rcm           = mEngine->getRenderableManager();
     auto        instance      = rcm.getInstance(mGround.mGroundPlane);
     const auto  viewerOptions = mAutomationEngine->getViewerOptions();
-    const auto& dofOptions    = mViewerGUI->getSettings().view.dof;
+    const auto& dofOptions    = mSettings.view.dof;
     rcm.setLayerMask(instance, 0xff, viewerOptions.groundPlaneEnabled ? 0xff : 0x00);
 
     mEngine->setAutomaticInstancingEnabled(viewerOptions.autoInstancingEnabled);
@@ -744,7 +743,7 @@ void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
     const size_t cameraCount = mAsset->getCameraEntityCount();
     view->setCamera(mMainCamera);
 
-    const int currentCamera = mViewerGUI->getCurrentCamera();
+    const int currentCamera = getCurrentCamera();
     if (currentCamera > 0 && currentCamera <= cameraCount)
     {
         const utils::Entity* cameras = mAsset->getCameraEntities();
@@ -764,10 +763,10 @@ void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
     // This applies clear options, the skybox mask, and some camera settings.
     Camera& camera = view->getCamera();
     Skybox* skybox = scene->getSkybox();
-    filament::viewer::applySettings(mEngine, mViewerGUI->getSettings().viewer, &camera, skybox, renderer);
+    filament::viewer::applySettings(mEngine, mSettings.viewer, &camera, skybox, renderer);
 
     // Check if color grading has changed.
-    filament::viewer::ColorGradingSettings& options = mViewerGUI->getSettings().view.colorGrading;
+    filament::viewer::ColorGradingSettings& options = mSettings.view.colorGrading;
     if (options.enabled)
     {
         if (options != mLastColorGradingOptions)
@@ -805,27 +804,25 @@ void GameDriver::animate(double now)
     mResourceLoader->asyncUpdateLoad();
 
     // Optionally fit the model into a unit cube at the origin.
-    mViewerGUI->updateRootTransform();
+    updateRootTransform();
 
     // Gradually add renderables to the scene as their textures become ready.
-    mViewerGUI->populateScene();
+    populateScene();
 
-    mViewerGUI->applyAnimation(now);
+    applyAnimation(now);
 }
 
 void GameDriver::gui(filament::Engine* ,filament::View* view)
 {
-    mViewerGUI->updateUserInterface();
+    updateUserInterface();
 
-    mSidebarWidth = mViewerGUI->getSidebarWidth();
 }
 
 void GameDriver::setup()
 {
     mNames                                            = new utils::NameComponentManager(EntityManager::get());
-    mViewerGUI                                        = new filament::viewer::ViewerGui(mEngine, mScene, mMainView->getView(), mSidebarWidth);
-    mViewerGUI->getSettings().viewer.autoScaleEnabled = !mActualSize;
-
+    initViewGui();
+    mSettings.viewer.autoScaleEnabled = !mActualSize;
     const bool batchMode = !mBatchFile.empty();
 
     // First check if a custom automation spec has been provided. If it fails to load, the app
@@ -858,7 +855,7 @@ void GameDriver::setup()
         mAutomationSpec = filament::viewer::AutomationSpec::generateDefaultTestCases();
     }
 
-    mAutomationEngine = new filament::viewer::AutomationEngine(mAutomationSpec, &mViewerGUI->getSettings());
+    mAutomationEngine = new filament::viewer::AutomationEngine(mAutomationSpec, &mSettings);
 
     if (batchMode)
     {
@@ -868,12 +865,12 @@ void GameDriver::setup()
         options.exportScreenshots = true;
         options.exportSettings    = true;
         mAutomationEngine->setOptions(options);
-        mViewerGUI->stopAnimation();
+        stopAnimation();
     }
 
     if (mSettingsFile.size() > 0)
     {
-        bool success = loadSettings(mSettingsFile.c_str(), &mViewerGUI->getSettings());
+        bool success = loadSettings(mSettingsFile.c_str(), &mSettings);
         if (success)
         {
             std::cout << "Loaded settings from " << mSettingsFile << std::endl;
@@ -887,26 +884,25 @@ void GameDriver::setup()
     mMaterials = (mMaterialSource == JITSHADER) ? filament::gltfio::createJitShaderProvider(mEngine) : filament::gltfio::createUbershaderProvider(mEngine, UBERARCHIVE_DEFAULT_DATA, UBERARCHIVE_DEFAULT_SIZE);
 
     mAssetLoader = filament::gltfio::AssetLoader::create({mEngine, mMaterials, mNames});
-    //mMainCamera  = &view->getCamera();
 
     auto filename = utils::Path(mConfig.filename.c_str());
 
     loadAsset(filename);
     loadResources(filename);
 
-    mViewerGUI->setAsset(mAsset, mInstance);
+    setAsset(mAsset, mInstance);
 
     createGroundPlane();
     createOverdrawVisualizerEntities();
 
-    mViewerGUI->setUiCallback(
+    setUiCallback(
         [this]() {
             auto& automation = *mAutomationEngine;
             auto  view       = mMainView->getView();
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
             {
                 ImVec2 pos = ImGui::GetMousePos();
-                pos.x -= mViewerGUI->getSidebarWidth();
+                pos.x -= mSidebarWidth;
                 pos.x *= ImGui::GetIO().DisplayFramebufferScale.x;
                 pos.y *= ImGui::GetIO().DisplayFramebufferScale.y;
                 if (pos.x > 0)
@@ -984,7 +980,7 @@ void GameDriver::setup()
 
                 if (ImGui::Button("Export view settings"))
                 {
-                    automation.exportSettings(mViewerGUI->getSettings(), "settings.json");
+                    automation.exportSettings(mSettings, "settings.json");
                     mMessageBoxText = automation.getStatusMessage();
                     ImGui::OpenPopup("MessageBox");
                 }
@@ -1087,7 +1083,6 @@ void GameDriver::setup()
 
 void GameDriver::cleanup()
 {
-
     mAutomationEngine->terminate();
     mResourceLoader->asyncCancelLoad();
     mAssetLoader->destroyAsset(mAsset);
@@ -1115,7 +1110,7 @@ void GameDriver::cleanup()
     }
     mEngine->destroy(mOverdraw.mOverdrawMaterial);
 
-    delete mViewerGUI;
+    releaseViewGui();
     delete mMaterials;
     delete mNames;
     delete mResourceLoader;

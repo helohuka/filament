@@ -58,8 +58,8 @@ void GameDriver::initWindow()
 #endif
 
     // Select the feature level to use
-    //config.featureLevel = std::min(config.featureLevel,
-    //        mGameDriver->mEngine->getSupportedFeatureLevel());
+    mConfig.featureLevel = std::min(mConfig.featureLevel,
+            mEngine->getSupportedFeatureLevel());
     mEngine->setActiveFeatureLevel(mConfig.featureLevel);
 
     mSwapChain = mEngine->createSwapChain(nativeWindow);
