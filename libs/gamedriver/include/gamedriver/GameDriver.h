@@ -16,35 +16,16 @@
  * \note
 */
 
-
 #include "gamedriver/BaseLibs.h"
 #include "gamedriver/Configure.h"
 #include "gamedriver/IBL.h"
+
+#include "gamedriver/View.h"
+#include "gamedriver/Window.h"
 #include "gamedriver/ViewGui.h"
 
-namespace filament {
-class Renderer;
-class Scene;
-class View;
-} // namespace filament
-
-namespace filagui {
-class ImGuiHelper;
-} // namespace filagui
 
 
-enum MaterialSource
-{
-    JITSHADER,
-    UBERSHADER,
-};
-
-
-
-class IBL;
-class MeshAssimp;
-
-using CameraManipulator = filament::camutils::Manipulator<float>;
 
 static std::ifstream::pos_type getFileSize(const char* filename)
 {
@@ -69,81 +50,6 @@ static bool loadSettings(const char* filename, filament::viewer:: Settings* out)
     return serializer.readJson(json.data(), contentSize, out);
 }
 
-/*!
- * \class CView
- *
- * \ingroup Views
- *
- * \brief 
- *
- * TODO: long description
- *
- * \note 
- *
- * \author Helohuka
- *
- * \version 1.0
- *
- * \date 2023.08.15
- *
- * Contact: helohuka@outlook.com
- *
- */
-class CView
-{
-public:
-    CView(filament::Renderer& renderer, std::string name);
-    virtual ~CView();
-
-    void setCameraManipulator(CameraManipulator* cm);
-    void setViewport(filament::Viewport const& viewport);
-    void setCamera(filament::Camera* camera);
-    void setGodCamera(filament::Camera* camera);
-    bool intersects(ssize_t x, ssize_t y);
-
-    virtual void mouseDown(int button, ssize_t x, ssize_t y);
-    virtual void mouseUp(ssize_t x, ssize_t y);
-    virtual void mouseMoved(ssize_t x, ssize_t y);
-    virtual void mouseWheel(ssize_t x);
-    virtual void keyDown(SDL_Scancode scancode);
-    virtual void keyUp(SDL_Scancode scancode);
-
-    filament::View const* getView() const { return view; }
-    filament::View* getView() { return view; }
-    CameraManipulator* getCameraManipulator() { return mCameraManipulator; }
-
-private:
-    enum class Mode : uint8_t
-    {
-        NONE,
-        ROTATE,
-        TRACK
-    };
-
-    filament::Engine& engine;
-    filament::Viewport mViewport;
-    filament::View* view = nullptr;
-    CameraManipulator* mCameraManipulator = nullptr;
-    std::string mName;
-};
-
-class Window
-{
-
-    SDL_Window*                 mWindowHandle = nullptr;
-    filament::Renderer*         mRenderer     = nullptr;
-    filament::SwapChain*        mSwapChain    = nullptr;
-    utils::Entity               mCameraEntity;
-    filament::Camera*           mCamera           = nullptr;
-    filament::View*             mView            = nullptr;
-    filament::Scene*            mScene            = nullptr;
-    filament::Material*         mMaterial         = nullptr;
-    filament::MaterialInstance* mMaterialInstance = nullptr;
-
-    bool   mNeedsDraw    = true;
-    double mTime         = 0.0;
-    double mLastDrawTime = 0.0;
-};
 
 /*!
  * \class GameDriver
@@ -194,17 +100,14 @@ private:
     void keyUp(SDL_Scancode scancode);
     void resize();
 
-    SDL_Window* getSDLWindow() { return mWindow; }
-    void*       getNativeWindow();
-    void*       getNativeSurface();
-    void        setWindowTitle(const char* title)
-    {
-        mWindowTitle = title;
-        if (mWindowTitle != SDL_GetWindowTitle(mWindow))
-        {
-            SDL_SetWindowTitle(mWindow, mWindowTitle.c_str());
-        }
-    }
+    //void        setWindowTitle(const char* title)
+    //{
+    //    mWindowTitle = title;
+    //    if (mWindowTitle != SDL_GetWindowTitle(mWindow))
+    //    {
+    //        SDL_SetWindowTitle(mWindow, mWindowTitle.c_str());
+    //    }
+    //}
 
 public:
     void loadAsset(utils::Path filename);
@@ -222,8 +125,10 @@ private:
     void loadIBL();
     void loadDirt();
 
+    std::unique_ptr<Window> mMainWindow;
 
-    Configure mConfig;
+    filament::Engine::Backend       mBackend      = filament::Engine::Backend::OPENGL;
+    filament::backend::FeatureLevel mFeatureLevel = filament::backend::FeatureLevel::FEATURE_LEVEL_3;
 
     filament::Engine*    mEngine = nullptr;
     filament::Scene*     mScene  = nullptr;
@@ -297,20 +202,14 @@ public:
 
 private:
     void configureCamerasForWindow();
-    void fixupCoordinatesForHdpi(ssize_t& x, ssize_t& y) const;
 
     bool mIsResizeable = true;
     bool mIsSplitView  = false;
 
 
-    SDL_Window*               mWindow   = nullptr;
-    filament::Renderer*       mRenderer = nullptr;
-    filament::Engine::Backend mBackend;
-
     CameraManipulator*   mMainCameraMan;
     CameraManipulator*   mDebugCameraMan;
-    filament::SwapChain* mSwapChain = nullptr;
-
+    
     utils::Entity     mCameraEntities[3];
     filament::Camera* mCameras[3] = {nullptr};
     filament::Camera* mMainCamera;
@@ -330,7 +229,6 @@ private:
     ssize_t mLastY  = 0;
 
     CView*      mMouseEventTarget = nullptr;
-    std::string mWindowTitle;
     // Keep track of which view should receive a key's keyUp event.
     std::unordered_map<SDL_Scancode, CView*> mKeyEventTarget;
 

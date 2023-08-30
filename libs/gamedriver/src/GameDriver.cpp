@@ -27,7 +27,7 @@ GameDriver::~GameDriver() {
 void GameDriver::mainLoop()
 {
     static const char* DEFAULT_IBL = "assets/ibl/lightroom_14b";
-    mConfig.iblDirectory           = Resource::get().getRootPath() + DEFAULT_IBL;
+    gConfigure.iblDirectory        = Resource::get().getRootPath() + DEFAULT_IBL;
 
     initWindow();
 
@@ -52,7 +52,7 @@ void GameDriver::mainLoop()
     mScene = mEngine->createScene();
 
     mMainView->getView()->setVisibleLayers(0x4, 0x4);
-    if (mConfig.splitView)
+    if (gConfigure.splitView)
     {
         auto& rcm = mEngine->getRenderableManager();
 
@@ -104,9 +104,10 @@ void GameDriver::mainLoop()
     {
         mImGuiHelper = std::make_unique<ImGuiHelper>(mEngine, mUiView->getView(),
                                                      Resource::get().getRootPath() + "assets/fonts/Roboto-Medium.ttf");
+        ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
         ImGuiIO& io  = ImGui::GetIO();
 #ifdef WIN32
-        io.ImeWindowHandle = getNativeWindow();
+        io.ImeWindowHandle = mMainWindow->getNativeWindow();
 #endif
         io.KeyMap[ImGuiKey_Tab]        = SDL_SCANCODE_TAB;
         io.KeyMap[ImGuiKey_LeftArrow]  = SDL_SCANCODE_LEFT;
@@ -276,8 +277,8 @@ void GameDriver::mainLoop()
 
                     break;
                 case SDL_APP_DIDENTERFOREGROUND:
-                    mEngine->setActiveFeatureLevel(mConfig.featureLevel);
-                    mSwapChain = mEngine->createSwapChain(getNativeWindow());
+                    mEngine->setActiveFeatureLevel(gConfigure.featureLevel);
+                    mMainWindow->setupSwapChain();
                     break;
                 default:
                     break;
@@ -300,13 +301,13 @@ void GameDriver::mainLoop()
 
             int windowWidth, windowHeight;
             int displayWidth, displayHeight;
-            SDL_GetWindowSize(mWindow, &windowWidth, &windowHeight);
-            SDL_GL_GetDrawableSize(mWindow, &displayWidth, &displayHeight);
+            SDL_GetWindowSize(mMainWindow->getSDLWindow(), &windowWidth, &windowHeight);
+            SDL_GL_GetDrawableSize(mMainWindow->getSDLWindow(), &displayWidth, &displayHeight);
             mImGuiHelper->setDisplaySize(windowWidth, windowHeight,
                                          windowWidth > 0 ? ((float)displayWidth / windowWidth) : 0,
                                          displayHeight > 0 ? ((float)displayHeight / windowHeight) : 0);
 
-
+            
             // Setup mouse inputs (we already got mouse wheel, keyboard keys & characters
             // from our event handler)
             ImGuiIO& io = ImGui::GetIO();
@@ -320,7 +321,7 @@ void GameDriver::mainLoop()
 
             // TODO: Update to a newer SDL and use SDL_CaptureMouse() to retrieve mouse coordinates
             // outside of the client area; see the imgui SDL example.
-            if ((SDL_GetWindowFlags(mWindow) & SDL_WINDOW_INPUT_FOCUS) != 0)
+            if ((SDL_GetWindowFlags(mMainWindow->getSDLWindow()) & SDL_WINDOW_INPUT_FOCUS) != 0)
             {
                 io.MousePos = ImVec2((float)mx, (float)my);
             }
@@ -355,28 +356,28 @@ void GameDriver::mainLoop()
         // TODO: Use SDL_GL_SetSwapInterval for proper vsync
         SDL_DisplayMode Mode;
         int             refreshIntervalMS = (SDL_GetCurrentDisplayMode(
-                                     SDL_GetWindowDisplayIndex(mWindow), &Mode) == 0 &&
+                                     SDL_GetWindowDisplayIndex(mMainWindow->getSDLWindow()), &Mode) == 0 &&
                                  Mode.refresh_rate != 0) ?
                         round(1000.0 / Mode.refresh_rate) :
                         16;
         SDL_Delay(refreshIntervalMS);
 
-        preRender(mViews[0]->getView(), mScene, mRenderer);
+        preRender(mMainView->getView(), mScene, mMainWindow->getRenderer());
 
-        if (mRenderer->beginFrame(mSwapChain))
+        if (mMainWindow->getRenderer()->beginFrame(mMainWindow->getSwapChain()))
         {
             for (filament::View* offscreenView : mOffscreenViews)
             {
-                mRenderer->render(offscreenView);
+                mMainWindow->getRenderer()->render(offscreenView);
             }
             for (auto const& view : mViews)
             {
-                mRenderer->render(view->getView());
+                mMainWindow->getRenderer()->render(view->getView());
             }
 
-            postRender(mViews[0]->getView(), mScene, mRenderer);
+            postRender(mMainView->getView(), mScene, mMainWindow->getRenderer());
 
-            mRenderer->endFrame();
+            mMainWindow->getRenderer()->endFrame();
         }
         else
         {
@@ -407,9 +408,9 @@ void GameDriver::mainLoop()
 
 void GameDriver::loadIBL()
 {
-    if (!mConfig.iblDirectory.empty())
+    if (!gConfigure.iblDirectory.empty())
     {
-        Path iblPath(mConfig.iblDirectory);
+        Path iblPath(gConfigure.iblDirectory);
 
         if (!iblPath.exists())
         {
@@ -442,9 +443,9 @@ void GameDriver::loadIBL()
 
 void GameDriver::loadDirt()
 {
-    if (!mConfig.dirt.empty())
+    if (!gConfigure.dirt.empty())
     {
-        Path dirtPath(mConfig.dirt);
+        Path dirtPath(gConfigure.dirt);
 
         if (!dirtPath.exists())
         {
@@ -885,7 +886,7 @@ void GameDriver::setup()
 
     mAssetLoader = filament::gltfio::AssetLoader::create({mEngine, mMaterials, mNames});
 
-    auto filename = utils::Path(mConfig.filename.c_str());
+    auto filename = utils::Path(gConfigure.filename.c_str());
 
     loadAsset(filename);
     loadResources(filename);

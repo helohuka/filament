@@ -62,8 +62,8 @@ public:
     void keyDown(SDL_Scancode scancode);
     void keyUp(SDL_Scancode scancode);
 
-    filament::View const* getView() const { return view; }
-    filament::View*       getView() { return view; }
+    filament::View const* getView() const { return mView; }
+    filament::View*       getView() { return mView; }
     CameraManipulator*    getCameraManipulator() { return mCameraManipulator; }
 
 private:
@@ -74,9 +74,9 @@ private:
         TRACK
     };
 
-    filament::Engine&  engine;
+    filament::Engine&  mEngine;
     filament::Viewport mViewport;
-    filament::View*    view               = nullptr;
+    filament::View*    mView               = nullptr;
     CameraManipulator* mCameraManipulator = nullptr;
     std::string        mName;
 };

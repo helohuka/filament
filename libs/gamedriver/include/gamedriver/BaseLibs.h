@@ -135,4 +135,12 @@ public:\
 private:\
 	T();
 
+
+
+enum MaterialSource
+{
+    JITSHADER,
+    UBERSHADER,
+};
+
 #endif // __BASELIBS_H__

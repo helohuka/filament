@@ -1,18 +1,17 @@
 
 #include "gamedriver/BaseLibs.h"
+#include "gamedriver/Window.h"
 #include "gamedriver/GameDriver.h"
 #include "gamedriver/NativeWindowHelper.h"
-// ------------------------------------------------------------------------------------------------
 
-void GameDriver::initWindow()
+
+Window::Window(filament::Engine* engine) :
+    mEngine(engine)
 {
-    mIsResizeable = mConfig.resizeable;
-    mIsSplitView  = mConfig.splitView;
-    mWindowTitle  = mConfig.title;
-    mWidth        = mConfig.width;
-    mHeight       = mConfig.height;
-    mBackend      = mConfig.backend;
-
+    mIsResizeable         = gConfigure.resizeable;
+    mWindowTitle          = gConfigure.title;
+    mWindowWidth                = gConfigure.width;
+    mWindowHeight         = gConfigure.height;
     const int x           = SDL_WINDOWPOS_CENTERED;
     const int y           = SDL_WINDOWPOS_CENTERED;
     uint32_t  windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
@@ -23,24 +22,36 @@ void GameDriver::initWindow()
 
     // Even if we're in headless mode, we still need to create a window, otherwise SDL will not poll
     // events.
-    mWindow = SDL_CreateWindow(mWindowTitle.c_str(), x, y, mWidth, mHeight, windowFlags);
+    mWindow   = SDL_CreateWindow(mWindowTitle.c_str(), x, y, mWindowWidth, mWindowHeight, windowFlags);
+    mWindowID = SDL_GetWindowID(mWindow);
 
-    // Create the Engine after the window in case this happens to be a single-threaded platform.
-    // For single-threaded platforms, we need to ensure that Filament's OpenGL context is
-    // current, rather than the one created by SDL.
-    mEngine = filament::Engine::create(mBackend);
+    SDL_VERSION(&mSystemInfo.version);
+    ASSERT_POSTCONDITION(SDL_GetWindowWMInfo(mWindow, &mSystemInfo), "SDL version unsupported!");
+}
+Window::~Window()
+{
+    SDL_DestroyWindow(mWindow);
+}
 
-    // get the resolved backend
-    mBackend = mEngine->getBackend();
+void Window::cleanupRenderer()
+{
+    mEngine->destroy(mRenderer);
+    mEngine->destroy(mSwapChain);
+}
 
+void Window::setupRenderer()
+{
+    mRenderer = mEngine->createRenderer();
+}
+
+void Window::setupSwapChain()
+{
     void* nativeWindow = getNativeWindow();
-
-
 #if defined(__APPLE__)
     ::prepareNativeWindow(mWindow);
 
     void* metalLayer = nullptr;
-    if (config.backend == filament::Engine::Backend::METAL)
+    if (mBackend == filament::Engine::Backend::METAL)
     {
         metalLayer = setUpMetalLayer(nativeWindow);
         // The swap chain on Metal is a CAMetalLayer.
@@ -48,7 +59,7 @@ void GameDriver::initWindow()
     }
 
 #    if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
-    if (config.backend == filament::Engine::Backend::VULKAN)
+    if (mBackend == filament::Engine::Backend::VULKAN)
     {
         // We request a Metal layer for rendering via MoltenVK.
         setUpMetalLayer(nativeWindow);
@@ -56,15 +67,70 @@ void GameDriver::initWindow()
 #    endif
 
 #endif
-
-    // Select the feature level to use
-    mConfig.featureLevel = std::min(mConfig.featureLevel,
-            mEngine->getSupportedFeatureLevel());
-    mEngine->setActiveFeatureLevel(mConfig.featureLevel);
-
     mSwapChain = mEngine->createSwapChain(nativeWindow);
+}
 
-    mRenderer = mEngine->createRenderer();
+void Window::fixupCoordinatesForHdpi(filament::vec2<ssize_t>& coordinate)
+{
+    
+    SDL_GL_GetDrawableSize(mWindow, &mDrawableWidth, &mDrawableHeight);
+    SDL_GetWindowSize(mWindow, &mWindowWidth, &mWindowHeight);
+    coordinate.x = coordinate.x * mDrawableWidth / mWindowWidth;
+    coordinate.y = coordinate.y * mDrawableHeight / mWindowWidth;
+}
+
+void Window::fixupCoordinatesForHdpi(ssize_t& x, ssize_t& y)
+{
+    SDL_GL_GetDrawableSize(mWindow, &mDrawableWidth, &mDrawableHeight);
+    SDL_GetWindowSize(mWindow, &mWindowWidth, &mWindowHeight);
+    x = x * mDrawableWidth / mWindowWidth;
+    y = y * mDrawableHeight / mWindowHeight;
+}
+
+
+void Window::onResize()
+{
+    void* nativeWindow = getNativeWindow();
+
+#if defined(__APPLE__)
+
+    if (mBackend == filament::Engine::Backend::METAL)
+    {
+        resizeMetalLayer(nativeWindow);
+    }
+
+#    if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
+    if (mBackend == filament::Engine::Backend::VULKAN)
+    {
+        resizeMetalLayer(nativeWindow);
+    }
+#    endif
+
+#endif
+}
+
+// ------------------------------------------------------------------------------------------------
+
+void GameDriver::initWindow()
+{
+    mBackend      = gConfigure.backend;
+    mFeatureLevel = gConfigure.featureLevel;
+
+     // Create the Engine after the window in case this happens to be a single-threaded platform.
+    // For single-threaded platforms, we need to ensure that Filament's OpenGL context is
+    // current, rather than the one created by SDL.
+    mEngine = filament::Engine::create(mBackend);
+
+    mMainWindow = std::make_unique<Window>(mEngine);
+
+    // get the resolved backend
+    mBackend = mEngine->getBackend();
+    // Select the feature level to use
+    mFeatureLevel = std::min(mFeatureLevel, mEngine->getSupportedFeatureLevel());
+    mEngine->setActiveFeatureLevel(mFeatureLevel);
+
+    mMainWindow->setupSwapChain();
+    mMainWindow->setupRenderer();
 
     // create cameras
     utils::EntityManager& em = utils::EntityManager::get();
@@ -80,24 +146,24 @@ void GameDriver::initWindow()
     }
 
     // create views
-    mViews.emplace_back(mMainView = new CView(*mRenderer, "Main View"));
+    mViews.emplace_back(mMainView = new CView(*mMainWindow->getRenderer(), "Main View"));
     if (mIsSplitView)
     {
-        mViews.emplace_back(mDepthView = new CView(*mRenderer, "Depth View"));
-        mViews.emplace_back(mGodView = new CView(*mRenderer, "God View"));
-        mViews.emplace_back(mOrthoView = new CView(*mRenderer, "Shadow View"));
+        mViews.emplace_back(mDepthView = new CView(*mMainWindow->getRenderer(), "Depth View"));
+        mViews.emplace_back(mGodView = new CView(*mMainWindow->getRenderer(), "God View"));
+        mViews.emplace_back(mOrthoView = new CView(*mMainWindow->getRenderer(), "Shadow View"));
     }
-    mViews.emplace_back(mUiView = new CView(*mRenderer, "UI View"));
+    mViews.emplace_back(mUiView = new CView(*mMainWindow->getRenderer(), "UI View"));
 
     // set-up the camera manipulators
     mMainCameraMan = CameraManipulator::Builder()
                          .targetPosition(0, 0, -4)
                          .flightMoveDamping(15.0)
-                         .build(mConfig.cameraMode);
+                         .build(gConfigure.cameraMode);
     mDebugCameraMan = CameraManipulator::Builder()
                           .targetPosition(0, 0, -4)
                           .flightMoveDamping(15.0)
-                          .build(mConfig.cameraMode);
+                          .build(gConfigure.cameraMode);
 
     mMainView->setCamera(mMainCamera);
     mMainView->setCameraManipulator(mMainCameraMan);
@@ -131,36 +197,16 @@ void GameDriver::releaseWindow()
         mEngine->destroyCameraComponent(e);
         em.destroy(e);
     }
-    mEngine->destroy(mRenderer);
-    mEngine->destroy(mSwapChain);
-    SDL_DestroyWindow(mWindow);
+    mMainWindow->cleanupRenderer();
+
     delete mMainCameraMan;
     delete mDebugCameraMan;
 }
 
-void* GameDriver::getNativeWindow()
-{
-    SDL_SysWMinfo wmi;
-    SDL_VERSION(&wmi.version);
-    ASSERT_POSTCONDITION(SDL_GetWindowWMInfo(mWindow, &wmi), "SDL version unsupported!");
-    HWND win = (HWND)wmi.info.win.window;
-    return (void*)win;
-}
-
-void* GameDriver::getNativeSurface()
-{
-    //SDL_SysWMinfo wmi;
-    //SDL_VERSION(&wmi.version);
-    //ASSERT_POSTCONDITION(SDL_GetWindowWMInfo(mWindow, &wmi), "SDL version unsupported!");
-
-    //return wmi.info.;
-
-    return nullptr;
-}
 
 void GameDriver::mouseDown(int button, ssize_t x, ssize_t y)
 {
-    fixupCoordinatesForHdpi(x, y);
+    mMainWindow->fixupCoordinatesForHdpi(x, y);
     y = mHeight - y;
     for (auto const& view : mViews) {
         if (view->intersects(x, y)) {
@@ -187,7 +233,7 @@ void GameDriver::mouseWheel(ssize_t x)
 
 void GameDriver::mouseUp(ssize_t x, ssize_t y)
 {
-    fixupCoordinatesForHdpi(x, y);
+    mMainWindow->fixupCoordinatesForHdpi(x, y);
     if (mMouseEventTarget) {
         y = mHeight - y;
         mMouseEventTarget->mouseUp(x, y);
@@ -197,7 +243,7 @@ void GameDriver::mouseUp(ssize_t x, ssize_t y)
 
 void GameDriver::mouseMoved(ssize_t x, ssize_t y)
 {
-    fixupCoordinatesForHdpi(x, y);
+    mMainWindow->fixupCoordinatesForHdpi(x, y);
     y = mHeight - y;
     if (mMouseEventTarget) {
         mMouseEventTarget->mouseMoved(x, y);
@@ -254,34 +300,9 @@ void GameDriver::keyUp(SDL_Scancode key)
     eventTarget = nullptr;
 }
 
-void GameDriver::fixupCoordinatesForHdpi(ssize_t& x, ssize_t& y) const
-{
-    int dw, dh, ww, wh;
-    SDL_GL_GetDrawableSize(mWindow, &dw, &dh);
-    SDL_GetWindowSize(mWindow, &ww, &wh);
-    x = x * dw / ww;
-    y = y * dh / wh;
-}
-
 void GameDriver::resize()
 {
-    void* nativeWindow = getNativeWindow();
-
-#if defined(__APPLE__)
-
-    if (mBackend == filament::Engine::Backend::METAL)
-    {
-        resizeMetalLayer(nativeWindow);
-    }
-
-#    if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
-    if (mBackend == filament::Engine::Backend::VULKAN)
-    {
-        resizeMetalLayer(nativeWindow);
-    }
-#    endif
-
-#endif
+    mMainWindow->onResize();
 
     configureCamerasForWindow();
 
@@ -309,10 +330,10 @@ void GameDriver::configureCamerasForWindow()
 
     // If the app is not headless, query the window for its physical & virtual sizes.
 
-    SDL_GL_GetDrawableSize(mWindow, &mWidth, &mHeight);
+    SDL_GL_GetDrawableSize(mMainWindow->getSDLWindow(), &mWidth, &mHeight);
  
     int virtualWidth, virtualHeight;
-    SDL_GetWindowSize(mWindow, &virtualWidth, &virtualHeight);
+    SDL_GetWindowSize(mMainWindow->getSDLWindow(), &virtualWidth, &virtualHeight);
     dpiScaleX = (float)mWidth / virtualWidth;
     dpiScaleY = (float)mHeight / virtualHeight;
 

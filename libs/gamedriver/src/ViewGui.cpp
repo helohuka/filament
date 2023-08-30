@@ -736,7 +736,7 @@ void GameDriver::updateUserInterface()
     //ImGui::SetNextWindowSize(ImVec2(mSidebarWidth, height), ImGuiCond_Once);
     //ImGui::SetNextWindowSizeConstraints(ImVec2(20, height), ImVec2(width, height));
 
-    ImGui::Begin("GameDriver", nullptr, window_flags);
+    ImGui::Begin("GameDriver");
     if (mCustomUI) {
         mCustomUI();
     }

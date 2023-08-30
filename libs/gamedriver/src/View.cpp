@@ -4,20 +4,21 @@
 
 // ------------------------------------------------------------------------------------------------
 
-CView::CView(filament::Renderer& renderer, std::string name)
-        : engine(*renderer.getEngine()), mName(name) {
-    view = engine.createView();
-    view->setName(name.c_str());
+CView::CView(filament::Renderer& renderer, std::string name) :
+    mEngine(*renderer.getEngine()), mName(name)
+{
+    mView = mEngine.createView();
+    mView->setName(name.c_str());
 }
 
 CView::~CView() {
-    engine.destroy(view);
+    mEngine.destroy(mView);
 }
 
 void CView::setViewport(filament::Viewport const& viewport)
 {
     mViewport = viewport;
-    view->setViewport(viewport);
+    mView->setViewport(viewport);
     if (mCameraManipulator) {
         mCameraManipulator->setViewport(viewport.width, viewport.height);
     }
@@ -106,11 +107,11 @@ void CView::setCameraManipulator(CameraManipulator* cm) {
 
 void CView::setCamera(filament::Camera* camera)
 {
-    view->setCamera(camera);
+    mView->setCamera(camera);
 }
 
 void CView::setGodCamera(filament::Camera* camera)
 {
-    view->setDebugCamera(camera);
+    mView->setDebugCamera(camera);
 }
 

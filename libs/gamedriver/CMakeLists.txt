@@ -28,6 +28,8 @@ set(PUBLIC_HDRS
         include/gamedriver/Resource.h
         include/gamedriver/LuauVM.h
         include/gamedriver/ViewGui.h
+        include/gamedriver/Window.h
+        include/gamedriver/View.h
 )
 
 set(SRCS
