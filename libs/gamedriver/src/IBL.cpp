@@ -28,14 +28,14 @@ using namespace utils;
 
 static constexpr float IBL_INTENSITY = 30000.0f;
 
-IBL::IBL(Engine& engine) : mEngine(engine) {
+IBL::IBL(Engine& engine) : mRenderEngine(engine) {
 }
 
 IBL::~IBL() {
-    mEngine.destroy(mIndirectLight);
-    mEngine.destroy(mTexture);
-    mEngine.destroy(mSkybox);
-    mEngine.destroy(mSkyboxTexture);
+    mRenderEngine.destroy(mIndirectLight);
+    mRenderEngine.destroy(mTexture);
+    mRenderEngine.destroy(mSkybox);
+    mRenderEngine.destroy(mSkyboxTexture);
 }
 
 bool IBL::loadFromEquirect(Path const& path) {
@@ -70,29 +70,29 @@ bool IBL::loadFromEquirect(Path const& path) {
             .levels(0xff)
             .format(Texture::InternalFormat::R11F_G11F_B10F)
             .sampler(Texture::Sampler::SAMPLER_2D)
-            .build(mEngine);
+            .build(mRenderEngine);
 
-    equirect->setImage(mEngine, 0, std::move(buffer));
+    equirect->setImage(mRenderEngine, 0, std::move(buffer));
 
-    IBLPrefilterContext context(mEngine);
+    IBLPrefilterContext context(mRenderEngine);
     IBLPrefilterContext::EquirectangularToCubemap equirectangularToCubemap(context);
     IBLPrefilterContext::SpecularFilter specularFilter(context);
 
     mSkyboxTexture = equirectangularToCubemap(equirect);
 
-    mEngine.destroy(equirect);
+    mRenderEngine.destroy(equirect);
 
     mTexture = specularFilter(mSkyboxTexture);
 
     mIndirectLight = IndirectLight::Builder()
             .reflections(mTexture)
             .intensity(IBL_INTENSITY)
-            .build(mEngine);
+            .build(mRenderEngine);
 
     mSkybox = Skybox::Builder()
             .environment(mSkyboxTexture)
             .showSun(true)
-            .build(mEngine);
+            .build(mRenderEngine);
 
     return true;
 }
@@ -117,8 +117,8 @@ bool IBL::loadFromKtx(const std::string& prefix) {
     Ktx1Bundle* iblKtx = createKtx(iblPath);
     Ktx1Bundle* skyKtx = createKtx(skyPath);
 
-    mSkyboxTexture = Ktx1Reader::createTexture(&mEngine, skyKtx, false);
-    mTexture = Ktx1Reader::createTexture(&mEngine, iblKtx, false);
+    mSkyboxTexture = Ktx1Reader::createTexture(&mRenderEngine, skyKtx, false);
+    mTexture = Ktx1Reader::createTexture(&mRenderEngine, iblKtx, false);
 
     if (!iblKtx->getSphericalHarmonics(mBands)) {
         return false;
@@ -127,9 +127,9 @@ bool IBL::loadFromKtx(const std::string& prefix) {
     mIndirectLight = IndirectLight::Builder()
             .reflections(mTexture)
             .intensity(IBL_INTENSITY)
-            .build(mEngine);
+            .build(mRenderEngine);
 
-    mSkybox = Skybox::Builder().environment(mSkyboxTexture).showSun(true).build(mEngine);
+    mSkybox = Skybox::Builder().environment(mSkyboxTexture).showSun(true).build(mRenderEngine);
 
     return true;
 }
@@ -178,9 +178,9 @@ bool IBL::loadFromDirectory(const utils::Path& path)
                          .reflections(mTexture)
                          .irradiance(3, mBands)
                          .intensity(IBL_INTENSITY)
-                         .build(mEngine);
+                         .build(mRenderEngine);
 
-    mSkybox = Skybox::Builder().environment(mSkyboxTexture).showSun(true).build(mEngine);
+    mSkybox = Skybox::Builder().environment(mSkyboxTexture).showSun(true).build(mRenderEngine);
 
     return true;
 }
@@ -190,7 +190,7 @@ bool IBL::loadCubemapLevel(filament::Texture** texture, const utils::Path& path,
     uint32_t dim;
     Texture::PixelBufferDescriptor buffer;
     if (loadCubemapLevel(texture, &buffer, &dim, path, level, levelPrefix)) {
-        (*texture)->setImage(mEngine, level, 0, 0, 0, dim, dim, 6, std::move(buffer));
+        (*texture)->setImage(mRenderEngine, level, 0, 0, 0, dim, dim, 6, std::move(buffer));
         return true;
     }
     return false;
@@ -233,7 +233,7 @@ bool IBL::loadCubemapLevel(
                     .levels((uint8_t)numLevels)
                     .format(Texture::InternalFormat::R11F_G11F_B10F)
                     .sampler(Texture::Sampler::SAMPLER_CUBEMAP)
-                    .build(mEngine);
+                    .build(mRenderEngine);
         }
     }
 

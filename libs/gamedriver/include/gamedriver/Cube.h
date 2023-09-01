@@ -51,7 +51,7 @@ private:
     static const uint32_t               mIndices[];
     static const filament::math::float3 mVertices[];
 
-    filament::Engine&           mEngine;
+    filament::Engine&           mRenderEngine;
     filament::VertexBuffer*     mVertexBuffer              = nullptr;
     filament::IndexBuffer*      mIndexBuffer               = nullptr;
     filament::Material const*   mMaterial                  = nullptr;

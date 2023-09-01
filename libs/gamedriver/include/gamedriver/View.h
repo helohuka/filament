@@ -74,7 +74,7 @@ private:
         TRACK
     };
 
-    filament::Engine&  mEngine;
+    filament::Engine&  mRenderEngine;
     filament::Viewport mViewport;
     filament::View*    mView               = nullptr;
     CameraManipulator* mCameraManipulator = nullptr;

@@ -354,17 +354,17 @@ void GameDriver::initViewGui()
         .sunAngularRadius(mSettings.lighting.sunlightAngularRadius)
         .sunHaloSize(mSettings.lighting.sunlightHaloSize)
         .sunHaloFalloff(mSettings.lighting.sunlightHaloFalloff)
-        .build(*mEngine, mSunlight);
+        .build(*mRenderEngine, mSunlight);
     if (mSettings.lighting.enableSunlight)
     {
         mScene->addEntity(mSunlight);
     }
-    mMainView->getView()->setAmbientOcclusionOptions({.upsampling = View::QualityLevel::HIGH});
+    mMainWindow->getMainView()->getView()->setAmbientOcclusionOptions({.upsampling = View::QualityLevel::HIGH});
 }
 
 void GameDriver::releaseViewGui()
 {
-    mEngine->destroy(mSunlight);
+    mRenderEngine->destroy(mSunlight);
     mImGuiHelper = nullptr;
 }
 
@@ -387,7 +387,7 @@ void GameDriver::setAsset(filament::gltfio::FilamentAsset* asset, filament::gltf
         }
         updateRootTransform();
         mScene->addEntities(asset->getLightEntities(), asset->getLightEntityCount());
-        auto& rcm = mEngine->getRenderableManager();
+        auto& rcm = mRenderEngine->getRenderableManager();
         for (size_t i = 0, n = asset->getRenderableEntityCount(); i < n; i++) {
             auto ri = rcm.getInstance(asset->getRenderableEntities()[i]);
             rcm.setScreenSpaceContactShadows(ri, true);
@@ -445,7 +445,7 @@ void GameDriver::updateRootTransform()
     if (isRemoteMode()) {
         return;
     }
-    auto& tcm = mEngine->getTransformManager();
+    auto& tcm = mRenderEngine->getTransformManager();
     auto root = tcm.getInstance(mAsset->getRoot());
     filament::math::mat4f transform;
     if (mSettings.viewer.autoScaleEnabled) {
@@ -518,7 +518,7 @@ void GameDriver::applyAnimation(double currentTime, filament::gltfio::FilamentIn
 void GameDriver::renderUserInterface(float timeStepInSeconds, filament::View* guiView, float pixelRatio)
 {
     //if (mImGuiHelper == nullptr) {
-    //    mImGuiHelper = new filagui::ImGuiHelper(mEngine, guiView, "");
+    //    mImGuiHelper = new filagui::ImGuiHelper(mRenderEngine, guiView, "");
 
     //    auto& io = ImGui::GetIO();
 
@@ -596,9 +596,9 @@ void GameDriver::updateUserInterface()
 {
     using namespace filament;
 
-    auto& tm = mEngine->getTransformManager();
-    auto& rm = mEngine->getRenderableManager();
-    auto& lm = mEngine->getLightManager();
+    auto& tm = mRenderEngine->getTransformManager();
+    auto& rm = mRenderEngine->getRenderableManager();
+    auto& lm = mRenderEngine->getLightManager();
 
     // Show a common set of UI widgets for all renderables.
     auto renderableTreeItem = [this, &rm](utils::Entity entity) {
@@ -741,7 +741,7 @@ void GameDriver::updateUserInterface()
         mCustomUI();
     }
 
-    DebugRegistry& debug = mEngine->getDebugRegistry();
+    DebugRegistry& debug = mRenderEngine->getDebugRegistry();
 
     if (ImGui::CollapsingHeader("View")) {
         ImGui::Indent();
@@ -1041,13 +1041,13 @@ void GameDriver::updateUserInterface()
             ImGui::ListBox("Cameras", &mCurrentCamera, cstrings.data(), cstrings.size());
         }
 
-        StereoscopicOptions stereoOptions = mMainView->getView()->getStereoscopicOptions();
+        StereoscopicOptions stereoOptions = mMainWindow->getMainView()->getView()->getStereoscopicOptions();
         ImGui::Checkbox("Instanced stereo", &stereoOptions.enabled);
         if (stereoOptions.enabled) {
             ImGui::SliderFloat("Ocular distance", &mOcularDistance, 0.0f, 10.0f);
 
         }
-        mMainView->getView()->setStereoscopicOptions(stereoOptions);
+        mMainWindow->getMainView()->getView()->setStereoscopicOptions(stereoOptions);
 
         ImGui::Unindent();
     }
@@ -1056,9 +1056,9 @@ void GameDriver::updateUserInterface()
 
     // At this point, all View settings have been modified,
     //  so we can now push them into the Filament View.
-    applySettings(mEngine, mSettings.view, mMainView->getView());
-    applySettings(mEngine, mSettings.lighting, mIndirectLight, mSunlight,
-                  lm.getEntities(), lm.getComponentCount(), &lm, mScene, mMainView->getView());
+    applySettings(mRenderEngine, mSettings.view, mMainWindow->getMainView()->getView());
+    applySettings(mRenderEngine, mSettings.lighting, mIndirectLight, mSunlight,
+                  lm.getEntities(), lm.getComponentCount(), &lm, mScene, mMainWindow->getMainView()->getView());
 
     // TODO(prideout): add support for hierarchy, animation and variant selection in remote mode. To
     // support these features, we will need to send a message (list of strings) from DebugServer to
@@ -1134,7 +1134,7 @@ void GameDriver::updateUserInterface()
         }
     }
 
-    mSidebarWidth = ImGui::GetWindowWidth();
+    mMainWindow->getSidebarWidth() = ImGui::GetWindowWidth();
     ImGui::End();
 
     {

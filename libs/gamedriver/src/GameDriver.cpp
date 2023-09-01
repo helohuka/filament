@@ -33,28 +33,28 @@ void GameDriver::mainLoop()
 
     mDepthMaterial = Material::Builder()
                          .package(GAMEDRIVER_DEPTHVISUALIZER_DATA, GAMEDRIVER_DEPTHVISUALIZER_SIZE)
-                         .build(*mEngine);
+                         .build(*mRenderEngine);
 
     mDepthMI = mDepthMaterial->createInstance();
 
     mDefaultMaterial = Material::Builder()
                            .package(GAMEDRIVER_AIDEFAULTMAT_DATA, GAMEDRIVER_AIDEFAULTMAT_SIZE)
-                           .build(*mEngine);
+                           .build(*mRenderEngine);
 
     mTransparentMaterial = Material::Builder()
                                .package(GAMEDRIVER_TRANSPARENTCOLOR_DATA, GAMEDRIVER_TRANSPARENTCOLOR_SIZE)
-                               .build(*mEngine);
+                               .build(*mRenderEngine);
 
-    std::unique_ptr<Cube> cameraCube(new Cube(*mEngine, mTransparentMaterial, {1, 0, 0}));
+    std::unique_ptr<Cube> cameraCube(new Cube(*mRenderEngine, mTransparentMaterial, {1, 0, 0}));
     // we can't cull the light-frustum because it's not applied a rigid transform
     // and currently, filament assumes that for culling
-    std::unique_ptr<Cube> lightmapCube(new Cube(*mEngine, mTransparentMaterial, {0, 1, 0}, false));
-    mScene = mEngine->createScene();
+    std::unique_ptr<Cube> lightmapCube(new Cube(*mRenderEngine, mTransparentMaterial, {0, 1, 0}, false));
+    mScene = mRenderEngine->createScene();
 
-    mMainView->getView()->setVisibleLayers(0x4, 0x4);
+    mMainWindow->getMainView()->getView()->setVisibleLayers(0x4, 0x4);
     if (gConfigure.splitView)
     {
-        auto& rcm = mEngine->getRenderableManager();
+        auto& rcm = mRenderEngine->getRenderableManager();
 
         rcm.setLayerMask(rcm.getInstance(cameraCube->getSolidRenderable()), 0x3, 0x2);
         rcm.setLayerMask(rcm.getInstance(cameraCube->getWireFrameRenderable()), 0x3, 0x2);
@@ -69,14 +69,14 @@ void GameDriver::mainLoop()
         mScene->addEntity(lightmapCube->getWireFrameRenderable());
         mScene->addEntity(lightmapCube->getSolidRenderable());
 
-        mDepthView->getView()->setVisibleLayers(0x4, 0x4);
-        mGodView->getView()->setVisibleLayers(0x6, 0x6);
-        mOrthoView->getView()->setVisibleLayers(0x6, 0x6);
+        mMainWindow->getDepthView()->getView()->setVisibleLayers(0x4, 0x4);
+        mMainWindow->getGodView()->getView()->setVisibleLayers(0x6, 0x6);
+        mMainWindow->getOrthoView()->getView()->setVisibleLayers(0x6, 0x6);
 
         // only preserve the color buffer for additional views; depth and stencil can be discarded.
-        mDepthView->getView()->setShadowingEnabled(false);
-        mGodView->getView()->setShadowingEnabled(false);
-        mOrthoView->getView()->setShadowingEnabled(false);
+        mMainWindow->getDepthView()->getView()->setShadowingEnabled(false);
+        mMainWindow->getGodView()->getView()->setShadowingEnabled(false);
+        mMainWindow->getOrthoView()->getView()->setShadowingEnabled(false);
     }
 
     loadDirt();
@@ -88,9 +88,9 @@ void GameDriver::mainLoop()
         mScene->setIndirectLight(mIBL->getIndirectLight());
     }
 
-    for (auto& view : mViews)
+    for (auto& view : mMainWindow->getViews())
     {
-        if (view.get() != mUiView)
+        if (view.get() != mMainWindow->getUiView())
         {
             view->getView()->setScene(mScene);
         }
@@ -98,11 +98,11 @@ void GameDriver::mainLoop()
 
     setup();
 
-    ImGuiHelper::Callback imguiCallback = std::bind(&GameDriver::gui, this, mEngine, std::placeholders::_2);
+    ImGuiHelper::Callback imguiCallback = std::bind(&GameDriver::gui, this, mRenderEngine, std::placeholders::_2);
 
     if (imguiCallback)
     {
-        mImGuiHelper = std::make_unique<ImGuiHelper>(mEngine, mUiView->getView(),
+        mImGuiHelper                 = std::make_unique<ImGuiHelper>(mRenderEngine, mMainWindow->getUiView()->getView(),
                                                      Resource::get().getRootPath() + "assets/fonts/Roboto-Medium.ttf");
         ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
         ImGuiIO& io  = ImGui::GetIO();
@@ -141,24 +141,24 @@ void GameDriver::mainLoop()
 
     bool mousePressed[3] = {false};
 
-    int   sidebarWidth      = mSidebarWidth;
-    float cameraFocalLength = mCameraFocalLength;
+    int   sidebarWidth      = mMainWindow->getSidebarWidth();
+    float cameraFocalLength = mMainWindow->getCameraFocalLength();
 
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
     while (!mClosed)
     {
 
-        if (mSidebarWidth != sidebarWidth || mCameraFocalLength != cameraFocalLength)
+        if (mMainWindow->getSidebarWidth() != sidebarWidth || mMainWindow->getCameraFocalLength() != cameraFocalLength)
         {
-            configureCamerasForWindow();
-            sidebarWidth      = mSidebarWidth;
-            cameraFocalLength = mCameraFocalLength;
+            mMainWindow->configureCamerasForWindow();
+            sidebarWidth      = mMainWindow->getSidebarWidth();
+            cameraFocalLength = mMainWindow->getCameraFocalLength();
         }
 
         if (!UTILS_HAS_THREADING)
         {
-            mEngine->execute();
+            mRenderEngine->execute();
         }
 
         // Allow the app to animate the scene if desired.
@@ -236,38 +236,38 @@ void GameDriver::mainLoop()
 #ifndef NDEBUG
                     if (event.key.keysym.scancode == SDL_SCANCODE_PRINTSCREEN)
                     {
-                        DebugRegistry& debug = mEngine->getDebugRegistry();
+                        DebugRegistry& debug = mRenderEngine->getDebugRegistry();
                         bool*          captureFrame =
                             debug.getPropertyAddress<bool>("d.renderer.doFrameCapture");
                         *captureFrame = true;
                     }
 #endif
-                    keyDown(event.key.keysym.scancode);
+                    mMainWindow->onKeyDown(event.key.keysym.scancode);
                     break;
                 case SDL_KEYUP:
-                    keyUp(event.key.keysym.scancode);
+                    mMainWindow->onKeyUp(event.key.keysym.scancode);
                     break;
                 case SDL_MOUSEWHEEL:
                     if (!io || !io->WantCaptureMouse)
-                        mouseWheel(event.wheel.y);
+                        mMainWindow->onMouseWheel(event.wheel.y);
                     break;
                 case SDL_MOUSEBUTTONDOWN:
                     if (!io || !io->WantCaptureMouse)
-                        mouseDown(event.button.button, event.button.x, event.button.y);
+                        mMainWindow->onMouseDown(event.button.button, event.button.x, event.button.y);
                     break;
                 case SDL_MOUSEBUTTONUP:
                     if (!io || !io->WantCaptureMouse)
-                        mouseUp(event.button.x, event.button.y);
+                        mMainWindow->onMouseUp(event.button.x, event.button.y);
                     break;
                 case SDL_MOUSEMOTION:
                     if (!io || !io->WantCaptureMouse)
-                        mouseMoved(event.motion.x, event.motion.y);
+                        mMainWindow->onMouseMoved(event.motion.x, event.motion.y);
                     break;
                 case SDL_WINDOWEVENT:
                     switch (event.window.event)
                     {
                         case SDL_WINDOWEVENT_RESIZED:
-                            resize();
+                            mMainWindow->onResize();
                             break;
                         default:
                             break;
@@ -277,9 +277,10 @@ void GameDriver::mainLoop()
 
                     break;
                 case SDL_APP_DIDENTERFOREGROUND:
-                    mEngine->setActiveFeatureLevel(gConfigure.featureLevel);
-                    mMainWindow->setupSwapChain();
+                    mRenderEngine->setActiveFeatureLevel(mFeatureLevel);
+                    mMainWindow->resetSwapChain();
                     break;
+                   
                 default:
                     break;
             }
@@ -331,7 +332,7 @@ void GameDriver::mainLoop()
         }
 
         // Update the camera manipulators for each view.
-        for (auto const& view : mViews)
+        for (auto const& view : mMainWindow->getViews())
         {
             auto* cm = view->getCameraManipulator();
             if (cm)
@@ -342,15 +343,15 @@ void GameDriver::mainLoop()
 
         // Update the position and orientation of the two cameras.
         filament::math::float3 eye, center, up;
-        mMainCameraMan->getLookAt(&eye, &center, &up);
-        mMainCamera->lookAt(eye, center, up);
-        mDebugCameraMan->getLookAt(&eye, &center, &up);
-        mDebugCamera->lookAt(eye, center, up);
+        mMainWindow->getMainCameraMan()->getLookAt(&eye, &center, &up);
+        mMainWindow->getMainCamera()->lookAt(eye, center, up);
+        mMainWindow->getDebugCameraMan()->getLookAt(&eye, &center, &up);
+        mMainWindow->getDebugCamera()->lookAt(eye, center, up);
 
         // Update the cube distortion matrix used for frustum visualization.
-        const Camera* lightmapCamera = mMainView->getView()->getDirectionalLightCamera();
-        lightmapCube->mapFrustum(*mEngine, lightmapCamera);
-        cameraCube->mapFrustum(*mEngine, mMainCamera);
+        const Camera* lightmapCamera = mMainWindow->getMainView()->getView()->getDirectionalLightCamera();
+        lightmapCube->mapFrustum(*mRenderEngine, lightmapCamera);
+        cameraCube->mapFrustum(*mRenderEngine, mMainWindow->getMainCamera());
 
         // Delay rendering for roughly one monitor refresh interval
         // TODO: Use SDL_GL_SetSwapInterval for proper vsync
@@ -362,7 +363,7 @@ void GameDriver::mainLoop()
                         16;
         SDL_Delay(refreshIntervalMS);
 
-        preRender(mMainView->getView(), mScene, mMainWindow->getRenderer());
+        preRender(mMainWindow->getMainView()->getView(), mScene, mMainWindow->getRenderer());
 
         if (mMainWindow->getRenderer()->beginFrame(mMainWindow->getSwapChain()))
         {
@@ -370,12 +371,12 @@ void GameDriver::mainLoop()
             {
                 mMainWindow->getRenderer()->render(offscreenView);
             }
-            for (auto const& view : mViews)
+            for (auto const& view : mMainWindow->getViews())
             {
                 mMainWindow->getRenderer()->render(view->getView());
             }
 
-            postRender(mMainView->getView(), mScene, mMainWindow->getRenderer());
+            postRender(mMainWindow->getMainView()->getView(), mScene, mMainWindow->getRenderer());
 
             mMainWindow->getRenderer()->endFrame();
         }
@@ -397,13 +398,13 @@ void GameDriver::mainLoop()
     releaseWindow();
 
     mIBL.reset();
-    mEngine->destroy(mDepthMI);
-    mEngine->destroy(mDepthMaterial);
-    mEngine->destroy(mDefaultMaterial);
-    mEngine->destroy(mTransparentMaterial);
-    mEngine->destroy(mScene);
-    Engine::destroy(&mEngine);
-    mEngine = nullptr;
+    mRenderEngine->destroy(mDepthMI);
+    mRenderEngine->destroy(mDepthMaterial);
+    mRenderEngine->destroy(mDefaultMaterial);
+    mRenderEngine->destroy(mTransparentMaterial);
+    mRenderEngine->destroy(mScene);
+    Engine::destroy(&mRenderEngine);
+    mRenderEngine = nullptr;
 }
 
 void GameDriver::loadIBL()
@@ -418,7 +419,7 @@ void GameDriver::loadIBL()
             return;
         }
 
-        mIBL = std::make_unique<IBL>(*mEngine);
+        mIBL = std::make_unique<IBL>(*mRenderEngine);
 
         if (!iblPath.isDirectory())
         {
@@ -468,9 +469,9 @@ void GameDriver::loadDirt()
                     .width(w)
                     .height(h)
                     .format(Texture::InternalFormat::RGB8)
-                    .build(*mEngine);
+                    .build(*mRenderEngine);
 
-        mDirt->setImage(*mEngine, 0, {data, size_t(w * h * 3), Texture::Format::RGB, Texture::Type::UBYTE, (Texture::PixelBufferDescriptor::Callback)&stbi_image_free});
+        mDirt->setImage(*mRenderEngine, 0, {data, size_t(w * h * 3), Texture::Format::RGB, Texture::Type::UBYTE, (Texture::PixelBufferDescriptor::Callback)&stbi_image_free});
     }
 }
 
@@ -511,15 +512,15 @@ void GameDriver::loadResources(utils::Path filename)
     // Load external textures and buffers.
     std::string                             gltfPath      = filename.getAbsolutePath();
     filament::gltfio::ResourceConfiguration configuration = {};
-    configuration.engine                                  = mEngine;
+    configuration.engine                                  = mRenderEngine;
     configuration.gltfPath                                = gltfPath.c_str();
     configuration.normalizeSkinningWeights                = true;
 
     if (!mResourceLoader)
     {
         mResourceLoader = new gltfio::ResourceLoader(configuration);
-        mStbDecoder     = filament::gltfio::createStbProvider(mEngine);
-        mKtxDecoder     = filament::gltfio::createKtx2Provider(mEngine);
+        mStbDecoder     = filament::gltfio::createStbProvider(mRenderEngine);
+        mKtxDecoder     = filament::gltfio::createKtx2Provider(mRenderEngine);
         mResourceLoader->addTextureProvider("image/png", mStbDecoder);
         mResourceLoader->addTextureProvider("image/jpeg", mStbDecoder);
         mResourceLoader->addTextureProvider("image/ktx2", mKtxDecoder);
@@ -558,7 +559,7 @@ void GameDriver::createGroundPlane()
     auto&     em             = EntityManager::get();
     Material* shadowMaterial = Material::Builder()
                                    .package(GAMEDRIVER_GROUNDSHADOW_DATA, GAMEDRIVER_GROUNDSHADOW_SIZE)
-                                   .build(*mEngine);
+                                   .build(*mRenderEngine);
     auto& viewerOptions = mSettings.viewer;
     shadowMaterial->setDefaultParameter("strength", viewerOptions.groundShadowStrength);
 
@@ -599,16 +600,16 @@ void GameDriver::createGroundPlane()
                                      .attribute(VertexAttribute::TANGENTS,
                                                 1, VertexBuffer::AttributeType::SHORT4)
                                      .normalized(VertexAttribute::TANGENTS)
-                                     .build(*mEngine);
+                                     .build(*mRenderEngine);
 
-    vertexBuffer->setBufferAt(*mEngine, 0, VertexBuffer::BufferDescriptor(vertices, vertexBuffer->getVertexCount() * sizeof(vertices[0])));
-    vertexBuffer->setBufferAt(*mEngine, 1, VertexBuffer::BufferDescriptor(normals, vertexBuffer->getVertexCount() * sizeof(normals[0])));
+    vertexBuffer->setBufferAt(*mRenderEngine, 0, VertexBuffer::BufferDescriptor(vertices, vertexBuffer->getVertexCount() * sizeof(vertices[0])));
+    vertexBuffer->setBufferAt(*mRenderEngine, 1, VertexBuffer::BufferDescriptor(normals, vertexBuffer->getVertexCount() * sizeof(normals[0])));
 
     IndexBuffer* indexBuffer = IndexBuffer::Builder()
                                    .indexCount(6)
-                                   .build(*mEngine);
+                                   .build(*mRenderEngine);
 
-    indexBuffer->setBuffer(*mEngine, IndexBuffer::BufferDescriptor(indices, indexBuffer->getIndexCount() * sizeof(uint32_t)));
+    indexBuffer->setBuffer(*mRenderEngine, IndexBuffer::BufferDescriptor(indices, indexBuffer->getIndexCount() * sizeof(uint32_t)));
 
     Entity groundPlane = em.create();
     RenderableManager::Builder(1)
@@ -619,15 +620,15 @@ void GameDriver::createGroundPlane()
         .culling(false)
         .receiveShadows(true)
         .castShadows(false)
-        .build(*mEngine, groundPlane);
+        .build(*mRenderEngine, groundPlane);
 
     mScene->addEntity(groundPlane);
 
-    auto& tcm = mEngine->getTransformManager();
+    auto& tcm = mRenderEngine->getTransformManager();
     tcm.setTransform(tcm.getInstance(groundPlane),
                      mat4f::translation(float3{0, aabb.min.y, -4}));
 
-    auto& rcm      = mEngine->getRenderableManager();
+    auto& rcm      = mRenderEngine->getRenderableManager();
     auto  instance = rcm.getInstance(groundPlane);
     rcm.setLayerMask(instance, 0xff, 0x00);
 
@@ -648,7 +649,7 @@ void GameDriver::createOverdrawVisualizerEntities()
 
     Material* material = Material::Builder()
                              .package(GAMEDRIVER_OVERDRAW_DATA, GAMEDRIVER_OVERDRAW_SIZE)
-                             .build(*mEngine);
+                             .build(*mRenderEngine);
 
     const float3 overdrawColors[GameDriver::Overdraw::OVERDRAW_LAYERS] = {
         {0.0f, 0.0f, 1.0f}, // blue         (overdrawn 1 time)
@@ -678,17 +679,17 @@ void GameDriver::createOverdrawVisualizerEntities()
                                      .vertexCount(3)
                                      .bufferCount(1)
                                      .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT4, 0)
-                                     .build(*mEngine);
+                                     .build(*mRenderEngine);
 
     vertexBuffer->setBufferAt(
-        *mEngine, 0, {sFullScreenTriangleVertices, sizeof(sFullScreenTriangleVertices)});
+        *mRenderEngine, 0, {sFullScreenTriangleVertices, sizeof(sFullScreenTriangleVertices)});
 
     IndexBuffer* indexBuffer = IndexBuffer::Builder()
                                    .indexCount(3)
                                    .bufferType(IndexBuffer::IndexType::USHORT)
-                                   .build(*mEngine);
+                                   .build(*mRenderEngine);
 
-    indexBuffer->setBuffer(*mEngine,
+    indexBuffer->setBuffer(*mRenderEngine,
                            {sFullScreenTriangleIndices, sizeof(sFullScreenTriangleIndices)});
 
     auto&       em           = EntityManager::get();
@@ -703,7 +704,7 @@ void GameDriver::createOverdrawVisualizerEntities()
             .culling(false)
             .priority(7u) // ensure the overdraw primitives are drawn last
             .layerMask(0xFF, 1u << GameDriver::Overdraw::OVERDRAW_VISIBILITY_LAYER)
-            .build(*mEngine, overdrawEntity);
+            .build(*mRenderEngine, overdrawEntity);
         mScene->addEntity(overdrawEntity);
         mOverdraw.mOverdrawVisualizer[i] = overdrawEntity;
     }
@@ -729,26 +730,26 @@ static void onClick(GameDriver& app, View* view, ImVec2 pos)
 
 void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
 {
-    auto&       rcm           = mEngine->getRenderableManager();
+    auto&       rcm           = mRenderEngine->getRenderableManager();
     auto        instance      = rcm.getInstance(mGround.mGroundPlane);
     const auto  viewerOptions = mAutomationEngine->getViewerOptions();
     const auto& dofOptions    = mSettings.view.dof;
     rcm.setLayerMask(instance, 0xff, viewerOptions.groundPlaneEnabled ? 0xff : 0x00);
 
-    mEngine->setAutomaticInstancingEnabled(viewerOptions.autoInstancingEnabled);
+    mRenderEngine->setAutomaticInstancingEnabled(viewerOptions.autoInstancingEnabled);
 
     // Note that this focal length might be different from the slider value because the
     // automation engine applies Camera::computeEffectiveFocalLength when DoF is enabled.
-    mCameraFocalLength = viewerOptions.cameraFocalLength;
+    mMainWindow->getCameraFocalLength() = viewerOptions.cameraFocalLength;
 
     const size_t cameraCount = mAsset->getCameraEntityCount();
-    view->setCamera(mMainCamera);
+    view->setCamera(mMainWindow->getMainCamera());
 
     const int currentCamera = getCurrentCamera();
     if (currentCamera > 0 && currentCamera <= cameraCount)
     {
         const utils::Entity* cameras = mAsset->getCameraEntities();
-        Camera*              camera  = mEngine->getCameraComponent(cameras[currentCamera - 1]);
+        Camera*              camera  = mRenderEngine->getCameraComponent(cameras[currentCamera - 1]);
         assert_invariant(camera);
         view->setCamera(camera);
 
@@ -764,7 +765,7 @@ void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
     // This applies clear options, the skybox mask, and some camera settings.
     Camera& camera = view->getCamera();
     Skybox* skybox = scene->getSkybox();
-    filament::viewer::applySettings(mEngine, mSettings.viewer, &camera, skybox, renderer);
+    filament::viewer::applySettings(mRenderEngine, mSettings.viewer, &camera, skybox, renderer);
 
     // Check if color grading has changed.
     filament::viewer::ColorGradingSettings& options = mSettings.view.colorGrading;
@@ -772,8 +773,8 @@ void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
     {
         if (options != mLastColorGradingOptions)
         {
-            filament::ColorGrading* colorGrading = filament::viewer::createColorGrading(options, mEngine);
-            mEngine->destroy(mColorGrading);
+            filament::ColorGrading* colorGrading = filament::viewer::createColorGrading(options, mRenderEngine);
+            mRenderEngine->destroy(mColorGrading);
             mColorGrading            = colorGrading;
             mLastColorGradingOptions = options;
         }
@@ -797,7 +798,7 @@ void GameDriver::postRender(View* view, Scene* scene, Renderer* renderer)
         .materials     = mInstance->getMaterialInstances(),
         .materialCount = mInstance->getMaterialInstanceCount(),
     };
-    mAutomationEngine->tick(mEngine, content, ImGui::GetIO().DeltaTime);
+    mAutomationEngine->tick(mRenderEngine, content, ImGui::GetIO().DeltaTime);
 }
 
 void GameDriver::animate(double now)
@@ -882,9 +883,9 @@ void GameDriver::setup()
         }
     }
 
-    mMaterials = (mMaterialSource == JITSHADER) ? filament::gltfio::createJitShaderProvider(mEngine) : filament::gltfio::createUbershaderProvider(mEngine, UBERARCHIVE_DEFAULT_DATA, UBERARCHIVE_DEFAULT_SIZE);
+    mMaterials = (mMaterialSource == JITSHADER) ? filament::gltfio::createJitShaderProvider(mRenderEngine) : filament::gltfio::createUbershaderProvider(mRenderEngine, UBERARCHIVE_DEFAULT_DATA, UBERARCHIVE_DEFAULT_SIZE);
 
-    mAssetLoader = filament::gltfio::AssetLoader::create({mEngine, mMaterials, mNames});
+    mAssetLoader = filament::gltfio::AssetLoader::create({mRenderEngine, mMaterials, mNames});
 
     auto filename = utils::Path(gConfigure.filename.c_str());
 
@@ -899,11 +900,11 @@ void GameDriver::setup()
     setUiCallback(
         [this]() {
             auto& automation = *mAutomationEngine;
-            auto  view       = mMainView->getView();
+            auto  view       = mMainWindow->getMainView()->getView();
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
             {
                 ImVec2 pos = ImGui::GetMousePos();
-                pos.x -= mSidebarWidth;
+                pos.x -= mMainWindow->getSidebarWidth();
                 pos.x *= ImGui::GetIO().DisplayFramebufferScale.x;
                 pos.y *= ImGui::GetIO().DisplayFramebufferScale.y;
                 if (pos.x > 0)
@@ -999,7 +1000,7 @@ void GameDriver::setup()
 
             if (ImGui::CollapsingHeader("Debug"))
             {
-                auto& debug = mEngine->getDebugRegistry();
+                auto& debug = mRenderEngine->getDebugRegistry();
                 if (ImGui::Button("Capture frame"))
                 {
                     bool* captureFrame = debug.getPropertyAddress<bool>("d.renderer.doFrameCapture");
@@ -1060,7 +1061,7 @@ void GameDriver::setup()
                 const auto overdrawVisibilityBit = (1u << GameDriver::Overdraw::OVERDRAW_VISIBILITY_LAYER);
                 bool       visualizeOverdraw     = view->getVisibleLayers() & overdrawVisibilityBit;
                 // TODO: enable after stencil buffer supported is added for Vulkan.
-                const bool overdrawDisabled = mEngine->getBackend() == backend::Backend::VULKAN;
+                const bool overdrawDisabled = mRenderEngine->getBackend() == backend::Backend::VULKAN;
                 ImGui::BeginDisabled(overdrawDisabled);
                 ImGui::Checkbox(!overdrawDisabled ? "Visualize overdraw" : "Visualize overdraw (disabled for Vulkan)",
                                 &visualizeOverdraw);
@@ -1089,27 +1090,27 @@ void GameDriver::cleanup()
     mAssetLoader->destroyAsset(mAsset);
     mMaterials->destroyMaterials();
 
-    mEngine->destroy(mGround.mGroundPlane);
-    mEngine->destroy(mGround.mGroundVertexBuffer);
-    mEngine->destroy(mGround.mGroundIndexBuffer);
-    mEngine->destroy(mGround.mGroundMaterial);
-    mEngine->destroy(mColorGrading);
+    mRenderEngine->destroy(mGround.mGroundPlane);
+    mRenderEngine->destroy(mGround.mGroundVertexBuffer);
+    mRenderEngine->destroy(mGround.mGroundIndexBuffer);
+    mRenderEngine->destroy(mGround.mGroundMaterial);
+    mRenderEngine->destroy(mColorGrading);
 
-    mEngine->destroy(mOverdraw.mFullScreenTriangleVertexBuffer);
-    mEngine->destroy(mOverdraw.mFullScreenTriangleIndexBuffer);
+    mRenderEngine->destroy(mOverdraw.mFullScreenTriangleVertexBuffer);
+    mRenderEngine->destroy(mOverdraw.mFullScreenTriangleIndexBuffer);
 
     auto& em = EntityManager::get();
     for (auto e : mOverdraw.mOverdrawVisualizer)
     {
-        mEngine->destroy(e);
+        mRenderEngine->destroy(e);
         em.destroy(e);
     }
 
     for (auto mi : mOverdraw.mOverdrawMaterialInstances)
     {
-        mEngine->destroy(mi);
+        mRenderEngine->destroy(mi);
     }
-    mEngine->destroy(mOverdraw.mOverdrawMaterial);
+    mRenderEngine->destroy(mOverdraw.mOverdrawMaterial);
 
     releaseViewGui();
     delete mMaterials;

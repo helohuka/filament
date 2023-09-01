@@ -47,7 +47,7 @@ struct Geometry {
 static Geometry* gGeometry = nullptr;
 
 Sphere::Sphere(Engine& engine, Material const* material, bool culling)
-        : mEngine(engine) {
+        : mRenderEngine(engine) {
     Geometry* geometry = gGeometry;
 
     static_assert(sizeof(IcoSphere::Triangle) == sizeof(IcoSphere::Index) * 3,
@@ -110,14 +110,14 @@ Sphere::Sphere(Engine& engine, Material const* material, bool culling)
 }
 
 Sphere::~Sphere() {
-    mEngine.destroy(mMaterialInstance);
-    mEngine.destroy(mRenderable);
+    mRenderEngine.destroy(mMaterialInstance);
+    mRenderEngine.destroy(mRenderable);
     utils::EntityManager& em = utils::EntityManager::get();
     em.destroy(mRenderable);
 }
 
 Sphere& Sphere::setPosition(filament::math::float3 const& position) noexcept {
-    auto& tcm = mEngine.getTransformManager();
+    auto& tcm = mRenderEngine.getTransformManager();
     auto ci = tcm.getInstance(mRenderable);
     mat4f model = tcm.getTransform(ci);
     model[3].xyz = position;
@@ -126,7 +126,7 @@ Sphere& Sphere::setPosition(filament::math::float3 const& position) noexcept {
 }
 
 Sphere& Sphere::setRadius(float radius) noexcept {
-    auto& tcm = mEngine.getTransformManager();
+    auto& tcm = mRenderEngine.getTransformManager();
     auto ci = tcm.getInstance(mRenderable);
     mat4f model = tcm.getTransform(ci);
     model[0].x = radius;

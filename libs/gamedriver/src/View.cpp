@@ -5,14 +5,14 @@
 // ------------------------------------------------------------------------------------------------
 
 CView::CView(filament::Renderer& renderer, std::string name) :
-    mEngine(*renderer.getEngine()), mName(name)
+    mRenderEngine(*renderer.getEngine()), mName(name)
 {
-    mView = mEngine.createView();
+    mView = mRenderEngine.createView();
     mView->setName(name.c_str());
 }
 
 CView::~CView() {
-    mEngine.destroy(mView);
+    mRenderEngine.destroy(mView);
 }
 
 void CView::setViewport(filament::Viewport const& viewport)

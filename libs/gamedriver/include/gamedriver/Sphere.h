@@ -41,7 +41,7 @@ public:
 
     Sphere(Sphere&& rhs) noexcept
         :
-        mEngine(rhs.mEngine),
+        mRenderEngine(rhs.mRenderEngine),
         mMaterialInstance(rhs.mMaterialInstance),
         mRenderable(rhs.mRenderable)
     {
@@ -63,7 +63,7 @@ public:
     Sphere& setRadius(float radius) noexcept;
 
 private:
-    filament::Engine&           mEngine;
+    filament::Engine&           mRenderEngine;
     filament::MaterialInstance* mMaterialInstance = nullptr;
     utils::Entity               mRenderable;
 };

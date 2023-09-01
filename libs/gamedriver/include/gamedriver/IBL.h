@@ -51,7 +51,7 @@ private:
                           size_t                                    level       = 0,
                           std::string const&                        levelPrefix = "") const;
 
-    filament::Engine&        mEngine;
+    filament::Engine&        mRenderEngine;
     filament::math::float3   mBands[9]      = {};
     filament::Texture*       mTexture       = nullptr;
     filament::IndirectLight* mIndirectLight = nullptr;

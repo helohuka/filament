@@ -92,13 +92,7 @@ private:
 
     void initWindow();
     void releaseWindow();
-    void mouseDown(int button, ssize_t x, ssize_t y);
-    void mouseUp(ssize_t x, ssize_t y);
-    void mouseMoved(ssize_t x, ssize_t y);
-    void mouseWheel(ssize_t x);
-    void keyDown(SDL_Scancode scancode);
-    void keyUp(SDL_Scancode scancode);
-    void resize();
+
 
     //void        setWindowTitle(const char* title)
     //{
@@ -130,7 +124,7 @@ private:
     filament::Engine::Backend       mBackend      = filament::Engine::Backend::OPENGL;
     filament::backend::FeatureLevel mFeatureLevel = filament::backend::FeatureLevel::FEATURE_LEVEL_3;
 
-    filament::Engine*    mEngine = nullptr;
+    filament::Engine*    mRenderEngine = nullptr;
     filament::Scene*     mScene  = nullptr;
     std::unique_ptr<IBL> mIBL;
     filament::Texture*   mDirt   = nullptr;
@@ -142,10 +136,10 @@ private:
     filament::Material const*             mDepthMaterial       = nullptr;
     filament::MaterialInstance*           mDepthMI             = nullptr;
     std::unique_ptr<filagui::ImGuiHelper> mImGuiHelper;
-    int                                   mSidebarWidth  = 300;
+    
     size_t                                mSkippedFrames = 0;
     std::vector<filament::View*>          mOffscreenViews;
-    float                                 mCameraFocalLength = 28.0f;
+    
 
 
 
@@ -201,40 +195,15 @@ public:
 
 
 private:
-    void configureCamerasForWindow();
 
     bool mIsResizeable = true;
-    bool mIsSplitView  = false;
-
-
-    CameraManipulator*   mMainCameraMan;
-    CameraManipulator*   mDebugCameraMan;
     
-    utils::Entity     mCameraEntities[3];
-    filament::Camera* mCameras[3] = {nullptr};
-    filament::Camera* mMainCamera;
-    filament::Camera* mDebugCamera;
-    filament::Camera* mOrthoCamera;
 
-    std::vector<std::unique_ptr<CView>> mViews;
-    CView*                              mMainView;
-    CView*                              mUiView;
-    CView*                              mDepthView;
-    CView*                              mGodView;
-    CView*                              mOrthoView;
 
-    int     mWidth  = 0;
-    int     mHeight = 0;
-    ssize_t mLastX  = 0;
-    ssize_t mLastY  = 0;
 
-    CView*      mMouseEventTarget = nullptr;
-    // Keep track of which view should receive a key's keyUp event.
-    std::unordered_map<SDL_Scancode, CView*> mKeyEventTarget;
 
 
     //////////////////////////////////////////////////////////////////////////
-    static constexpr int DEFAULT_SIDEBAR_WIDTH = 350;
 
     void initViewGui();
     void releaseViewGui();

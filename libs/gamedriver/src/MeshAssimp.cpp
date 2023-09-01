@@ -190,7 +190,7 @@ Texture* MeshAssimp::createOneByOneTexture(uint32_t pixel) {
             .height(uint32_t(1))
             .levels(0xff)
             .format(Texture::InternalFormat::RGBA8)
-            .build(mEngine);
+            .build(mRenderEngine);
 
     Texture::PixelBufferDescriptor defaultNormalBuffer(textureData,
             size_t(1 * 1 * 4),
@@ -198,8 +198,8 @@ Texture* MeshAssimp::createOneByOneTexture(uint32_t pixel) {
             Texture::Type::UBYTE,
             (Texture::PixelBufferDescriptor::Callback) &free);
 
-    texturePtr->setImage(mEngine, 0, std::move(defaultNormalBuffer));
-    texturePtr->generateMipmaps(mEngine);
+    texturePtr->setImage(mRenderEngine, 0, std::move(defaultNormalBuffer));
+    texturePtr->generateMipmaps(mRenderEngine);
 
     return texturePtr;
 }
@@ -240,13 +240,13 @@ static ushort2 convertUV(float2 uv) {
     }
 }
 
-MeshAssimp::MeshAssimp(Engine& engine) : mEngine(engine) {
+MeshAssimp::MeshAssimp(Engine& engine) : mRenderEngine(engine) {
     mDefaultMap = createOneByOneTexture(0xffffffff);
     mDefaultNormalMap = createOneByOneTexture(0xffff8080);
 
     mDefaultColorMaterial = Material::Builder()
             .package(GAMEDRIVER_AIDEFAULTMAT_DATA, GAMEDRIVER_AIDEFAULTMAT_SIZE)
-            .build(mEngine);
+            .build(mRenderEngine);
 
     mDefaultColorMaterial->setDefaultParameter("baseColor",   RgbType::LINEAR, float3{0.8});
     mDefaultColorMaterial->setDefaultParameter("metallic",    0.0f);
@@ -255,7 +255,7 @@ MeshAssimp::MeshAssimp(Engine& engine) : mEngine(engine) {
 
     mDefaultTransparentColorMaterial = Material::Builder()
             .package(GAMEDRIVER_AIDEFAULTTRANS_DATA, GAMEDRIVER_AIDEFAULTTRANS_SIZE)
-            .build(mEngine);
+            .build(mRenderEngine);
 
     mDefaultTransparentColorMaterial->setDefaultParameter("baseColor", RgbType::LINEAR, float3{0.8});
     mDefaultTransparentColorMaterial->setDefaultParameter("metallic",  0.0f);
@@ -263,24 +263,24 @@ MeshAssimp::MeshAssimp(Engine& engine) : mEngine(engine) {
 }
 
 MeshAssimp::~MeshAssimp() {
-    mEngine.destroy(mVertexBuffer);
-    mEngine.destroy(mIndexBuffer);
-    mEngine.destroy(mDefaultColorMaterial);
-    mEngine.destroy(mDefaultTransparentColorMaterial);
-    mEngine.destroy(mDefaultNormalMap);
-    mEngine.destroy(mDefaultMap);
+    mRenderEngine.destroy(mVertexBuffer);
+    mRenderEngine.destroy(mIndexBuffer);
+    mRenderEngine.destroy(mDefaultColorMaterial);
+    mRenderEngine.destroy(mDefaultTransparentColorMaterial);
+    mRenderEngine.destroy(mDefaultNormalMap);
+    mRenderEngine.destroy(mDefaultMap);
 
     for (auto& item : mGltfMaterialCache) {
         auto material = item.second;
-        mEngine.destroy(material);
+        mRenderEngine.destroy(material);
     }
 
     for (Entity renderable : mRenderables) {
-        mEngine.destroy(renderable);
+        mRenderEngine.destroy(renderable);
     }
 
     for (Texture* texture : mTextures) {
-        mEngine.destroy(texture);
+        mRenderEngine.destroy(texture);
     }
 
     // destroy the Entities itself
@@ -534,7 +534,7 @@ void MeshAssimp::addFromFile(const Path&                               path,
             vertexBufferBuilder.attribute(VertexAttribute::UV1, 3, VertexBuffer::AttributeType::HALF2);
         }
 
-        mVertexBuffer = vertexBufferBuilder.build(mEngine);
+        mVertexBuffer = vertexBufferBuilder.build(mRenderEngine);
 
         auto ps  = new State<half4>(std::move(asset.positions));
         auto ns  = new State<short4>(std::move(asset.tangents));
@@ -542,20 +542,20 @@ void MeshAssimp::addFromFile(const Path&                               path,
         auto t1s = new State<ushort2>(std::move(asset.texCoords1));
         auto is  = new State<uint32_t>(std::move(asset.indices));
 
-        mVertexBuffer->setBufferAt(mEngine, 0,
+        mVertexBuffer->setBufferAt(mRenderEngine, 0,
                                    VertexBuffer::BufferDescriptor(ps->data(), ps->size(), State<half4>::free, ps));
 
-        mVertexBuffer->setBufferAt(mEngine, 1,
+        mVertexBuffer->setBufferAt(mRenderEngine, 1,
                                    VertexBuffer::BufferDescriptor(ns->data(), ns->size(), State<short4>::free, ns));
 
-        mVertexBuffer->setBufferAt(mEngine, 2,
+        mVertexBuffer->setBufferAt(mRenderEngine, 2,
                                    VertexBuffer::BufferDescriptor(t0s->data(), t0s->size(), State<ushort2>::free, t0s));
 
-        mVertexBuffer->setBufferAt(mEngine, 3,
+        mVertexBuffer->setBufferAt(mRenderEngine, 3,
                                    VertexBuffer::BufferDescriptor(t1s->data(), t1s->size(), State<ushort2>::free, t1s));
 
-        mIndexBuffer = IndexBuffer::Builder().indexCount(uint32_t(is->size())).build(mEngine);
-        mIndexBuffer->setBuffer(mEngine,
+        mIndexBuffer = IndexBuffer::Builder().indexCount(uint32_t(is->size())).build(mRenderEngine);
+        mIndexBuffer->setBuffer(mRenderEngine,
                                 IndexBuffer::BufferDescriptor(is->data(), is->size(), State<uint32_t>::free, is));
     }
 
@@ -571,7 +571,7 @@ void MeshAssimp::addFromFile(const Path&                               path,
     EntityManager::get().create(asset.meshes.size(), mRenderables.data() + startIndex);
     EntityManager::get().create(1, &rootEntity);
 
-    TransformManager& tcm = mEngine.getTransformManager();
+    TransformManager& tcm = mRenderEngine.getTransformManager();
     //Add root instance
     tcm.create(rootEntity, TransformManager::Instance{}, mat4f());
 
@@ -627,7 +627,7 @@ void MeshAssimp::addFromFile(const Path&                               path,
         Entity       entity    = mRenderables[startIndex + meshIndex];
         if (!mesh.parts.empty())
         {
-            builder.build(mEngine, entity);
+            builder.build(mRenderEngine, entity);
         }
         auto                       pindex = asset.parents[meshIndex];
         TransformManager::Instance parent((pindex < 0) ?
@@ -1030,7 +1030,7 @@ void MeshAssimp::processGLTFMaterial(const aiScene* scene, const aiMaterial* mat
     uint64_t configHash = hashMaterialConfig(matConfig);
 
     if (mGltfMaterialCache.find(configHash) == mGltfMaterialCache.end()) {
-        mGltfMaterialCache[configHash] = createMaterialFromConfig(mEngine, matConfig);
+        mGltfMaterialCache[configHash] = createMaterialFromConfig(mRenderEngine, matConfig);
     }
 
     outMaterials[materialName] = mGltfMaterialCache[configHash]->createInstance();
@@ -1063,7 +1063,7 @@ void MeshAssimp::processGLTFMaterial(const aiScene* scene, const aiMaterial* mat
         material->Get("$tex.mappingfiltermin", AI_MATKEY_GLTF_PBRMETALLICROUGHNESS_BASE_COLOR_TEXTURE, minType);
         material->Get("$tex.mappingfiltermag", AI_MATKEY_GLTF_PBRMETALLICROUGHNESS_BASE_COLOR_TEXTURE, magType);
 
-        setTextureFromPath(scene, &mEngine, mTextures, baseColorPath,
+        setTextureFromPath(scene, &mRenderEngine, mTextures, baseColorPath,
                 materialName, dirName, mapMode, "baseColorMap", outMaterials, minType, magType);
     } else {
         outMaterials[materialName]->setParameter("baseColorMap", mDefaultMap, sampler);
@@ -1076,7 +1076,7 @@ void MeshAssimp::processGLTFMaterial(const aiScene* scene, const aiMaterial* mat
         material->Get("$tex.mappingfiltermin", AI_MATKEY_GLTF_PBRMETALLICROUGHNESS_METALLICROUGHNESS_TEXTURE, minType);
         material->Get("$tex.mappingfiltermag", AI_MATKEY_GLTF_PBRMETALLICROUGHNESS_METALLICROUGHNESS_TEXTURE, magType);
 
-        setTextureFromPath(scene, &mEngine, mTextures, MRPath, materialName,
+        setTextureFromPath(scene, &mRenderEngine, mTextures, MRPath, materialName,
                 dirName, mapMode, "metallicRoughnessMap", outMaterials, minType, magType);
     } else {
         outMaterials[materialName]->setParameter("metallicRoughnessMap", mDefaultMap, sampler);
@@ -1090,7 +1090,7 @@ void MeshAssimp::processGLTFMaterial(const aiScene* scene, const aiMaterial* mat
         unsigned int magType = 0;
         material->Get("$tex.mappingfiltermin", aiTextureType_LIGHTMAP, 0, minType);
         material->Get("$tex.mappingfiltermag", aiTextureType_LIGHTMAP, 0, magType);
-        setTextureFromPath(scene, &mEngine, mTextures, AOPath, materialName,
+        setTextureFromPath(scene, &mRenderEngine, mTextures, AOPath, materialName,
                 dirName, mapMode, "aoMap", outMaterials, minType, magType);
     } else {
         outMaterials[materialName]->setParameter("aoMap", mDefaultMap, sampler);
@@ -1102,7 +1102,7 @@ void MeshAssimp::processGLTFMaterial(const aiScene* scene, const aiMaterial* mat
         unsigned int magType = 0;
         material->Get("$tex.mappingfiltermin", aiTextureType_NORMALS, 0, minType);
         material->Get("$tex.mappingfiltermag", aiTextureType_NORMALS, 0, magType);
-        setTextureFromPath(scene, &mEngine, mTextures, normalPath, materialName,
+        setTextureFromPath(scene, &mRenderEngine, mTextures, normalPath, materialName,
                 dirName, mapMode, "normalMap", outMaterials, minType, magType);
     } else {
         outMaterials[materialName]->setParameter("normalMap", mDefaultNormalMap, sampler);
@@ -1114,7 +1114,7 @@ void MeshAssimp::processGLTFMaterial(const aiScene* scene, const aiMaterial* mat
         unsigned int magType = 0;
         material->Get("$tex.mappingfiltermin", aiTextureType_EMISSIVE, 0, minType);
         material->Get("$tex.mappingfiltermag", aiTextureType_EMISSIVE, 0, magType);
-        setTextureFromPath(scene, &mEngine, mTextures, emissivePath, materialName,
+        setTextureFromPath(scene, &mRenderEngine, mTextures, emissivePath, materialName,
                 dirName, mapMode, "emissiveMap", outMaterials, minType, magType);
     }  else {
         outMaterials[materialName]->setParameter("emissiveMap", mDefaultMap, sampler);

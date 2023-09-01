@@ -37,7 +37,7 @@ const filament::math::float3 Cube::mVertices[] = {
 
 
 Cube::Cube(Engine& engine, filament::Material const* material, float3 linearColor, bool culling) :
-        mEngine(engine),
+        mRenderEngine(engine),
         mMaterial(material) {
 
     mVertexBuffer = VertexBuffer::Builder()
@@ -111,13 +111,13 @@ void Cube::mapAabb(filament::Engine& engine, filament::Box const& box) {
 }
 
 Cube::~Cube() {
-    mEngine.destroy(mVertexBuffer);
-    mEngine.destroy(mIndexBuffer);
-    mEngine.destroy(mMaterialInstanceSolid);
-    mEngine.destroy(mMaterialInstanceWireFrame);
+    mRenderEngine.destroy(mVertexBuffer);
+    mRenderEngine.destroy(mIndexBuffer);
+    mRenderEngine.destroy(mMaterialInstanceSolid);
+    mRenderEngine.destroy(mMaterialInstanceWireFrame);
     // We don't own the material, only instances
-    mEngine.destroy(mSolidRenderable);
-    mEngine.destroy(mWireFrameRenderable);
+    mRenderEngine.destroy(mSolidRenderable);
+    mRenderEngine.destroy(mWireFrameRenderable);
 
     utils::EntityManager& em = utils::EntityManager::get();
     em.destroy(mSolidRenderable);

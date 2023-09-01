@@ -124,7 +124,7 @@ private:
                      size_t&                                             depth) const;
 
     filament::Texture*      createOneByOneTexture(uint32_t textureData);
-    filament::Engine&       mEngine;
+    filament::Engine&       mRenderEngine;
     filament::VertexBuffer* mVertexBuffer = nullptr;
     filament::IndexBuffer*  mIndexBuffer  = nullptr;
 
