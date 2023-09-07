@@ -54,14 +54,14 @@ void Window::setup()
     }
 
     // create views
-    mViews.emplace_back(mMainView = new CView(*mRenderer, "Main View"));
+    mViews.emplace_back(mMainView = new CView(*mRenderEngine, "Main View"));
     if (mIsSplitView)
     {
-        mViews.emplace_back(mDepthView = new CView(*mRenderer, "Depth View"));
-        mViews.emplace_back(mGodView = new CView(*mRenderer, "God View"));
-        mViews.emplace_back(mOrthoView = new CView(*mRenderer, "Shadow View"));
+        mViews.emplace_back(mDepthView = new CView(*mRenderEngine, "Depth View"));
+        mViews.emplace_back(mGodView = new CView(*mRenderEngine, "God View"));
+        mViews.emplace_back(mOrthoView = new CView(*mRenderEngine, "Shadow View"));
     }
-    mViews.emplace_back(mUiView = new CView(*mRenderer, "UI View"));
+    mViews.emplace_back(mUiView = new CView(*mRenderEngine, "UI View"));
 
     // set-up the camera manipulators
     mMainCameraMan = CameraManipulator::Builder()
@@ -331,30 +331,3 @@ void Window::onKeyUp(SDL_Scancode key)
     eventTarget = nullptr;
 }
 
-
-// ------------------------------------------------------------------------------------------------
-
-void GameDriver::initWindow()
-{
-    mBackend      = gConfigure.backend;
-    mFeatureLevel = gConfigure.featureLevel;
-
-    // Create the Engine after the window in case this happens to be a single-threaded platform.
-    // For single-threaded platforms, we need to ensure that Filament's OpenGL context is
-    // current, rather than the one created by SDL.
-    mRenderEngine = filament::Engine::create(mBackend);
-    // Select the feature level to use
-    mFeatureLevel = std::min(mFeatureLevel, mRenderEngine->getSupportedFeatureLevel());
-    mRenderEngine->setActiveFeatureLevel(mFeatureLevel);
-    // get the resolved backend
-    mBackend = mRenderEngine->getBackend();
-
-    mMainWindow = std::make_unique<Window>(mRenderEngine);
-
-    mMainWindow->setup();
-}
-
-void GameDriver::releaseWindow()
-{
-    mMainWindow->cleanup();
-}

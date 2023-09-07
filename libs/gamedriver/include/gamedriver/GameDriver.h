@@ -27,30 +27,6 @@
 
 
 
-static std::ifstream::pos_type getFileSize(const char* filename)
-{
-    std::ifstream in(filename, std::ifstream::ate | std::ifstream::binary);
-    return in.tellg();
-}
-
-static bool loadSettings(const char* filename, filament::viewer:: Settings* out)
-{
-    auto contentSize = getFileSize(filename);
-    if (contentSize <= 0)
-    {
-        return false;
-    }
-    std::ifstream     in(filename, std::ifstream::binary | std::ifstream::in);
-    std::vector<char> json(static_cast<unsigned long>(contentSize));
-    if (!in.read(json.data(), contentSize))
-    {
-        return false;
-    }
-    filament::viewer::JsonSerializer serializer;
-    return serializer.readJson(json.data(), contentSize, out);
-}
-
-
 /*!
  * \class GameDriver
  *
@@ -90,24 +66,14 @@ private:
 
     void gui(filament::Engine*, filament::View* view);
 
-    void initWindow();
-    void releaseWindow();
-
-
-    //void        setWindowTitle(const char* title)
-    //{
-    //    mWindowTitle = title;
-    //    if (mWindowTitle != SDL_GetWindowTitle(mWindow))
-    //    {
-    //        SDL_SetWindowTitle(mWindow, mWindowTitle.c_str());
-    //    }
-    //}
+public:
+    void initialize();
+    void release();
 
 public:
     void loadAsset(utils::Path filename);
     void loadResources(utils::Path filename);
     void setup();
-    void cleanup();
 
 public:
     void   mainLoop();
@@ -185,21 +151,12 @@ public:
     std::string                            mNotificationText;
     std::string                            mMessageBoxText;
     std::string                            mSettingsFile;
-    std::string                            mBatchFile;
-
-    filament::viewer::AutomationSpec*   mAutomationSpec   = nullptr;
-    filament::viewer::AutomationEngine* mAutomationEngine = nullptr;
-
-
+    
 private:
 
-    bool mIsResizeable = true;
-    
 
     //////////////////////////////////////////////////////////////////////////
 
-    void initViewGui();
-    void releaseViewGui();
     void setAsset(filament::gltfio::FilamentAsset* asset, filament::gltfio::FilamentInstance* instance);
 
     void populateScene();
@@ -219,33 +176,30 @@ private:
     void keyUpEvent(int keyCode);
     void keyPressEvent(int charCode);
 
-    void setUiCallback(std::function<void()> callback) { mCustomUI = callback; }
-
-
     void enableWireframe(bool b) { mEnableWireframe = b; }
 
-    void enableSunlight(bool b) { mSettings.lighting.enableSunlight = b; }
+    void enableSunlight(bool b) { gSettings.lighting.enableSunlight = b; }
 
     void enableDithering(bool b)
     {
-        mSettings.view.dithering = b ? filament::Dithering::TEMPORAL : filament::Dithering::NONE;
+        gSettings.view.dithering = b ? filament::Dithering::TEMPORAL : filament::Dithering::NONE;
     }
     void enableFxaa(bool b)
     {
-        mSettings.view.antiAliasing = b ? filament::AntiAliasing::FXAA : filament::AntiAliasing::NONE;
+        gSettings.view.antiAliasing = b ? filament::AntiAliasing::FXAA : filament::AntiAliasing::NONE;
     }
 
     void enableMsaa(bool b)
     {
-        mSettings.view.msaa.sampleCount = 4;
-        mSettings.view.msaa.enabled     = b;
+        gSettings.view.msaa.sampleCount = 4;
+        gSettings.view.msaa.enabled     = b;
     }
 
-    void enableSSAO(bool b) { mSettings.view.ssao.enabled = b; }
+    void enableSSAO(bool b) { gSettings.view.ssao.enabled = b; }
 
-    void enableBloom(bool bloom) { mSettings.view.bloom.enabled = bloom; }
+    void enableBloom(bool bloom) { gSettings.view.bloom.enabled = bloom; }
 
-    void setIBLIntensity(float brightness) { mSettings.lighting.iblIntensity = brightness; }
+    void setIBLIntensity(float brightness) { gSettings.lighting.iblIntensity = brightness; }
 
     void updateRootTransform();
 
@@ -256,27 +210,27 @@ private:
     float getOcularDistance() const { return mOcularDistance; }
 
 private:
-    using SceneMask = filament::gltfio::NodeManager::SceneMask;
+    
 
     bool isRemoteMode() const { return mAsset == nullptr; }
-
+    void customUI();
     void sceneSelectionUI();
 
     utils::Entity           mSunlight;
 
     filament::IndirectLight* mIndirectLight = nullptr;
-    std::function<void()>    mCustomUI;
+    
 
     // Properties that can be changed from the UI.
     int                                      mCurrentAnimation   = 1; // It is a 1-based index and 0 means not playing animation
     int                                      mCurrentVariant     = 0;
     bool                                     mEnableWireframe    = false;
     int                                      mVsmMsaaSamplesLog2 = 1;
-    filament::viewer::Settings               mSettings;
+    
     uint32_t                                 mFlags;
     utils::Entity                            mCurrentMorphingEntity;
     std::vector<float>                       mMorphWeights;
-    filament::gltfio::NodeManager::SceneMask mVisibleScenes;
+    SceneMask                                mVisibleScenes;
     bool                                     mShowingRestPose = false;
 
     // Stereoscopic debugging

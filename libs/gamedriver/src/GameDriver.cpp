@@ -7,6 +7,9 @@
 #include "gamedriver/MeshAssimp.h"
 #include "gamedriver/Cube.h"
 #include "gamedriver/NativeWindowHelper.h"
+
+#include "gamedriver/Automation.h"
+
 #include "generated/resources/gamedriver.h"
 
 using namespace filament;
@@ -23,13 +26,28 @@ GameDriver::~GameDriver() {
     SDL_Quit();
 }
 
-
-void GameDriver::mainLoop()
+void GameDriver::initialize()
 {
     static const char* DEFAULT_IBL = "assets/ibl/lightroom_14b";
     gConfigure.iblDirectory        = Resource::get().getRootPath() + DEFAULT_IBL;
 
-    initWindow();
+    mBackend      = gConfigure.backend;
+    mFeatureLevel = gConfigure.featureLevel;
+
+    // Create the Engine after the window in case this happens to be a single-threaded platform.
+    // For single-threaded platforms, we need to ensure that Filament's OpenGL context is
+    // current, rather than the one created by SDL.
+    mRenderEngine = filament::Engine::create(mBackend);
+    // Select the feature level to use
+    mFeatureLevel = std::min(mFeatureLevel, mRenderEngine->getSupportedFeatureLevel());
+    mRenderEngine->setActiveFeatureLevel(mFeatureLevel);
+    // get the resolved backend
+    mBackend = mRenderEngine->getBackend();
+
+    mMainWindow = std::make_unique<Window>(mRenderEngine);
+
+    mMainWindow->setup();
+
 
     mDepthMaterial = Material::Builder()
                          .package(GAMEDRIVER_DEPTHVISUALIZER_DATA, GAMEDRIVER_DEPTHVISUALIZER_SIZE)
@@ -44,6 +62,71 @@ void GameDriver::mainLoop()
     mTransparentMaterial = Material::Builder()
                                .package(GAMEDRIVER_TRANSPARENTCOLOR_DATA, GAMEDRIVER_TRANSPARENTCOLOR_SIZE)
                                .build(*mRenderEngine);
+
+}
+
+void GameDriver::release()
+{
+    if (mImGuiHelper)
+    {
+        mImGuiHelper.reset();
+    }
+
+     //mAutomationEngine->terminate();
+    mResourceLoader->asyncCancelLoad();
+    mAssetLoader->destroyAsset(mAsset);
+    mMaterials->destroyMaterials();
+
+    mRenderEngine->destroy(mGround.mGroundPlane);
+    mRenderEngine->destroy(mGround.mGroundVertexBuffer);
+    mRenderEngine->destroy(mGround.mGroundIndexBuffer);
+    mRenderEngine->destroy(mGround.mGroundMaterial);
+    mRenderEngine->destroy(mColorGrading);
+
+    mRenderEngine->destroy(mOverdraw.mFullScreenTriangleVertexBuffer);
+    mRenderEngine->destroy(mOverdraw.mFullScreenTriangleIndexBuffer);
+
+    auto& em = EntityManager::get();
+    for (auto e : mOverdraw.mOverdrawVisualizer)
+    {
+        mRenderEngine->destroy(e);
+        em.destroy(e);
+    }
+
+    for (auto mi : mOverdraw.mOverdrawMaterialInstances)
+    {
+        mRenderEngine->destroy(mi);
+    }
+    mRenderEngine->destroy(mOverdraw.mOverdrawMaterial);
+
+    mRenderEngine->destroy(mSunlight);
+    mImGuiHelper = nullptr;
+
+    delete mMaterials;
+    delete mNames;
+    delete mResourceLoader;
+    delete mStbDecoder;
+    delete mKtxDecoder;
+
+    filament::gltfio::AssetLoader::destroy(&mAssetLoader);
+
+    mMainWindow->cleanup();
+
+    mIBL.reset();
+    mRenderEngine->destroy(mDepthMI);
+    mRenderEngine->destroy(mDepthMaterial);
+    mRenderEngine->destroy(mDefaultMaterial);
+    mRenderEngine->destroy(mTransparentMaterial);
+    mRenderEngine->destroy(mScene);
+    Engine::destroy(&mRenderEngine);
+    mRenderEngine = nullptr;
+}
+
+void GameDriver::mainLoop()
+{
+   
+    initialize();
+
 
     std::unique_ptr<Cube> cameraCube(new Cube(*mRenderEngine, mTransparentMaterial, {1, 0, 0}));
     // we can't cull the light-frustum because it's not applied a rigid transform
@@ -386,25 +469,10 @@ void GameDriver::mainLoop()
         }
     }
 
-    if (mImGuiHelper)
-    {
-        mImGuiHelper.reset();
-    }
-
-    cleanup();
-
     cameraCube.reset();
     lightmapCube.reset();
-    releaseWindow();
 
-    mIBL.reset();
-    mRenderEngine->destroy(mDepthMI);
-    mRenderEngine->destroy(mDepthMaterial);
-    mRenderEngine->destroy(mDefaultMaterial);
-    mRenderEngine->destroy(mTransparentMaterial);
-    mRenderEngine->destroy(mScene);
-    Engine::destroy(&mRenderEngine);
-    mRenderEngine = nullptr;
+    release();
 }
 
 void GameDriver::loadIBL()
@@ -560,7 +628,7 @@ void GameDriver::createGroundPlane()
     Material* shadowMaterial = Material::Builder()
                                    .package(GAMEDRIVER_GROUNDSHADOW_DATA, GAMEDRIVER_GROUNDSHADOW_SIZE)
                                    .build(*mRenderEngine);
-    auto& viewerOptions = mSettings.viewer;
+    auto& viewerOptions = gSettings.viewer;
     shadowMaterial->setDefaultParameter("strength", viewerOptions.groundShadowStrength);
 
     const static uint32_t indices[] = {
@@ -714,27 +782,15 @@ void GameDriver::createOverdrawVisualizerEntities()
     mOverdraw.mFullScreenTriangleIndexBuffer  = indexBuffer;
 }
 
-static void onClick(GameDriver& app, View* view, ImVec2 pos)
-{
-    view->pick(pos.x, pos.y, [&app](View::PickingQueryResult const& result) {
-        if (const char* name = app.mAsset->getName(result.renderable); name)
-        {
-            app.mNotificationText = name;
-        }
-        else
-        {
-            app.mNotificationText.clear();
-        }
-    });
-}
+
 
 void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
 {
     auto&       rcm           = mRenderEngine->getRenderableManager();
     auto        instance      = rcm.getInstance(mGround.mGroundPlane);
-    const auto  viewerOptions = mAutomationEngine->getViewerOptions();
-    const auto& dofOptions    = mSettings.view.dof;
-    rcm.setLayerMask(instance, 0xff, viewerOptions.groundPlaneEnabled ? 0xff : 0x00);
+    const auto  viewerOptions = gSettings.viewer; //mAutomationEngine->getViewerOptions();
+    const auto& dofOptions    = gSettings.view.dof;
+    rcm.setLayerMask(instance, 0xff, viewerOptions.groundPlaneEnabled? 0xff : 0x00);
 
     mRenderEngine->setAutomaticInstancingEnabled(viewerOptions.autoInstancingEnabled);
 
@@ -765,10 +821,10 @@ void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
     // This applies clear options, the skybox mask, and some camera settings.
     Camera& camera = view->getCamera();
     Skybox* skybox = scene->getSkybox();
-    filament::viewer::applySettings(mRenderEngine, mSettings.viewer, &camera, skybox, renderer);
+    filament::viewer::applySettings(mRenderEngine, gSettings.viewer, &camera, skybox, renderer);
 
     // Check if color grading has changed.
-    filament::viewer::ColorGradingSettings& options = mSettings.view.colorGrading;
+    filament::viewer::ColorGradingSettings& options = gSettings.view.colorGrading;
     if (options.enabled)
     {
         if (options != mLastColorGradingOptions)
@@ -787,18 +843,7 @@ void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
 }
 void GameDriver::postRender(View* view, Scene* scene, Renderer* renderer)
 {
-    if (mAutomationEngine->shouldClose())
-    {
-        close();
-        return;
-    }
-    filament::viewer:: AutomationEngine::ViewerContent content = {
-        .view          = view,
-        .renderer      = renderer,
-        .materials     = mInstance->getMaterialInstances(),
-        .materialCount = mInstance->getMaterialInstanceCount(),
-    };
-    mAutomationEngine->tick(mRenderEngine, content, ImGui::GetIO().DeltaTime);
+    Automation::get().tick(view, mInstance, renderer, ImGui::GetIO().DeltaTime);
 }
 
 void GameDriver::animate(double now)
@@ -823,56 +868,38 @@ void GameDriver::gui(filament::Engine* ,filament::View* view)
 void GameDriver::setup()
 {
     mNames                                            = new utils::NameComponentManager(EntityManager::get());
-    initViewGui();
-    mSettings.viewer.autoScaleEnabled = !mActualSize;
-    const bool batchMode = !mBatchFile.empty();
-
-    // First check if a custom automation spec has been provided. If it fails to load, the app
-    // must be closed since it could be invoked from a script.
-    if (batchMode && mBatchFile != "default")
+    
+    gSettings.view.shadowType                  = filament::ShadowType::PCF;
+    gSettings.view.vsmShadowOptions.anisotropy = 0;
+    gSettings.view.dithering                   = filament::Dithering::TEMPORAL;
+    gSettings.view.antiAliasing                = filament::AntiAliasing::FXAA;
+    gSettings.view.msaa                        = {.enabled = false, .sampleCount = 4}; //A57 必须关闭
+    gSettings.view.ssao.enabled                = true;
+    gSettings.view.bloom.enabled               = true;
+    mSunlight                                  = utils::EntityManager::get().create();
+    using namespace filament;
+    LightManager::Builder(LightManager::Type::SUN)
+        .color(gSettings.lighting.sunlightColor)
+        .intensity(gSettings.lighting.sunlightIntensity)
+        .direction(normalize(gSettings.lighting.sunlightDirection))
+        .castShadows(true)
+        .sunAngularRadius(gSettings.lighting.sunlightAngularRadius)
+        .sunHaloSize(gSettings.lighting.sunlightHaloSize)
+        .sunHaloFalloff(gSettings.lighting.sunlightHaloFalloff)
+        .build(*mRenderEngine, mSunlight);
+    if (gSettings.lighting.enableSunlight)
     {
-        auto size = getFileSize(mBatchFile.c_str());
-        if (size > 0)
-        {
-            std::ifstream     in(mBatchFile, std::ifstream::binary | std::ifstream::in);
-            std::vector<char> json(static_cast<unsigned long>(size));
-            in.read(json.data(), size);
-            mAutomationSpec = filament::viewer::AutomationSpec::generate(json.data(), size);
-            if (!mAutomationSpec)
-            {
-                std::cerr << "Unable to parse automation spec: " << mBatchFile << std::endl;
-                exit(1);
-            }
-        }
-        else
-        {
-            std::cerr << "Unable to load automation spec: " << mBatchFile << std::endl;
-            exit(1);
-        }
+        mScene->addEntity(mSunlight);
     }
+    mMainWindow->getMainView()->getView()->setAmbientOcclusionOptions({.upsampling = View::QualityLevel::HIGH});
 
-    // If no custom spec has been provided, or if in interactive mode, load the default spec.
-    if (!mAutomationSpec)
-    {
-        mAutomationSpec = filament::viewer::AutomationSpec::generateDefaultTestCases();
-    }
+    gSettings.viewer.autoScaleEnabled = !mActualSize;
 
-    mAutomationEngine = new filament::viewer::AutomationEngine(mAutomationSpec, &mSettings);
-
-    if (batchMode)
-    {
-        mAutomationEngine->startBatchMode();
-        auto options              = mAutomationEngine->getOptions();
-        options.sleepDuration     = 0.0;
-        options.exportScreenshots = true;
-        options.exportSettings    = true;
-        mAutomationEngine->setOptions(options);
-        stopAnimation();
-    }
+    Automation::get().setup();
 
     if (mSettingsFile.size() > 0)
     {
-        bool success = loadSettings(mSettingsFile.c_str(), &mSettings);
+        bool success = loadSettings(mSettingsFile.c_str(), &gSettings);
         if (success)
         {
             std::cout << "Loaded settings from " << mSettingsFile << std::endl;
@@ -897,227 +924,4 @@ void GameDriver::setup()
     createGroundPlane();
     createOverdrawVisualizerEntities();
 
-    setUiCallback(
-        [this]() {
-            auto& automation = *mAutomationEngine;
-            auto  view       = mMainWindow->getMainView()->getView();
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-            {
-                ImVec2 pos = ImGui::GetMousePos();
-                pos.x -= mMainWindow->getSidebarWidth();
-                pos.x *= ImGui::GetIO().DisplayFramebufferScale.x;
-                pos.y *= ImGui::GetIO().DisplayFramebufferScale.y;
-                if (pos.x > 0)
-                {
-                    pos.y = view->getViewport().height - 1 - pos.y;
-                    onClick(*this, view, pos);
-                }
-            }
-
-            const ImVec4 yellow(1.0f, 1.0f, 0.0f, 1.0f);
-
-            if (!mNotificationText.empty())
-            {
-                ImGui::TextColored(yellow, "Picked %s", mNotificationText.c_str());
-                ImGui::Spacing();
-            }
-
-            float progress = mResourceLoader->asyncGetLoadProgress();
-            if (progress < 1.0)
-            {
-                ImGui::ProgressBar(progress);
-            }
-            else
-            {
-                // The model is now fully loaded, so let automation know.
-                automation.signalBatchMode();
-            }
-
-            // The screenshots do not include the UI, but we auto-open the Automation UI group
-            // when in batch mode. This is useful when a human is observing progress.
-            const int flags = automation.isBatchModeEnabled() ? ImGuiTreeNodeFlags_DefaultOpen : 0;
-
-            if (ImGui::CollapsingHeader("Automation", flags))
-            {
-                ImGui::Indent();
-
-                if (automation.isRunning())
-                {
-                    ImGui::TextColored(yellow, "Test case %zu / %zu", automation.currentTest(),
-                                       automation.testCount());
-                }
-                else
-                {
-                    ImGui::TextColored(yellow, "%zu test cases", automation.testCount());
-                }
-
-                auto options = automation.getOptions();
-
-                ImGui::PushItemWidth(150);
-                ImGui::SliderFloat("Sleep (seconds)", &options.sleepDuration, 0.0, 5.0);
-                ImGui::PopItemWidth();
-
-                // Hide the tooltip during automation to avoid photobombing the screenshot.
-                if (ImGui::IsItemHovered() && !automation.isRunning())
-                {
-                    ImGui::SetTooltip("Specifies the amount of time to sleep between test cases.");
-                }
-
-                ImGui::Checkbox("Export screenshot for each test", &options.exportScreenshots);
-                ImGui::Checkbox("Export settings JSON for each test", &options.exportSettings);
-
-                automation.setOptions(options);
-
-                if (automation.isRunning())
-                {
-                    if (ImGui::Button("Stop batch test"))
-                    {
-                        automation.stopRunning();
-                    }
-                }
-                else if (ImGui::Button("Run batch test"))
-                {
-                    automation.startRunning();
-                }
-
-                if (ImGui::Button("Export view settings"))
-                {
-                    automation.exportSettings(mSettings, "settings.json");
-                    mMessageBoxText = automation.getStatusMessage();
-                    ImGui::OpenPopup("MessageBox");
-                }
-                ImGui::Unindent();
-            }
-
-            if (ImGui::CollapsingHeader("Stats"))
-            {
-                ImGui::Indent();
-                ImGui::Text("%zu entities in the asset", mAsset->getEntityCount());
-                ImGui::Text("%zu renderables (excluding UI)", mScene->getRenderableCount());
-                ImGui::Text("%zu skipped frames", GameDriver::get().getSkippedFrameCount());
-                ImGui::Unindent();
-            }
-
-            if (ImGui::CollapsingHeader("Debug"))
-            {
-                auto& debug = mRenderEngine->getDebugRegistry();
-                if (ImGui::Button("Capture frame"))
-                {
-                    bool* captureFrame = debug.getPropertyAddress<bool>("d.renderer.doFrameCapture");
-                    *captureFrame      = true;
-                }
-                ImGui::Checkbox("Disable buffer padding",
-                                debug.getPropertyAddress<bool>("d.renderer.disable_buffer_padding"));
-                ImGui::Checkbox("Camera at origin", debug.getPropertyAddress<bool>("d.view.camera_at_origin"));
-                auto dataSource = debug.getDataSource("d.view.frame_info");
-                if (dataSource.data)
-                {
-                    ImGuiExt::PlotLinesSeries(
-                        "FrameInfo", 6,
-                        [](int series) {
-                            const ImVec4 colors[] = {
-                                {1, 0, 0, 1},    // target
-                                {0, 0.5f, 0, 1}, // frame-time
-                                {0, 1, 0, 1},    // frame-time denoised
-                                {1, 1, 0, 1},    // i
-                                {1, 0, 1, 1},    // d
-                                {0, 1, 1, 1},    // e
-
-                            };
-                            ImGui::PushStyleColor(ImGuiCol_PlotLines, colors[series]);
-                        },
-                        [](int series, void* buffer, int i) -> float {
-                            auto const* p = (DebugRegistry::FrameHistory const*)buffer + i;
-                            switch (series)
-                            {
-                                case 0:
-                                    return 0.03f * p->target;
-                                case 1:
-                                    return 0.03f * p->frameTime;
-                                case 2:
-                                    return 0.03f * p->frameTimeDenoised;
-                                case 3:
-                                    return p->pid_i * 0.5f / 100.0f + 0.5f;
-                                case 4:
-                                    return p->pid_d * 0.5f / 0.100f + 0.5f;
-                                case 5:
-                                    return p->pid_e * 0.5f / 1.000f + 0.5f;
-                                default:
-                                    return 0.0f;
-                            }
-                        },
-                        [](int series) {
-                            if (series < 6)
-                                ImGui::PopStyleColor();
-                        },
-                        const_cast<void*>(dataSource.data), int(dataSource.count), 0, nullptr, 0.0f, 1.0f,
-                        {0, 100});
-                }
-#ifndef NDEBUG
-                ImGui::SliderFloat("Kp", debug.getPropertyAddress<float>("d.view.pid.kp"), 0, 2);
-                ImGui::SliderFloat("Ki", debug.getPropertyAddress<float>("d.view.pid.ki"), 0, 10);
-                ImGui::SliderFloat("Kd", debug.getPropertyAddress<float>("d.view.pid.kd"), 0, 10);
-#endif
-                const auto overdrawVisibilityBit = (1u << GameDriver::Overdraw::OVERDRAW_VISIBILITY_LAYER);
-                bool       visualizeOverdraw     = view->getVisibleLayers() & overdrawVisibilityBit;
-                // TODO: enable after stencil buffer supported is added for Vulkan.
-                const bool overdrawDisabled = mRenderEngine->getBackend() == backend::Backend::VULKAN;
-                ImGui::BeginDisabled(overdrawDisabled);
-                ImGui::Checkbox(!overdrawDisabled ? "Visualize overdraw" : "Visualize overdraw (disabled for Vulkan)",
-                                &visualizeOverdraw);
-                ImGui::EndDisabled();
-                view->setVisibleLayers(overdrawVisibilityBit,
-                                       (uint8_t)visualizeOverdraw << GameDriver::Overdraw::OVERDRAW_VISIBILITY_LAYER);
-                view->setStencilBufferEnabled(visualizeOverdraw);
-            }
-
-            if (ImGui::BeginPopupModal("MessageBox", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-            {
-                ImGui::Text("%s", mMessageBoxText.c_str());
-                if (ImGui::Button("OK", ImVec2(120, 0)))
-                {
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::EndPopup();
-            }
-        });
-}
-
-void GameDriver::cleanup()
-{
-    mAutomationEngine->terminate();
-    mResourceLoader->asyncCancelLoad();
-    mAssetLoader->destroyAsset(mAsset);
-    mMaterials->destroyMaterials();
-
-    mRenderEngine->destroy(mGround.mGroundPlane);
-    mRenderEngine->destroy(mGround.mGroundVertexBuffer);
-    mRenderEngine->destroy(mGround.mGroundIndexBuffer);
-    mRenderEngine->destroy(mGround.mGroundMaterial);
-    mRenderEngine->destroy(mColorGrading);
-
-    mRenderEngine->destroy(mOverdraw.mFullScreenTriangleVertexBuffer);
-    mRenderEngine->destroy(mOverdraw.mFullScreenTriangleIndexBuffer);
-
-    auto& em = EntityManager::get();
-    for (auto e : mOverdraw.mOverdrawVisualizer)
-    {
-        mRenderEngine->destroy(e);
-        em.destroy(e);
-    }
-
-    for (auto mi : mOverdraw.mOverdrawMaterialInstances)
-    {
-        mRenderEngine->destroy(mi);
-    }
-    mRenderEngine->destroy(mOverdraw.mOverdrawMaterial);
-
-    releaseViewGui();
-    delete mMaterials;
-    delete mNames;
-    delete mResourceLoader;
-    delete mStbDecoder;
-    delete mKtxDecoder;
-
-    filament::gltfio::AssetLoader::destroy(&mAssetLoader);
 }

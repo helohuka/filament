@@ -46,7 +46,7 @@ using CameraManipulator = filament::camutils::Manipulator<float>;
 class CView
 {
 public:
-    CView(filament::Renderer& renderer, std::string name);
+    CView(filament::Engine& engine, std::string name);
     virtual ~CView();
 
     void setCameraManipulator(CameraManipulator* cm);

@@ -30,6 +30,8 @@ set(PUBLIC_HDRS
         include/gamedriver/ViewGui.h
         include/gamedriver/Window.h
         include/gamedriver/View.h
+
+        include/gamedriver/Automation.h
 )
 
 set(SRCS
@@ -47,6 +49,8 @@ set(SRCS
         src/Configure.cpp
         src/LuauVM.cpp
         src/Resource.cpp
+
+        src/Automation.cpp
 )
 
 set(LIBS

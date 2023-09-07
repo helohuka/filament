@@ -4,3 +4,5 @@
 
 
 
+Configure                  gConfigure;
+filament::viewer::Settings gSettings;

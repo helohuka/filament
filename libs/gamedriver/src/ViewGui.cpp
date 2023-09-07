@@ -1,6 +1,8 @@
 
 #include "gamedriver/GameDriver.h"
 
+#include "gamedriver/Automation.h"
+
 
 filament::math::mat4f fitIntoUnitCube(const filament::Aabb& bounds, float zoffset)
 {
@@ -334,40 +336,6 @@ static void colorGradingUI(filament::viewer::Settings& settings, float* rangePlo
     }
 }
 
-void GameDriver::initViewGui()
-{
-
-    mSettings.view.shadowType                  = filament::ShadowType::PCF;
-    mSettings.view.vsmShadowOptions.anisotropy = 0;
-    mSettings.view.dithering                   = filament::Dithering::TEMPORAL;
-    mSettings.view.antiAliasing                = filament::AntiAliasing::FXAA;
-    mSettings.view.msaa                        = {.enabled = false, .sampleCount = 4}; //A57 必须关闭
-    mSettings.view.ssao.enabled                = true;
-    mSettings.view.bloom.enabled               = true;
-    mSunlight                                  = utils::EntityManager::get().create();
-    using namespace filament;
-    LightManager::Builder(LightManager::Type::SUN)
-        .color(mSettings.lighting.sunlightColor)
-        .intensity(mSettings.lighting.sunlightIntensity)
-        .direction(normalize(mSettings.lighting.sunlightDirection))
-        .castShadows(true)
-        .sunAngularRadius(mSettings.lighting.sunlightAngularRadius)
-        .sunHaloSize(mSettings.lighting.sunlightHaloSize)
-        .sunHaloFalloff(mSettings.lighting.sunlightHaloFalloff)
-        .build(*mRenderEngine, mSunlight);
-    if (mSettings.lighting.enableSunlight)
-    {
-        mScene->addEntity(mSunlight);
-    }
-    mMainWindow->getMainView()->getView()->setAmbientOcclusionOptions({.upsampling = View::QualityLevel::HIGH});
-}
-
-void GameDriver::releaseViewGui()
-{
-    mRenderEngine->destroy(mSunlight);
-    mImGuiHelper = nullptr;
-}
-
 void GameDriver::setAsset(filament::gltfio::FilamentAsset* asset, filament::gltfio::FilamentInstance* instance)
 {
     if (mInstance != instance || mAsset != asset) {
@@ -425,7 +393,7 @@ static bool is_not_a_number(float v) noexcept {
 void GameDriver::setIndirectLight(filament::IndirectLight*      ibl,
         filament::math::float3 const* sh3) {
     using namespace filament::math;
-    mSettings.view.fog.color = sh3[0];
+    gSettings.view.fog.color = sh3[0];
     mIndirectLight = ibl;
     if (ibl) {
         float3 const d = filament::IndirectLight::getDirectionEstimate(sh3);
@@ -433,9 +401,9 @@ void GameDriver::setIndirectLight(filament::IndirectLight*      ibl,
         bool const dIsValid = std::none_of(std::begin(d.v), std::end(d.v), is_not_a_number);
         bool const cIsValid = std::none_of(std::begin(c.v), std::end(c.v), is_not_a_number);
         if (dIsValid && cIsValid) {
-            mSettings.lighting.sunlightDirection = d;
-            mSettings.lighting.sunlightColor = c.rgb;
-            mSettings.lighting.sunlightIntensity = c[3] * ibl->getIntensity();
+            gSettings.lighting.sunlightDirection = d;
+            gSettings.lighting.sunlightColor = c.rgb;
+            gSettings.lighting.sunlightIntensity = c[3] * ibl->getIntensity();
         }
     }
 }
@@ -448,7 +416,7 @@ void GameDriver::updateRootTransform()
     auto& tcm = mRenderEngine->getTransformManager();
     auto root = tcm.getInstance(mAsset->getRoot());
     filament::math::mat4f transform;
-    if (mSettings.viewer.autoScaleEnabled) {
+    if (gSettings.viewer.autoScaleEnabled) {
         filament::gltfio::FilamentInstance* instance = mAsset->getInstance();
         filament::Aabb    aabb     = instance ? instance->getBoundingBox() : mAsset->getBoundingBox();
         transform = fitIntoUnitCube(aabb, 4);
@@ -517,37 +485,6 @@ void GameDriver::applyAnimation(double currentTime, filament::gltfio::FilamentIn
 
 void GameDriver::renderUserInterface(float timeStepInSeconds, filament::View* guiView, float pixelRatio)
 {
-    //if (mImGuiHelper == nullptr) {
-    //    mImGuiHelper = new filagui::ImGuiHelper(mRenderEngine, guiView, "");
-
-    //    auto& io = ImGui::GetIO();
-
-    //    // The following table uses normal ANSI codes, which is consistent with the keyCode that
-    //    // comes from a web "keydown" event.
-    //    io.KeyMap[ImGuiKey_Tab] = 9;
-    //    io.KeyMap[ImGuiKey_LeftArrow] = 37;
-    //    io.KeyMap[ImGuiKey_RightArrow] = 39;
-    //    io.KeyMap[ImGuiKey_UpArrow] = 38;
-    //    io.KeyMap[ImGuiKey_DownArrow] = 40;
-    //    io.KeyMap[ImGuiKey_Home] = 36;
-    //    io.KeyMap[ImGuiKey_End] = 35;
-    //    io.KeyMap[ImGuiKey_Delete] = 46;
-    //    io.KeyMap[ImGuiKey_Backspace] = 8;
-    //    io.KeyMap[ImGuiKey_Enter] = 13;
-    //    io.KeyMap[ImGuiKey_Escape] = 27;
-    //    io.KeyMap[ImGuiKey_A] = 65;
-    //    io.KeyMap[ImGuiKey_C] = 67;
-    //    io.KeyMap[ImGuiKey_V] = 86;
-    //    io.KeyMap[ImGuiKey_X] = 88;
-    //    io.KeyMap[ImGuiKey_Y] = 89;
-    //    io.KeyMap[ImGuiKey_Z] = 90;
-
-    //    // TODO: this is not the best way to handle high DPI in ImGui, but it is fine when using the
-    //    // proggy font. Users need to refresh their window when dragging between displays with
-    //    // different pixel ratios.
-    //    io.FontGlobalScale = pixelRatio;
-    //    ImGui::GetStyle().ScaleAllSizes(pixelRatio);
-    //}
 
     const auto size = guiView->getViewport();
     mImGuiHelper->setDisplaySize(size.width, size.height, 1, 1);
@@ -589,6 +526,203 @@ void GameDriver::keyPressEvent(int charCode)
 {
     if (mImGuiHelper) {
         ImGui::GetIO().AddInputCharacter(charCode);
+    }
+}
+
+void GameDriver::customUI()
+{
+
+    auto& automation = Automation::get().getAutomationEngine();
+    auto  view       = mMainWindow->getMainView()->getView();
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+    {
+        ImVec2 pos = ImGui::GetMousePos();
+        pos.x -= mMainWindow->getSidebarWidth();
+        pos.x *= ImGui::GetIO().DisplayFramebufferScale.x;
+        pos.y *= ImGui::GetIO().DisplayFramebufferScale.y;
+        if (pos.x > 0)
+        {
+            pos.y = view->getViewport().height - 1 - pos.y;
+
+
+            view->pick(pos.x, pos.y, [this](filament::View::PickingQueryResult const& result) {
+                if (const char* name = mAsset->getName(result.renderable); name)
+                {
+                    mNotificationText = name;
+                }
+                else
+                {
+                    mNotificationText.clear();
+                }
+            });
+        }
+    }
+
+    const ImVec4 yellow(1.0f, 1.0f, 0.0f, 1.0f);
+
+    if (!mNotificationText.empty())
+    {
+        ImGui::TextColored(yellow, "Picked %s", mNotificationText.c_str());
+        ImGui::Spacing();
+    }
+
+    float progress = mResourceLoader->asyncGetLoadProgress();
+    if (progress < 1.0)
+    {
+        ImGui::ProgressBar(progress);
+    }
+    else
+    {
+        // The model is now fully loaded, so let automation know.
+        automation.signalBatchMode();
+    }
+
+    // The screenshots do not include the UI, but we auto-open the Automation UI group
+    // when in batch mode. This is useful when a human is observing progress.
+    const int flags = automation.isBatchModeEnabled() ? ImGuiTreeNodeFlags_DefaultOpen : 0;
+
+    if (ImGui::CollapsingHeader("Automation", flags))
+    {
+        ImGui::Indent();
+
+        if (automation.isRunning())
+        {
+            ImGui::TextColored(yellow, "Test case %zu / %zu", automation.currentTest(),
+                               automation.testCount());
+        }
+        else
+        {
+            ImGui::TextColored(yellow, "%zu test cases", automation.testCount());
+        }
+
+        auto options = automation.getOptions();
+
+        ImGui::PushItemWidth(150);
+        ImGui::SliderFloat("Sleep (seconds)", &options.sleepDuration, 0.0, 5.0);
+        ImGui::PopItemWidth();
+
+        // Hide the tooltip during automation to avoid photobombing the screenshot.
+        if (ImGui::IsItemHovered() && !automation.isRunning())
+        {
+            ImGui::SetTooltip("Specifies the amount of time to sleep between test cases.");
+        }
+
+        ImGui::Checkbox("Export screenshot for each test", &options.exportScreenshots);
+        ImGui::Checkbox("Export settings JSON for each test", &options.exportSettings);
+
+        automation.setOptions(options);
+
+        if (automation.isRunning())
+        {
+            if (ImGui::Button("Stop batch test"))
+            {
+                automation.stopRunning();
+            }
+        }
+        else if (ImGui::Button("Run batch test"))
+        {
+            automation.startRunning();
+        }
+
+        if (ImGui::Button("Export view settings"))
+        {
+            automation.exportSettings(gSettings, "settings.json");
+            mMessageBoxText = automation.getStatusMessage();
+            ImGui::OpenPopup("MessageBox");
+        }
+        ImGui::Unindent();
+    }
+
+    if (ImGui::CollapsingHeader("Stats"))
+    {
+        ImGui::Indent();
+        ImGui::Text("%zu entities in the asset", mAsset->getEntityCount());
+        ImGui::Text("%zu renderables (excluding UI)", mScene->getRenderableCount());
+        ImGui::Text("%zu skipped frames", GameDriver::get().getSkippedFrameCount());
+        ImGui::Unindent();
+    }
+
+    if (ImGui::CollapsingHeader("Debug"))
+    {
+        auto& debug = mRenderEngine->getDebugRegistry();
+        if (ImGui::Button("Capture frame"))
+        {
+            bool* captureFrame = debug.getPropertyAddress<bool>("d.renderer.doFrameCapture");
+            *captureFrame      = true;
+        }
+        ImGui::Checkbox("Disable buffer padding",
+                        debug.getPropertyAddress<bool>("d.renderer.disable_buffer_padding"));
+        ImGui::Checkbox("Camera at origin", debug.getPropertyAddress<bool>("d.view.camera_at_origin"));
+        auto dataSource = debug.getDataSource("d.view.frame_info");
+        if (dataSource.data)
+        {
+            ImGuiExt::PlotLinesSeries(
+                "FrameInfo", 6,
+                [](int series) {
+                    const ImVec4 colors[] = {
+                        {1, 0, 0, 1},    // target
+                        {0, 0.5f, 0, 1}, // frame-time
+                        {0, 1, 0, 1},    // frame-time denoised
+                        {1, 1, 0, 1},    // i
+                        {1, 0, 1, 1},    // d
+                        {0, 1, 1, 1},    // e
+
+                    };
+                    ImGui::PushStyleColor(ImGuiCol_PlotLines, colors[series]);
+                },
+                [](int series, void* buffer, int i) -> float {
+                    auto const* p = (filament::DebugRegistry::FrameHistory const*)buffer + i;
+                    switch (series)
+                    {
+                        case 0:
+                            return 0.03f * p->target;
+                        case 1:
+                            return 0.03f * p->frameTime;
+                        case 2:
+                            return 0.03f * p->frameTimeDenoised;
+                        case 3:
+                            return p->pid_i * 0.5f / 100.0f + 0.5f;
+                        case 4:
+                            return p->pid_d * 0.5f / 0.100f + 0.5f;
+                        case 5:
+                            return p->pid_e * 0.5f / 1.000f + 0.5f;
+                        default:
+                            return 0.0f;
+                    }
+                },
+                [](int series) {
+                    if (series < 6)
+                        ImGui::PopStyleColor();
+                },
+                const_cast<void*>(dataSource.data), int(dataSource.count), 0, nullptr, 0.0f, 1.0f,
+                {0, 100});
+        }
+#ifndef NDEBUG
+        ImGui::SliderFloat("Kp", debug.getPropertyAddress<float>("d.view.pid.kp"), 0, 2);
+        ImGui::SliderFloat("Ki", debug.getPropertyAddress<float>("d.view.pid.ki"), 0, 10);
+        ImGui::SliderFloat("Kd", debug.getPropertyAddress<float>("d.view.pid.kd"), 0, 10);
+#endif
+        const auto overdrawVisibilityBit = (1u << GameDriver::Overdraw::OVERDRAW_VISIBILITY_LAYER);
+        bool       visualizeOverdraw     = view->getVisibleLayers() & overdrawVisibilityBit;
+        // TODO: enable after stencil buffer supported is added for Vulkan.
+        const bool overdrawDisabled = mRenderEngine->getBackend() == filament::backend::Backend::VULKAN;
+        ImGui::BeginDisabled(overdrawDisabled);
+        ImGui::Checkbox(!overdrawDisabled ? "Visualize overdraw" : "Visualize overdraw (disabled for Vulkan)",
+                        &visualizeOverdraw);
+        ImGui::EndDisabled();
+        view->setVisibleLayers(overdrawVisibilityBit,
+                               (uint8_t)visualizeOverdraw << GameDriver::Overdraw::OVERDRAW_VISIBILITY_LAYER);
+        view->setStencilBufferEnabled(visualizeOverdraw);
+    }
+
+    if (ImGui::BeginPopupModal("MessageBox", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("%s", mMessageBoxText.c_str());
+        if (ImGui::Button("OK", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
     }
 }
 
@@ -737,43 +871,42 @@ void GameDriver::updateUserInterface()
     //ImGui::SetNextWindowSizeConstraints(ImVec2(20, height), ImVec2(width, height));
 
     ImGui::Begin("GameDriver");
-    if (mCustomUI) {
-        mCustomUI();
-    }
+    
+    customUI();
 
     DebugRegistry& debug = mRenderEngine->getDebugRegistry();
 
     if (ImGui::CollapsingHeader("View")) {
         ImGui::Indent();
 
-        ImGui::Checkbox("Post-processing", &mSettings.view.postProcessingEnabled);
+        ImGui::Checkbox("Post-processing", &gSettings.view.postProcessingEnabled);
         ImGui::Indent();
-            bool dither = mSettings.view.dithering == Dithering::TEMPORAL;
+            bool dither = gSettings.view.dithering == Dithering::TEMPORAL;
             ImGui::Checkbox("Dithering", &dither);
             enableDithering(dither);
-            ImGui::Checkbox("Bloom", &mSettings.view.bloom.enabled);
-            ImGui::Checkbox("Flare", &mSettings.view.bloom.lensFlare);
+            ImGui::Checkbox("Bloom", &gSettings.view.bloom.enabled);
+            ImGui::Checkbox("Flare", &gSettings.view.bloom.lensFlare);
 
-            ImGui::Checkbox("TAA", &mSettings.view.taa.enabled);
+            ImGui::Checkbox("TAA", &gSettings.view.taa.enabled);
             // this clutters the UI and isn't that useful (except when working on TAA)
-            //ImGui::Indent();
-            //ImGui::SliderFloat("feedback", &mSettings.view.taa.feedback, 0.0f, 1.0f);
-            //ImGui::SliderFloat("filter", &mSettings.view.taa.filterWidth, 0.0f, 2.0f);
-            //ImGui::Unindent();
+            ImGui::Indent();
+            ImGui::SliderFloat("feedback", &gSettings.view.taa.feedback, 0.0f, 1.0f);
+            ImGui::SliderFloat("filter", &gSettings.view.taa.filterWidth, 0.0f, 2.0f);
+            ImGui::Unindent();
 
-            bool fxaa = mSettings.view.antiAliasing == AntiAliasing::FXAA;
+            bool fxaa = gSettings.view.antiAliasing == AntiAliasing::FXAA;
             ImGui::Checkbox("FXAA", &fxaa);
             enableFxaa(fxaa);
         ImGui::Unindent();
 
-        ImGui::Checkbox("MSAA 4x", &mSettings.view.msaa.enabled);
+        ImGui::Checkbox("MSAA 4x", &gSettings.view.msaa.enabled);
         ImGui::Indent();
-            ImGui::Checkbox("Custom resolve", &mSettings.view.msaa.customResolve);
+            ImGui::Checkbox("Custom resolve", &gSettings.view.msaa.customResolve);
         ImGui::Unindent();
 
-        ImGui::Checkbox("SSAO", &mSettings.view.ssao.enabled);
+        ImGui::Checkbox("SSAO", &gSettings.view.ssao.enabled);
         if (ImGui::CollapsingHeader("SSAO Options")) {
-            auto& ssao = mSettings.view.ssao;
+            auto& ssao = gSettings.view.ssao;
 
             int quality = (int) ssao.quality;
             int lowpass = (int) ssao.lowPassFilter;
@@ -809,9 +942,9 @@ void GameDriver::updateUserInterface()
             }
         }
 
-        ImGui::Checkbox("Screen-space reflections", &mSettings.view.screenSpaceReflections.enabled);
+        ImGui::Checkbox("Screen-space reflections", &gSettings.view.screenSpaceReflections.enabled);
         if (ImGui::CollapsingHeader("Screen-space reflections Options")) {
-            auto& ssrefl = mSettings.view.screenSpaceReflections;
+            auto& ssrefl = gSettings.view.screenSpaceReflections;
             ImGui::SliderFloat("Ray thickness", &ssrefl.thickness, 0.001f, 0.2f);
             ImGui::SliderFloat("Bias", &ssrefl.bias, 0.001f, 0.5f);
             ImGui::SliderFloat("Max distance", &ssrefl.maxDistance, 0.1, 10.0f);
@@ -819,11 +952,11 @@ void GameDriver::updateUserInterface()
         }
         ImGui::Unindent();
 
-        ImGui::Checkbox("Screen-space Guard Band", &mSettings.view.guardBand.enabled);
+        ImGui::Checkbox("Screen-space Guard Band", &gSettings.view.guardBand.enabled);
     }
 
     if (ImGui::CollapsingHeader("Dynamic Resolution")) {
-        auto& dsr = mSettings.view.dsr;
+        auto& dsr = gSettings.view.dsr;
         int quality = (int)dsr.quality;
         ImGui::Checkbox("enabled", &dsr.enabled);
         ImGui::Checkbox("homogeneous", &dsr.homogeneousScaling);
@@ -837,7 +970,7 @@ void GameDriver::updateUserInterface()
         dsr.quality = (QualityLevel)quality;
     }
 
-    auto& light = mSettings.lighting;
+    auto& light = gSettings.lighting;
     if (ImGui::CollapsingHeader("Light")) {
         ImGui::Indent();
         if (ImGui::CollapsingHeader("Indirect light")) {
@@ -860,31 +993,31 @@ void GameDriver::updateUserInterface()
             ImGui::Checkbox("Stable Shadows", &light.shadowOptions.stable);
             ImGui::Checkbox("Enable LiSPSM", &light.shadowOptions.lispsm);
 
-            int shadowType = (int)mSettings.view.shadowType;
+            int shadowType = (int)gSettings.view.shadowType;
             ImGui::Combo("Shadow type", &shadowType, "PCF\0VSM\0DPCF\0PCSS\0\0");
-            mSettings.view.shadowType = (ShadowType)shadowType;
+            gSettings.view.shadowType = (ShadowType)shadowType;
 
-            if (mSettings.view.shadowType == ShadowType::VSM) {
-                ImGui::Checkbox("High precision", &mSettings.view.vsmShadowOptions.highPrecision);
-                ImGui::Checkbox("ELVSM", &mSettings.lighting.shadowOptions.vsm.elvsm);
+            if (gSettings.view.shadowType == ShadowType::VSM) {
+                ImGui::Checkbox("High precision", &gSettings.view.vsmShadowOptions.highPrecision);
+                ImGui::Checkbox("ELVSM", &gSettings.lighting.shadowOptions.vsm.elvsm);
                 char label[32];
                 snprintf(label, 32, "%d", 1 << mVsmMsaaSamplesLog2);
                 ImGui::SliderInt("VSM MSAA samples", &mVsmMsaaSamplesLog2, 0, 3, label);
-                mSettings.view.vsmShadowOptions.msaaSamples =
+                gSettings.view.vsmShadowOptions.msaaSamples =
                         static_cast<uint8_t>(1u << mVsmMsaaSamplesLog2);
 
-                int vsmAnisotropy = mSettings.view.vsmShadowOptions.anisotropy;
+                int vsmAnisotropy = gSettings.view.vsmShadowOptions.anisotropy;
                 snprintf(label, 32, "%d", 1 << vsmAnisotropy);
                 ImGui::SliderInt("VSM anisotropy", &vsmAnisotropy, 0, 3, label);
-                mSettings.view.vsmShadowOptions.anisotropy = vsmAnisotropy;
-                ImGui::Checkbox("VSM mipmapping", &mSettings.view.vsmShadowOptions.mipmapping);
+                gSettings.view.vsmShadowOptions.anisotropy = vsmAnisotropy;
+                ImGui::Checkbox("VSM mipmapping", &gSettings.view.vsmShadowOptions.mipmapping);
                 ImGui::SliderFloat("VSM blur", &light.shadowOptions.vsm.blurWidth, 0.0f, 125.0f);
 
                 // These are not very useful in practice (defaults are good), but we keep them here for debugging
-                //ImGui::SliderFloat("VSM exponent", &mSettings.view.vsmShadowOptions.exponent, 0.0, 6.0f);
-                ImGui::SliderFloat("VSM Light bleed", &mSettings.view.vsmShadowOptions.lightBleedReduction, 0.0, 1.0f);
-                ImGui::SliderFloat("VSM min variance scale", &mSettings.view.vsmShadowOptions.minVarianceScale, 0.0, 10.0f);
-            } else if (mSettings.view.shadowType == ShadowType::DPCF || mSettings.view.shadowType == ShadowType::PCSS) {
+                //ImGui::SliderFloat("VSM exponent", &gSettings.view.vsmShadowOptions.exponent, 0.0, 6.0f);
+                ImGui::SliderFloat("VSM Light bleed", &gSettings.view.vsmShadowOptions.lightBleedReduction, 0.0, 1.0f);
+                ImGui::SliderFloat("VSM min variance scale", &gSettings.view.vsmShadowOptions.minVarianceScale, 0.0, 10.0f);
+            } else if (gSettings.view.shadowType == ShadowType::DPCF || gSettings.view.shadowType == ShadowType::PCSS) {
                 ImGui::SliderFloat("Penumbra scale", &light.softShadowOptions.penumbraScale, 0.0f, 100.0f);
                 ImGui::SliderFloat("Penumbra Ratio scale", &light.softShadowOptions.penumbraRatioScale, 1.0f, 100.0f);
             }
@@ -904,39 +1037,39 @@ void GameDriver::updateUserInterface()
 
     if (ImGui::CollapsingHeader("Fog")) {
         int fogColorSource = 0;
-        if (mSettings.view.fog.skyColor) {
+        if (gSettings.view.fog.skyColor) {
             fogColorSource = 2;
-        } else if (mSettings.view.fog.fogColorFromIbl) {
+        } else if (gSettings.view.fog.fogColorFromIbl) {
             fogColorSource = 1;
         }
 
-        bool excludeSkybox = !std::isinf(mSettings.view.fog.cutOffDistance);
+        bool excludeSkybox = !std::isinf(gSettings.view.fog.cutOffDistance);
         ImGui::Indent();
-        ImGui::Checkbox("Enable large-scale fog", &mSettings.view.fog.enabled);
-        ImGui::SliderFloat("Start [m]", &mSettings.view.fog.distance, 0.0f, 100.0f);
-        ImGui::SliderFloat("Extinction [1/m]", &mSettings.view.fog.density, 0.0f, 1.0f);
-        ImGui::SliderFloat("Floor [m]", &mSettings.view.fog.height, 0.0f, 100.0f);
-        ImGui::SliderFloat("Height falloff [1/m]", &mSettings.view.fog.heightFalloff, 0.0f, 4.0f);
-        ImGui::SliderFloat("Sun Scattering start [m]", &mSettings.view.fog.inScatteringStart, 0.0f, 100.0f);
-        ImGui::SliderFloat("Sun Scattering size", &mSettings.view.fog.inScatteringSize, 0.1f, 100.0f);
+        ImGui::Checkbox("Enable large-scale fog", &gSettings.view.fog.enabled);
+        ImGui::SliderFloat("Start [m]", &gSettings.view.fog.distance, 0.0f, 100.0f);
+        ImGui::SliderFloat("Extinction [1/m]", &gSettings.view.fog.density, 0.0f, 1.0f);
+        ImGui::SliderFloat("Floor [m]", &gSettings.view.fog.height, 0.0f, 100.0f);
+        ImGui::SliderFloat("Height falloff [1/m]", &gSettings.view.fog.heightFalloff, 0.0f, 4.0f);
+        ImGui::SliderFloat("Sun Scattering start [m]", &gSettings.view.fog.inScatteringStart, 0.0f, 100.0f);
+        ImGui::SliderFloat("Sun Scattering size", &gSettings.view.fog.inScatteringSize, 0.1f, 100.0f);
         ImGui::Checkbox("Exclude Skybox", &excludeSkybox);
         ImGui::Combo("Color##fogColor", &fogColorSource, "Constant\0IBL\0Skybox\0\0");
-        ImGui::ColorPicker3("Color", mSettings.view.fog.color.v);
+        ImGui::ColorPicker3("Color", gSettings.view.fog.color.v);
         ImGui::Unindent();
-        mSettings.view.fog.cutOffDistance =
+        gSettings.view.fog.cutOffDistance =
                 excludeSkybox ? 1e6f : std::numeric_limits<float>::infinity();
         switch (fogColorSource) {
             case 0:
-                mSettings.view.fog.skyColor = nullptr;
-                mSettings.view.fog.fogColorFromIbl = false;
+                gSettings.view.fog.skyColor = nullptr;
+                gSettings.view.fog.fogColorFromIbl = false;
                 break;
             case 1:
-                mSettings.view.fog.skyColor = nullptr;
-                mSettings.view.fog.fogColorFromIbl = true;
+                gSettings.view.fog.skyColor = nullptr;
+                gSettings.view.fog.fogColorFromIbl = true;
                 break;
             case 2:
-                mSettings.view.fog.skyColor = mSettings.view.fogSettings.fogColorTexture;
-                mSettings.view.fog.fogColorFromIbl = false;
+                gSettings.view.fog.skyColor = gSettings.view.fogSettings.fogColorTexture;
+                gSettings.view.fog.fogColorFromIbl = false;
                 break;
         }
     }
@@ -944,20 +1077,20 @@ void GameDriver::updateUserInterface()
     if (ImGui::CollapsingHeader("Scene")) {
         ImGui::Indent();
 
-        if (ImGui::Checkbox("Scale to unit cube", &mSettings.viewer.autoScaleEnabled)) {
+        if (ImGui::Checkbox("Scale to unit cube", &gSettings.viewer.autoScaleEnabled)) {
             updateRootTransform();
         }
 
-        ImGui::Checkbox("Automatic instancing", &mSettings.viewer.autoInstancingEnabled);
+        ImGui::Checkbox("Automatic instancing", &gSettings.viewer.autoInstancingEnabled);
 
-        ImGui::Checkbox("Show skybox", &mSettings.viewer.skyboxEnabled);
-        ImGui::ColorEdit3("Background color", &mSettings.viewer.backgroundColor.r);
+        ImGui::Checkbox("Show skybox", &gSettings.viewer.skyboxEnabled);
+        ImGui::ColorEdit3("Background color", &gSettings.viewer.backgroundColor.r);
 
         // We do not yet support ground shadow or scene selection in remote mode.
         if (!isRemoteMode()) {
-            ImGui::Checkbox("Ground shadow", &mSettings.viewer.groundPlaneEnabled);
+            ImGui::Checkbox("Ground shadow", &gSettings.viewer.groundPlaneEnabled);
             ImGui::Indent();
-            ImGui::SliderFloat("Strength", &mSettings.viewer.groundShadowStrength, 0.0f, 1.0f);
+            ImGui::SliderFloat("Strength", &gSettings.viewer.groundShadowStrength, 0.0f, 1.0f);
             ImGui::Unindent();
 
             if (mAsset->getSceneCount() > 1) {
@@ -972,42 +1105,42 @@ void GameDriver::updateUserInterface()
     if (ImGui::CollapsingHeader("Camera")) {
         ImGui::Indent();
 
-        ImGui::SliderFloat("Focal length (mm)", &mSettings.viewer.cameraFocalLength, 16.0f, 90.0f);
-        ImGui::SliderFloat("Aperture", &mSettings.viewer.cameraAperture, 1.0f, 32.0f);
-        ImGui::SliderFloat("Speed (1/s)", &mSettings.viewer.cameraSpeed, 1000.0f, 1.0f);
-        ImGui::SliderFloat("ISO", &mSettings.viewer.cameraISO, 25.0f, 6400.0f);
-        ImGui::SliderFloat("Near", &mSettings.viewer.cameraNear, 0.001f, 1.0f);
-        ImGui::SliderFloat("Far", &mSettings.viewer.cameraFar, 1.0f, 10000.0f);
+        ImGui::SliderFloat("Focal length (mm)", &gSettings.viewer.cameraFocalLength, 16.0f, 90.0f);
+        ImGui::SliderFloat("Aperture", &gSettings.viewer.cameraAperture, 1.0f, 32.0f);
+        ImGui::SliderFloat("Speed (1/s)", &gSettings.viewer.cameraSpeed, 1000.0f, 1.0f);
+        ImGui::SliderFloat("ISO", &gSettings.viewer.cameraISO, 25.0f, 6400.0f);
+        ImGui::SliderFloat("Near", &gSettings.viewer.cameraNear, 0.001f, 1.0f);
+        ImGui::SliderFloat("Far", &gSettings.viewer.cameraFar, 1.0f, 10000.0f);
 
         if (ImGui::CollapsingHeader("DoF")) {
-            bool dofMedian = mSettings.view.dof.filter == View::DepthOfFieldOptions::Filter::MEDIAN;
-            int dofRingCount = mSettings.view.dof.fastGatherRingCount;
-            int dofMaxCoC = mSettings.view.dof.maxForegroundCOC;
+            bool dofMedian = gSettings.view.dof.filter == View::DepthOfFieldOptions::Filter::MEDIAN;
+            int dofRingCount = gSettings.view.dof.fastGatherRingCount;
+            int dofMaxCoC = gSettings.view.dof.maxForegroundCOC;
             if (!dofRingCount) dofRingCount = 5;
             if (!dofMaxCoC) dofMaxCoC = 32;
-            ImGui::Checkbox("Enabled##dofEnabled", &mSettings.view.dof.enabled);
-            ImGui::SliderFloat("Focus distance", &mSettings.viewer.cameraFocusDistance, 0.0f, 30.0f);
-            ImGui::SliderFloat("Blur scale", &mSettings.view.dof.cocScale, 0.1f, 10.0f);
+            ImGui::Checkbox("Enabled##dofEnabled", &gSettings.view.dof.enabled);
+            ImGui::SliderFloat("Focus distance", &gSettings.viewer.cameraFocusDistance, 0.0f, 30.0f);
+            ImGui::SliderFloat("Blur scale", &gSettings.view.dof.cocScale, 0.1f, 10.0f);
             ImGui::SliderInt("Ring count", &dofRingCount, 1, 17);
             ImGui::SliderInt("Max CoC", &dofMaxCoC, 1, 32);
-            ImGui::Checkbox("Native Resolution", &mSettings.view.dof.nativeResolution);
+            ImGui::Checkbox("Native Resolution", &gSettings.view.dof.nativeResolution);
             ImGui::Checkbox("Median Filter", &dofMedian);
-            mSettings.view.dof.filter = dofMedian ?
+            gSettings.view.dof.filter = dofMedian ?
                                         View::DepthOfFieldOptions::Filter::MEDIAN :
                                         View::DepthOfFieldOptions::Filter::NONE;
-            mSettings.view.dof.backgroundRingCount = dofRingCount;
-            mSettings.view.dof.foregroundRingCount = dofRingCount;
-            mSettings.view.dof.fastGatherRingCount = dofRingCount;
-            mSettings.view.dof.maxForegroundCOC = dofMaxCoC;
-            mSettings.view.dof.maxBackgroundCOC = dofMaxCoC;
+            gSettings.view.dof.backgroundRingCount = dofRingCount;
+            gSettings.view.dof.foregroundRingCount = dofRingCount;
+            gSettings.view.dof.fastGatherRingCount = dofRingCount;
+            gSettings.view.dof.maxForegroundCOC = dofMaxCoC;
+            gSettings.view.dof.maxBackgroundCOC = dofMaxCoC;
         }
 
         if (ImGui::CollapsingHeader("Vignette")) {
-            ImGui::Checkbox("Enabled##vignetteEnabled", &mSettings.view.vignette.enabled);
-            ImGui::SliderFloat("Mid point", &mSettings.view.vignette.midPoint, 0.0f, 1.0f);
-            ImGui::SliderFloat("Roundness", &mSettings.view.vignette.roundness, 0.0f, 1.0f);
-            ImGui::SliderFloat("Feather", &mSettings.view.vignette.feather, 0.0f, 1.0f);
-            ImGui::ColorEdit3("Color##vignetteColor", &mSettings.view.vignette.color.r);
+            ImGui::Checkbox("Enabled##vignetteEnabled", &gSettings.view.vignette.enabled);
+            ImGui::SliderFloat("Mid point", &gSettings.view.vignette.midPoint, 0.0f, 1.0f);
+            ImGui::SliderFloat("Roundness", &gSettings.view.vignette.roundness, 0.0f, 1.0f);
+            ImGui::SliderFloat("Feather", &gSettings.view.vignette.feather, 0.0f, 1.0f);
+            ImGui::ColorEdit3("Color##vignetteColor", &gSettings.view.vignette.color.r);
         }
 
         // We do not yet support camera selection in the remote UI. To support this feature, we
@@ -1052,12 +1185,12 @@ void GameDriver::updateUserInterface()
         ImGui::Unindent();
     }
 
-    colorGradingUI(mSettings, mRangePlot, mCurvePlot, mToneMapPlot);
+    colorGradingUI(gSettings, mRangePlot, mCurvePlot, mToneMapPlot);
 
     // At this point, all View settings have been modified,
     //  so we can now push them into the Filament View.
-    applySettings(mRenderEngine, mSettings.view, mMainWindow->getMainView()->getView());
-    applySettings(mRenderEngine, mSettings.lighting, mIndirectLight, mSunlight,
+    applySettings(mRenderEngine, gSettings.view, mMainWindow->getMainView()->getView());
+    applySettings(mRenderEngine, gSettings.lighting, mIndirectLight, mSunlight,
                   lm.getEntities(), lm.getComponentCount(), &lm, mScene, mMainWindow->getMainView()->getView());
 
     // TODO(prideout): add support for hierarchy, animation and variant selection in remote mode. To

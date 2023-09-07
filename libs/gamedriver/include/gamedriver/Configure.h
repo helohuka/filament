@@ -26,6 +26,7 @@ struct Configure
     filament::camutils::Mode        cameraMode   = filament::camutils::Mode::ORBIT;
 };
 
-static Configure gConfigure;
+extern Configure                  gConfigure;
+extern filament::viewer::Settings gSettings;
 
 #endif // __CONFIG_H

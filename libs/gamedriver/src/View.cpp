@@ -4,8 +4,8 @@
 
 // ------------------------------------------------------------------------------------------------
 
-CView::CView(filament::Renderer& renderer, std::string name) :
-    mRenderEngine(*renderer.getEngine()), mName(name)
+CView::CView(filament::Engine& engine, std::string name) :
+    mRenderEngine(engine), mName(name)
 {
     mView = mRenderEngine.createView();
     mView->setName(name.c_str());

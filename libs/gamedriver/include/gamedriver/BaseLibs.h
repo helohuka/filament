@@ -123,6 +123,7 @@
 #include <Luau/BytecodeBuilder.h>
 #include <Luau/Parser.h>
 
+using SceneMask = filament::gltfio::NodeManager::SceneMask;
 
 #define SINGLE_INSTANCE_FLAG(T) \
 public:\
@@ -136,6 +137,30 @@ public:\
 private:\
 	T();
 
+
+
+inline std::ifstream::pos_type getFileSize(const char* filename)
+{
+    std::ifstream in(filename, std::ifstream::ate | std::ifstream::binary);
+    return in.tellg();
+}
+
+inline bool loadSettings(const char* filename, filament::viewer::Settings* out)
+{
+    auto contentSize = getFileSize(filename);
+    if (contentSize <= 0)
+    {
+        return false;
+    }
+    std::ifstream     in(filename, std::ifstream::binary | std::ifstream::in);
+    std::vector<char> json(static_cast<unsigned long>(contentSize));
+    if (!in.read(json.data(), contentSize))
+    {
+        return false;
+    }
+    filament::viewer::JsonSerializer serializer;
+    return serializer.readJson(json.data(), contentSize, out);
+}
 
 
 enum MaterialSource
