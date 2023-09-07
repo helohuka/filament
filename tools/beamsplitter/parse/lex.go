@@ -221,7 +221,7 @@ func (l *lexer) acceptRun(valid string) {
 }
 
 func (lex *lexer) acceptSpace() bool {
-	return lex.acceptAny(" \t\n")
+	return lex.acceptAny(" \r\t\n")
 }
 
 func (l *lexer) acceptRune(expected rune) bool {

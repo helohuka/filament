@@ -140,9 +140,6 @@ private:
     size_t                                mSkippedFrames = 0;
     std::vector<filament::View*>          mOffscreenViews;
     
-
-
-
     //////////////////////////////////////////////////////////////////////////
 public:
 
@@ -198,10 +195,6 @@ private:
 
     bool mIsResizeable = true;
     
-
-
-
-
 
     //////////////////////////////////////////////////////////////////////////
 

@@ -73,7 +73,7 @@ func EmitSerializer(definitions []db.TypeDefinition, outputFolder string) {
 	}
 
 	{
-		path := filepath.Join(outputFolder, "Settings_generated.cpp")
+		path := filepath.Join(outputFolder, "RenderOptions.cpp")
 		file, err := os.Create(path)
 		if err != nil {
 			log.Fatal(err)
@@ -94,7 +94,7 @@ func EmitSerializer(definitions []db.TypeDefinition, outputFolder string) {
 		generate(file, "CppFooter", nil)
 	}
 	{
-		path := filepath.Join(outputFolder, "Settings_generated.h")
+		path := filepath.Join(outputFolder, "RenderOptions.h")
 		file, err := os.Create(path)
 		if err != nil {
 			log.Fatal(err)

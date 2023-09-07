@@ -55,15 +55,15 @@ func main() {
 	ast := parse.Parse(contents)
 	definitions := db.Create(ast, contents)
 
-	emitters.EmitSerializer(definitions, filepath.Join(root, "libs", "viewer", "src"))
+	emitters.EmitSerializer(definitions, filepath.Join(root, "libs", "gamedriver", "src"))
 
-	jsfolder := filepath.Join(root, "web", "filament-js")
-	emitters.EmitJavaScript(definitions, "View", jsfolder)
-	emitters.EditTypeScript(definitions, "View", jsfolder)
+	//jsfolder := filepath.Join(root, "web", "filament-js")
+	//emitters.EmitJavaScript(definitions, "View", jsfolder)
+	//emitters.EditTypeScript(definitions, "View", jsfolder)
 
-	javafolder := filepath.FromSlash("com/google/android/filament")
-	javafolder = filepath.Join(root, "android/filament-android/src/main/java", javafolder)
-	emitters.EditJava(definitions, "View", javafolder)
+	//javafolder := filepath.FromSlash("com/google/android/filament")
+	//javafolder = filepath.Join(root, "android/filament-android/src/main/java", javafolder)
+	//emitters.EditJava(definitions, "View", javafolder)
 
 	fmt.Print(`
 Note that this tool does not generate bindings for setter methods on

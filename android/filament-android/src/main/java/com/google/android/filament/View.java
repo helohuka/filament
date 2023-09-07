@@ -1971,4 +1971,11 @@ public class View {
          */
         public float penumbraRatioScale = 1.0f;
     }
+
+    /**
+     * Options for stereoscopic (multi-eye) rendering.
+     */
+    public static class StereoscopicOptions {
+        public boolean enabled = false;
+    }
 }

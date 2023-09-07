@@ -302,8 +302,8 @@ void GameDriver::mainLoop()
 
             int windowWidth, windowHeight;
             int displayWidth, displayHeight;
-            SDL_GetWindowSize(mMainWindow->getSDLWindow(), &windowWidth, &windowHeight);
-            SDL_GL_GetDrawableSize(mMainWindow->getSDLWindow(), &displayWidth, &displayHeight);
+            SDL_GetWindowSize(mMainWindow->getWindowHandle(), &windowWidth, &windowHeight);
+            SDL_GL_GetDrawableSize(mMainWindow->getWindowHandle(), &displayWidth, &displayHeight);
             mImGuiHelper->setDisplaySize(windowWidth, windowHeight,
                                          windowWidth > 0 ? ((float)displayWidth / windowWidth) : 0,
                                          displayHeight > 0 ? ((float)displayHeight / windowHeight) : 0);
@@ -322,7 +322,7 @@ void GameDriver::mainLoop()
 
             // TODO: Update to a newer SDL and use SDL_CaptureMouse() to retrieve mouse coordinates
             // outside of the client area; see the imgui SDL example.
-            if ((SDL_GetWindowFlags(mMainWindow->getSDLWindow()) & SDL_WINDOW_INPUT_FOCUS) != 0)
+            if ((SDL_GetWindowFlags(mMainWindow->getWindowHandle()) & SDL_WINDOW_INPUT_FOCUS) != 0)
             {
                 io.MousePos = ImVec2((float)mx, (float)my);
             }
@@ -357,7 +357,7 @@ void GameDriver::mainLoop()
         // TODO: Use SDL_GL_SetSwapInterval for proper vsync
         SDL_DisplayMode Mode;
         int             refreshIntervalMS = (SDL_GetCurrentDisplayMode(
-                                     SDL_GetWindowDisplayIndex(mMainWindow->getSDLWindow()), &Mode) == 0 &&
+                                     SDL_GetWindowDisplayIndex(mMainWindow->getWindowHandle()), &Mode) == 0 &&
                                  Mode.refresh_rate != 0) ?
                         round(1000.0 / Mode.refresh_rate) :
                         16;

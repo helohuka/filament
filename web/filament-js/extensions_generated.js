@@ -182,4 +182,11 @@ Filament.loadGeneratedExtensions = function() {
         return Object.assign(options, overrides);
     };
 
+    Filament.View.prototype.setStereoscopicOptionsDefaults = function(overrides) {
+        const options = {
+            enabled: false,
+        };
+        return Object.assign(options, overrides);
+    };
+
 };

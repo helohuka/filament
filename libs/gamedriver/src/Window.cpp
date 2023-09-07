@@ -349,7 +349,6 @@ void GameDriver::initWindow()
     // get the resolved backend
     mBackend = mRenderEngine->getBackend();
 
-
     mMainWindow = std::make_unique<Window>(mRenderEngine);
 
     mMainWindow->setup();

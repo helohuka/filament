@@ -30,7 +30,7 @@ public:
     
     void resetSwapChain();
 
-    SDL_Window* getSDLWindow() { return mWindowHandle; }
+    SDL_Window* getWindowHandle() { return mWindowHandle; }
     void*       getNativeWindow() { return (void*)mSystemInfo.info.win.window; }
     void*       getNativeSurface();
 

@@ -1182,8 +1182,8 @@ export interface View$DynamicResolutionOptions {
 }
 
 export enum View$BloomOptions$BlendMode {
-    ADD, // Bloom is modulated by the strength parameter and added to the scene
-    INTERPOLATE, // Bloom is interpolated with the scene using the strength parameter
+    ADD, // Bloom is modulated by the strength parameter and added to the scene
+    INTERPOLATE, // Bloom is interpolated with the scene using the strength parameter
 }
 
 /**
@@ -1687,16 +1687,16 @@ export interface View$GuardBandOptions {
  * @see setAntiAliasing, getAntiAliasing, setSampleCount
  */
 export enum View$AntiAliasing {
-    NONE, // no anti aliasing performed as part of post-processing
-    FXAA, // FXAA is a low-quality but very efficient type of anti-aliasing. (default).
+    NONE, // no anti aliasing performed as part of post-processing
+    FXAA, // FXAA is a low-quality but very efficient type of anti-aliasing. (default).
 }
 
 /**
  * List of available post-processing dithering techniques.
  */
 export enum View$Dithering {
-    NONE, // No dithering
-    TEMPORAL, // Temporal dithering (default)
+    NONE, // No dithering
+    TEMPORAL, // Temporal dithering (default)
 }
 
 /**
@@ -1704,10 +1704,10 @@ export enum View$Dithering {
  * @see setShadowType
  */
 export enum View$ShadowType {
-    PCF, // percentage-closer filtered shadows (default)
-    VSM, // variance shadows
-    DPCF, // PCF with contact hardening simulation
-    PCSS, // PCF with soft shadows and contact hardening
+    PCF, // percentage-closer filtered shadows (default)
+    VSM, // variance shadows
+    DPCF, // PCF with contact hardening simulation
+    PCSS, // PCF with soft shadows and contact hardening
 }
 
 /**
@@ -1769,4 +1769,11 @@ export interface View$SoftShadowOptions {
      * Acceptable values are equal to or greater than 1.
      */
     penumbraRatioScale?: number;
+}
+
+/**
+ * Options for stereoscopic (multi-eye) rendering.
+ */
+export interface View$StereoscopicOptions {
+    enabled?: boolean;
 }
