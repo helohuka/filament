@@ -20,6 +20,8 @@
 #include "gamedriver/Configure.h"
 #include "gamedriver/IBL.h"
 
+#include "gamedriver/Ground.h"
+#include "gamedriver/Overdraw.h"
 #include "gamedriver/View.h"
 #include "gamedriver/Window.h"
 #include "gamedriver/ViewGui.h"
@@ -56,9 +58,6 @@ public:
 private:
     ///临时存放 TODO
 
-    void createGroundPlane();
-    void createOverdrawVisualizerEntities();
-
     void preRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
     void postRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
 
@@ -85,65 +84,43 @@ private:
     void loadIBL();
     void loadDirt();
 
-    std::unique_ptr<Window> mMainWindow;
-
-    filament::Engine::Backend       mBackend      = filament::Engine::Backend::OPENGL;
-    filament::backend::FeatureLevel mFeatureLevel = filament::backend::FeatureLevel::FEATURE_LEVEL_3;
-
-    filament::Engine*    mRenderEngine = nullptr;
-    filament::Scene*     mScene  = nullptr;
-    std::unique_ptr<IBL> mIBL;
-    filament::Texture*   mDirt   = nullptr;
-    bool                 mClosed = false;
-    uint64_t             mTime   = 0;
-
+    std::unique_ptr<Window>               mMainWindow;
+    filament::Engine::Backend             mBackend      = filament::Engine::Backend::OPENGL;
+    filament::backend::FeatureLevel       mFeatureLevel = filament::backend::FeatureLevel::FEATURE_LEVEL_3;
+    filament::Engine*                     mRenderEngine = nullptr;
+    filament::Scene*                      mScene        = nullptr;
+    std::unique_ptr<IBL>                  mIBL;
+    filament::Texture*                    mDirt                = nullptr;
+    bool                                  mClosed              = false;
+    uint64_t                              mTime                = 0;
     filament::Material const*             mDefaultMaterial     = nullptr;
     filament::Material const*             mTransparentMaterial = nullptr;
     filament::Material const*             mDepthMaterial       = nullptr;
+    filament::Material const*             mShadowMaterial      = nullptr;
+    filament::Material const*             mOverdrawMaterial    = nullptr;
     filament::MaterialInstance*           mDepthMI             = nullptr;
     std::unique_ptr<filagui::ImGuiHelper> mImGuiHelper;
-    
     size_t                                mSkippedFrames = 0;
     std::vector<filament::View*>          mOffscreenViews;
-    
+
     //////////////////////////////////////////////////////////////////////////
 public:
-
     filament::gltfio::AssetLoader*      mAssetLoader;
     filament::gltfio::FilamentAsset*    mAsset    = nullptr;
     filament::gltfio::FilamentInstance* mInstance = nullptr;
     utils::NameComponentManager*        mNames;
-
     filament::gltfio::MaterialProvider* mMaterials;
     MaterialSource                      mMaterialSource = JITSHADER;
     //UBERSHADER; //A57 ,powervr 8xxx
-
     filament::gltfio::ResourceLoader*  mResourceLoader = nullptr;
     filament::gltfio::TextureProvider* mStbDecoder     = nullptr;
     filament::gltfio::TextureProvider* mKtxDecoder     = nullptr;
     bool                               mRecomputeAabb  = false;
+    bool                               mActualSize     = false;
 
-    bool mActualSize = false;
-
-    struct Ground
-    {
-        utils::Entity           mGroundPlane;
-        filament::VertexBuffer* mGroundVertexBuffer;
-        filament::IndexBuffer*  mGroundIndexBuffer;
-        filament::Material*     mGroundMaterial;
-    } mGround;
-
-    struct Overdraw
-    {
-        filament::Material* mOverdrawMaterial;
-        // use layer 7 because 0, 1 and 2 are used by GameDriver
-        static constexpr auto                                    OVERDRAW_VISIBILITY_LAYER = 7u; // overdraw renderables View layer
-        static constexpr auto                                    OVERDRAW_LAYERS           = 4u; // unique overdraw colors
-        std::array<utils::Entity, OVERDRAW_LAYERS>               mOverdrawVisualizer;
-        std::array<filament::MaterialInstance*, OVERDRAW_LAYERS> mOverdrawMaterialInstances;
-        filament::VertexBuffer*                                  mFullScreenTriangleVertexBuffer;
-        filament::IndexBuffer*                                   mFullScreenTriangleIndexBuffer;
-    } mOverdraw;
+    std::unique_ptr<Ground> mGround = nullptr;
+    std::unique_ptr<OverdrawVisualizer> mOverdrawVisualizer = nullptr;
+    
 
     // zero-initialized so that the first time through is always dirty.
     filament::viewer::ColorGradingSettings mLastColorGradingOptions = {0};
@@ -151,10 +128,8 @@ public:
     std::string                            mNotificationText;
     std::string                            mMessageBoxText;
     std::string                            mSettingsFile;
-    
+
 private:
-
-
     //////////////////////////////////////////////////////////////////////////
 
     void setAsset(filament::gltfio::FilamentAsset* asset, filament::gltfio::FilamentInstance* instance);
@@ -162,8 +137,6 @@ private:
     void populateScene();
 
     void removeAsset();
-
-    void setIndirectLight(filament::IndirectLight* ibl, filament::math::float3 const* sh3);
 
     void applyAnimation(double currentTime, filament::gltfio::FilamentInstance* instance = nullptr);
 
@@ -210,28 +183,24 @@ private:
     float getOcularDistance() const { return mOcularDistance; }
 
 private:
-    
-
     bool isRemoteMode() const { return mAsset == nullptr; }
     void customUI();
     void sceneSelectionUI();
 
-    utils::Entity           mSunlight;
-
+    utils::Entity            mSunlight;
     filament::IndirectLight* mIndirectLight = nullptr;
-    
+
 
     // Properties that can be changed from the UI.
-    int                                      mCurrentAnimation   = 1; // It is a 1-based index and 0 means not playing animation
-    int                                      mCurrentVariant     = 0;
-    bool                                     mEnableWireframe    = false;
-    int                                      mVsmMsaaSamplesLog2 = 1;
-    
-    uint32_t                                 mFlags;
-    utils::Entity                            mCurrentMorphingEntity;
-    std::vector<float>                       mMorphWeights;
-    SceneMask                                mVisibleScenes;
-    bool                                     mShowingRestPose = false;
+    int                mCurrentAnimation   = 1; // It is a 1-based index and 0 means not playing animation
+    int                mCurrentVariant     = 0;
+    bool               mEnableWireframe    = false;
+    int                mVsmMsaaSamplesLog2 = 1;
+    uint32_t           mFlags;
+    utils::Entity      mCurrentMorphingEntity;
+    std::vector<float> mMorphWeights;
+    SceneMask          mVisibleScenes;
+    bool               mShowingRestPose = false;
 
     // Stereoscopic debugging
     float mOcularDistance = 0.0f;

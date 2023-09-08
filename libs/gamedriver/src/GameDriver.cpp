@@ -63,6 +63,14 @@ void GameDriver::initialize()
                                .package(GAMEDRIVER_TRANSPARENTCOLOR_DATA, GAMEDRIVER_TRANSPARENTCOLOR_SIZE)
                                .build(*mRenderEngine);
 
+    mShadowMaterial = Material::Builder()
+                                   .package(GAMEDRIVER_GROUNDSHADOW_DATA, GAMEDRIVER_GROUNDSHADOW_SIZE)
+                                   .build(*mRenderEngine);
+
+    mOverdrawMaterial = Material::Builder()
+                             .package(GAMEDRIVER_OVERDRAW_DATA, GAMEDRIVER_OVERDRAW_SIZE)
+                             .build(*mRenderEngine);
+
 }
 
 void GameDriver::release()
@@ -72,32 +80,15 @@ void GameDriver::release()
         mImGuiHelper.reset();
     }
 
-     //mAutomationEngine->terminate();
     mResourceLoader->asyncCancelLoad();
     mAssetLoader->destroyAsset(mAsset);
     mMaterials->destroyMaterials();
 
-    mRenderEngine->destroy(mGround.mGroundPlane);
-    mRenderEngine->destroy(mGround.mGroundVertexBuffer);
-    mRenderEngine->destroy(mGround.mGroundIndexBuffer);
-    mRenderEngine->destroy(mGround.mGroundMaterial);
+    mGround.reset(); 
+
     mRenderEngine->destroy(mColorGrading);
 
-    mRenderEngine->destroy(mOverdraw.mFullScreenTriangleVertexBuffer);
-    mRenderEngine->destroy(mOverdraw.mFullScreenTriangleIndexBuffer);
-
-    auto& em = EntityManager::get();
-    for (auto e : mOverdraw.mOverdrawVisualizer)
-    {
-        mRenderEngine->destroy(e);
-        em.destroy(e);
-    }
-
-    for (auto mi : mOverdraw.mOverdrawMaterialInstances)
-    {
-        mRenderEngine->destroy(mi);
-    }
-    mRenderEngine->destroy(mOverdraw.mOverdrawMaterial);
+    mOverdrawVisualizer.reset();
 
     mRenderEngine->destroy(mSunlight);
     mImGuiHelper = nullptr;
@@ -117,6 +108,8 @@ void GameDriver::release()
     mRenderEngine->destroy(mDepthMaterial);
     mRenderEngine->destroy(mDefaultMaterial);
     mRenderEngine->destroy(mTransparentMaterial);
+    mRenderEngine->destroy(mShadowMaterial);
+    mRenderEngine->destroy(mOverdrawMaterial);
     mRenderEngine->destroy(mScene);
     Engine::destroy(&mRenderEngine);
     mRenderEngine = nullptr;
@@ -164,12 +157,7 @@ void GameDriver::mainLoop()
 
     loadDirt();
     loadIBL();
-    if (mIBL != nullptr)
-    {
-        mIBL->getSkybox()->setLayerMask(0x7, 0x4);
-        mScene->setSkybox(mIBL->getSkybox());
-        mScene->setIndirectLight(mIBL->getIndirectLight());
-    }
+   
 
     for (auto& view : mMainWindow->getViews())
     {
@@ -372,8 +360,7 @@ void GameDriver::mainLoop()
         // Calculate the time step.
         static Uint64 frequency = SDL_GetPerformanceFrequency();
         Uint64        now       = SDL_GetPerformanceCounter();
-        const float   timeStep  = mTime > 0 ? (float)((double)(now - mTime) / frequency) :
-                                              (float)(1.0f / 60.0f);
+        const float   timeStep  = mTime > 0 ? (float)((double)(now - mTime) / frequency) : (float)(1.0f / 60.0f);
         mTime                   = now;
 
         // Populate the UI scene, regardless of whether Filament wants to a skip frame. We should
@@ -508,8 +495,29 @@ void GameDriver::loadIBL()
             }
         }
     }
-}
 
+
+    mIBL->getSkybox()->setLayerMask(0x7, 0x4);
+    mScene->setSkybox(mIBL->getSkybox());
+    mScene->setIndirectLight(mIBL->getIndirectLight());
+
+
+    gSettings.view.fog.color = mIBL->getSphericalHarmonics()[0];
+    mIndirectLight           = mIBL->getIndirectLight();
+    if (mIndirectLight)
+    {
+        float3 const d        = filament::IndirectLight::getDirectionEstimate(mIBL->getSphericalHarmonics());
+        float4 const c        = filament::IndirectLight::getColorEstimate(mIBL->getSphericalHarmonics(), d);
+        bool const   dIsValid = std::none_of(std::begin(d.v), std::end(d.v), is_not_a_number);
+        bool const   cIsValid = std::none_of(std::begin(c.v), std::end(c.v), is_not_a_number);
+        if (dIsValid && cIsValid)
+        {
+            gSettings.lighting.sunlightDirection = d;
+            gSettings.lighting.sunlightColor     = c.rgb;
+            gSettings.lighting.sunlightIntensity = c[3] * mIndirectLight->getIntensity();
+        }
+    }
+}
 void GameDriver::loadDirt()
 {
     if (!gConfigure.dirt.empty())
@@ -616,178 +624,16 @@ void GameDriver::loadResources(utils::Path filename)
         instances[mi]->setStencilOpDepthStencilPass(filament::MaterialInstance::StencilOperation::INCR);
     }
 
-    if (mIBL)
-    {
-        setIndirectLight(mIBL->getIndirectLight(), mIBL->getSphericalHarmonics());
-    }
+    
 }
 
-void GameDriver::createGroundPlane()
-{
-    auto&     em             = EntityManager::get();
-    Material* shadowMaterial = Material::Builder()
-                                   .package(GAMEDRIVER_GROUNDSHADOW_DATA, GAMEDRIVER_GROUNDSHADOW_SIZE)
-                                   .build(*mRenderEngine);
-    auto& viewerOptions = gSettings.viewer;
-    shadowMaterial->setDefaultParameter("strength", viewerOptions.groundShadowStrength);
-
-    const static uint32_t indices[] = {
-        0, 1, 2, 2, 3, 0};
-
-    Aabb aabb = mAsset->getBoundingBox();
-    if (!mActualSize)
-    {
-        mat4f transform = filament::viewer::fitIntoUnitCube(aabb, 4);
-        aabb            = aabb.transform(transform);
-    }
-
-    float3 planeExtent{10.0f * aabb.extent().x, 0.0f, 10.0f * aabb.extent().z};
-
-    const static float3 vertices[] = {
-        {-planeExtent.x, 0, -planeExtent.z},
-        {-planeExtent.x, 0, planeExtent.z},
-        {planeExtent.x, 0, planeExtent.z},
-        {planeExtent.x, 0, -planeExtent.z},
-    };
-
-    short4 tbn = packSnorm16(
-        mat3f::packTangentFrame(
-            mat3f{
-                float3{1.0f, 0.0f, 0.0f},
-                float3{0.0f, 0.0f, 1.0f},
-                float3{0.0f, 1.0f, 0.0f}})
-            .xyzw);
-
-    const static short4 normals[]{tbn, tbn, tbn, tbn};
-
-    VertexBuffer* vertexBuffer = VertexBuffer::Builder()
-                                     .vertexCount(4)
-                                     .bufferCount(2)
-                                     .attribute(VertexAttribute::POSITION,
-                                                0, VertexBuffer::AttributeType::FLOAT3)
-                                     .attribute(VertexAttribute::TANGENTS,
-                                                1, VertexBuffer::AttributeType::SHORT4)
-                                     .normalized(VertexAttribute::TANGENTS)
-                                     .build(*mRenderEngine);
-
-    vertexBuffer->setBufferAt(*mRenderEngine, 0, VertexBuffer::BufferDescriptor(vertices, vertexBuffer->getVertexCount() * sizeof(vertices[0])));
-    vertexBuffer->setBufferAt(*mRenderEngine, 1, VertexBuffer::BufferDescriptor(normals, vertexBuffer->getVertexCount() * sizeof(normals[0])));
-
-    IndexBuffer* indexBuffer = IndexBuffer::Builder()
-                                   .indexCount(6)
-                                   .build(*mRenderEngine);
-
-    indexBuffer->setBuffer(*mRenderEngine, IndexBuffer::BufferDescriptor(indices, indexBuffer->getIndexCount() * sizeof(uint32_t)));
-
-    Entity groundPlane = em.create();
-    RenderableManager::Builder(1)
-        .boundingBox({{}, {planeExtent.x, 1e-4f, planeExtent.z}})
-        .material(0, shadowMaterial->getDefaultInstance())
-        .geometry(0, RenderableManager::PrimitiveType::TRIANGLES,
-                  vertexBuffer, indexBuffer, 0, 6)
-        .culling(false)
-        .receiveShadows(true)
-        .castShadows(false)
-        .build(*mRenderEngine, groundPlane);
-
-    mScene->addEntity(groundPlane);
-
-    auto& tcm = mRenderEngine->getTransformManager();
-    tcm.setTransform(tcm.getInstance(groundPlane),
-                     mat4f::translation(float3{0, aabb.min.y, -4}));
-
-    auto& rcm      = mRenderEngine->getRenderableManager();
-    auto  instance = rcm.getInstance(groundPlane);
-    rcm.setLayerMask(instance, 0xff, 0x00);
-
-    mGround.mGroundPlane        = groundPlane;
-    mGround.mGroundVertexBuffer = vertexBuffer;
-    mGround.mGroundIndexBuffer  = indexBuffer;
-    mGround.mGroundMaterial     = shadowMaterial;
-}
-
-void GameDriver::createOverdrawVisualizerEntities()
-{
-    static constexpr float4 sFullScreenTriangleVertices[3] = {
-        {-1.0f, -1.0f, 1.0f, 1.0f},
-        {3.0f, -1.0f, 1.0f, 1.0f},
-        {-1.0f, 3.0f, 1.0f, 1.0f}};
-
-    static const uint16_t sFullScreenTriangleIndices[3] = {0, 1, 2};
-
-    Material* material = Material::Builder()
-                             .package(GAMEDRIVER_OVERDRAW_DATA, GAMEDRIVER_OVERDRAW_SIZE)
-                             .build(*mRenderEngine);
-
-    const float3 overdrawColors[GameDriver::Overdraw::OVERDRAW_LAYERS] = {
-        {0.0f, 0.0f, 1.0f}, // blue         (overdrawn 1 time)
-        {0.0f, 1.0f, 0.0f}, // green        (overdrawn 2 times)
-        {1.0f, 0.0f, 1.0f}, // magenta      (overdrawn 3 times)
-        {1.0f, 0.0f, 0.0f}  // red          (overdrawn 4+ times)
-    };
-
-    for (auto i = 0; i < GameDriver::Overdraw::OVERDRAW_LAYERS; i++)
-    {
-        MaterialInstance* matInstance = material->createInstance();
-        // TODO: move this to the material definition.
-        matInstance->setStencilCompareFunction(MaterialInstance::StencilCompareFunc::E);
-        // The stencil value represents the number of times the fragment has been written to.
-        // We want 0-1 writes to be the regular color. Overdraw visualization starts at 2+ writes,
-        // which represents a fragment overdrawn 1 time.
-        matInstance->setStencilReferenceValue(i + 2);
-        matInstance->setParameter("color", overdrawColors[i]);
-        mOverdraw.mOverdrawMaterialInstances[i] = matInstance;
-    }
-    auto& lastMi = mOverdraw.mOverdrawMaterialInstances[GameDriver::Overdraw::OVERDRAW_LAYERS - 1];
-    // This seems backwards, but it isn't. The comparison function compares:
-    // the reference value (left side) <= stored stencil value (right side)
-    lastMi->setStencilCompareFunction(MaterialInstance::StencilCompareFunc::LE);
-
-    VertexBuffer* vertexBuffer = VertexBuffer::Builder()
-                                     .vertexCount(3)
-                                     .bufferCount(1)
-                                     .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT4, 0)
-                                     .build(*mRenderEngine);
-
-    vertexBuffer->setBufferAt(
-        *mRenderEngine, 0, {sFullScreenTriangleVertices, sizeof(sFullScreenTriangleVertices)});
-
-    IndexBuffer* indexBuffer = IndexBuffer::Builder()
-                                   .indexCount(3)
-                                   .bufferType(IndexBuffer::IndexType::USHORT)
-                                   .build(*mRenderEngine);
-
-    indexBuffer->setBuffer(*mRenderEngine,
-                           {sFullScreenTriangleIndices, sizeof(sFullScreenTriangleIndices)});
-
-    auto&       em           = EntityManager::get();
-    const auto& matInstances = mOverdraw.mOverdrawMaterialInstances;
-    for (auto i = 0; i < GameDriver::Overdraw::OVERDRAW_LAYERS; i++)
-    {
-        Entity overdrawEntity = em.create();
-        RenderableManager::Builder(1)
-            .boundingBox({{}, {1.0f, 1.0f, 1.0f}})
-            .material(0, matInstances[i])
-            .geometry(0, RenderableManager::PrimitiveType::TRIANGLES, vertexBuffer, indexBuffer, 0, 3)
-            .culling(false)
-            .priority(7u) // ensure the overdraw primitives are drawn last
-            .layerMask(0xFF, 1u << GameDriver::Overdraw::OVERDRAW_VISIBILITY_LAYER)
-            .build(*mRenderEngine, overdrawEntity);
-        mScene->addEntity(overdrawEntity);
-        mOverdraw.mOverdrawVisualizer[i] = overdrawEntity;
-    }
-
-    mOverdraw.mOverdrawMaterial               = material;
-    mOverdraw.mFullScreenTriangleVertexBuffer = vertexBuffer;
-    mOverdraw.mFullScreenTriangleIndexBuffer  = indexBuffer;
-}
 
 
 
 void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
 {
     auto&       rcm           = mRenderEngine->getRenderableManager();
-    auto        instance      = rcm.getInstance(mGround.mGroundPlane);
+    auto        instance      = rcm.getInstance(mGround->getSolidRenderable());
     const auto  viewerOptions = gSettings.viewer; //mAutomationEngine->getViewerOptions();
     const auto& dofOptions    = gSettings.view.dof;
     rcm.setLayerMask(instance, 0xff, viewerOptions.groundPlaneEnabled? 0xff : 0x00);
@@ -816,7 +662,7 @@ void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
         camera->setScaling({1.0 / aspectRatio, 1.0});
     }
 
-    mGround.mGroundMaterial->setDefaultParameter("strength", viewerOptions.groundShadowStrength);
+    mGround->getMI()->setParameter("strength", viewerOptions.groundShadowStrength);
 
     // This applies clear options, the skybox mask, and some camera settings.
     Camera& camera = view->getCamera();
@@ -867,8 +713,7 @@ void GameDriver::gui(filament::Engine* ,filament::View* view)
 
 void GameDriver::setup()
 {
-    mNames                                            = new utils::NameComponentManager(EntityManager::get());
-    
+    mNames = new utils::NameComponentManager(EntityManager::get());
     gSettings.view.shadowType                  = filament::ShadowType::PCF;
     gSettings.view.vsmShadowOptions.anisotropy = 0;
     gSettings.view.dithering                   = filament::Dithering::TEMPORAL;
@@ -921,7 +766,7 @@ void GameDriver::setup()
 
     setAsset(mAsset, mInstance);
 
-    createGroundPlane();
-    createOverdrawVisualizerEntities();
+    mGround = std::make_unique<Ground>(*mRenderEngine, mScene, mShadowMaterial);
 
+    mOverdrawVisualizer = std::make_unique<OverdrawVisualizer>(*mRenderEngine, mScene, mOverdrawMaterial);
 }

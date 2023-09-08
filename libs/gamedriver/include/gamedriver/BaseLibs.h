@@ -123,6 +123,13 @@
 #include <Luau/BytecodeBuilder.h>
 #include <Luau/Parser.h>
 
+enum MaterialSource
+{
+    JITSHADER,
+    UBERSHADER,
+};
+
+
 using SceneMask = filament::gltfio::NodeManager::SceneMask;
 
 #define SINGLE_INSTANCE_FLAG(T) \
@@ -138,35 +145,11 @@ private:\
 	T();
 
 
-
-inline std::ifstream::pos_type getFileSize(const char* filename)
-{
-    std::ifstream in(filename, std::ifstream::ate | std::ifstream::binary);
-    return in.tellg();
-}
-
-inline bool loadSettings(const char* filename, filament::viewer::Settings* out)
-{
-    auto contentSize = getFileSize(filename);
-    if (contentSize <= 0)
-    {
-        return false;
-    }
-    std::ifstream     in(filename, std::ifstream::binary | std::ifstream::in);
-    std::vector<char> json(static_cast<unsigned long>(contentSize));
-    if (!in.read(json.data(), contentSize))
-    {
-        return false;
-    }
-    filament::viewer::JsonSerializer serializer;
-    return serializer.readJson(json.data(), contentSize, out);
-}
-
-
-enum MaterialSource
-{
-    JITSHADER,
-    UBERSHADER,
-};
+filament::math::mat4f   fitIntoUnitCube(const filament::Aabb& bounds, float zoffset);
+std::ifstream::pos_type getFileSize(const char* filename);
+bool                    loadSettings(const char* filename, filament::viewer::Settings* out);
+UTILS_NOINLINE bool     notequal(float a, float b) noexcept;
+// we do this to circumvent -ffast-math ignoring NaNs
+bool is_not_a_number(float v) noexcept;
 
 #endif // __BASELIBS_H__

@@ -6,8 +6,6 @@
 #include "gamedriver/BaseLibs.h"
 
 
-UTILS_PUBLIC
-filament::math::mat4f fitIntoUnitCube(const filament::Aabb& bounds, float zoffset);
 
 
 #endif // VIEWER_VIEWERGUI_H

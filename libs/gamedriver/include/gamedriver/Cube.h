@@ -16,14 +16,7 @@
  * \note
 */
 
-#include <vector>
-
-#include <filament/Engine.h>
-#include <filament/Box.h>
-#include <filament/Camera.h>
-#include <filament/Material.h>
-#include <filament/MaterialInstance.h>
-#include <utils/Entity.h>
+#include "gamedriver/BaseLibs.h"
 
 class Cube
 {

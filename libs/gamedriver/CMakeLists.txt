@@ -32,9 +32,13 @@ set(PUBLIC_HDRS
         include/gamedriver/View.h
 
         include/gamedriver/Automation.h
+
+        include/gamedriver/Overdraw.h
+        include/gamedriver/Ground.h
 )
 
 set(SRCS
+        src/BaseLibs.cpp
         src/Cube.cpp
         src/GameDriver.cpp
         src/IBL.cpp
@@ -51,6 +55,9 @@ set(SRCS
         src/Resource.cpp
 
         src/Automation.cpp
+
+        src/Overdraw.cpp
+        src/Ground.cpp
 )
 
 set(LIBS

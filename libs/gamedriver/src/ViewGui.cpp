@@ -4,18 +4,7 @@
 #include "gamedriver/Automation.h"
 
 
-filament::math::mat4f fitIntoUnitCube(const filament::Aabb& bounds, float zoffset)
-{
-    filament::math::float3 minpt = bounds.min;
-    filament::math::float3 maxpt = bounds.max;
-    float                  maxExtent;
-    maxExtent                          = std::max(maxpt.x - minpt.x, maxpt.y - minpt.y);
-    maxExtent                          = std::max(maxExtent, maxpt.z - minpt.z);
-    float                  scaleFactor = 2.0f / maxExtent;
-    filament::math::float3 center      = (minpt + maxpt) / 2.0f;
-    center.z += zoffset / scaleFactor;
-    return filament::math::mat4f::scaling(filament::math::float3(scaleFactor)) * filament::math::mat4f::translation(-center);
-}
+
 
 static void computeRangePlot(filament::viewer::Settings& settings, float* rangePlot)
 {
@@ -380,34 +369,6 @@ void GameDriver::removeAsset()
     }
 }
 
-UTILS_NOINLINE
-static bool notequal(float a, float b) noexcept {
-    return a != b;
-}
-
-// we do this to circumvent -ffast-math ignoring NaNs
-static bool is_not_a_number(float v) noexcept {
-    return notequal(v, v);
-}
-
-void GameDriver::setIndirectLight(filament::IndirectLight*      ibl,
-        filament::math::float3 const* sh3) {
-    using namespace filament::math;
-    gSettings.view.fog.color = sh3[0];
-    mIndirectLight = ibl;
-    if (ibl) {
-        float3 const d = filament::IndirectLight::getDirectionEstimate(sh3);
-        float4 const c = filament::IndirectLight::getColorEstimate(sh3, d);
-        bool const dIsValid = std::none_of(std::begin(d.v), std::end(d.v), is_not_a_number);
-        bool const cIsValid = std::none_of(std::begin(c.v), std::end(c.v), is_not_a_number);
-        if (dIsValid && cIsValid) {
-            gSettings.lighting.sunlightDirection = d;
-            gSettings.lighting.sunlightColor = c.rgb;
-            gSettings.lighting.sunlightIntensity = c[3] * ibl->getIntensity();
-        }
-    }
-}
-
 void GameDriver::updateRootTransform()
 {
     if (isRemoteMode()) {
@@ -485,7 +446,6 @@ void GameDriver::applyAnimation(double currentTime, filament::gltfio::FilamentIn
 
 void GameDriver::renderUserInterface(float timeStepInSeconds, filament::View* guiView, float pixelRatio)
 {
-
     const auto size = guiView->getViewport();
     mImGuiHelper->setDisplaySize(size.width, size.height, 1, 1);
 
@@ -702,7 +662,7 @@ void GameDriver::customUI()
         ImGui::SliderFloat("Ki", debug.getPropertyAddress<float>("d.view.pid.ki"), 0, 10);
         ImGui::SliderFloat("Kd", debug.getPropertyAddress<float>("d.view.pid.kd"), 0, 10);
 #endif
-        const auto overdrawVisibilityBit = (1u << GameDriver::Overdraw::OVERDRAW_VISIBILITY_LAYER);
+        const auto overdrawVisibilityBit = (1u << OverdrawVisualizer::OVERDRAW_VISIBILITY_LAYER);
         bool       visualizeOverdraw     = view->getVisibleLayers() & overdrawVisibilityBit;
         // TODO: enable after stencil buffer supported is added for Vulkan.
         const bool overdrawDisabled = mRenderEngine->getBackend() == filament::backend::Backend::VULKAN;
@@ -711,7 +671,7 @@ void GameDriver::customUI()
                         &visualizeOverdraw);
         ImGui::EndDisabled();
         view->setVisibleLayers(overdrawVisibilityBit,
-                               (uint8_t)visualizeOverdraw << GameDriver::Overdraw::OVERDRAW_VISIBILITY_LAYER);
+                               (uint8_t)visualizeOverdraw << OverdrawVisualizer::OVERDRAW_VISIBILITY_LAYER);
         view->setStencilBufferEnabled(visualizeOverdraw);
     }
 

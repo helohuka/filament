@@ -11,6 +11,7 @@ Automation::Automation()
 Automation::~Automation()
 {
 
+    //mAutomationEngine->terminate();
 }
 
 void Automation::setup()
