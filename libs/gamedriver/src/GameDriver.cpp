@@ -25,6 +25,164 @@ GameDriver::~GameDriver() {
     SDL_Quit();
 }
 
+void GameDriver::configureCamerasForWindow()
+{
+    auto                         mWindowSize = mMainWindow->getWindowSize();
+    const filament::math::float3 at(0, 0, -4);
+    const double                 ratio = double(mWindowSize.y) / double(mWindowSize.x);
+
+    const bool splitview = mViews.size() > 2;
+
+    // To trigger a floating-point exception, users could shrink the window to be smaller than
+    // the sidebar. To prevent this we simply clamp the width of the main viewport.
+    const uint32_t mainWidth = splitview ? mWindowSize.x : std::max(1, (int)mWindowSize.x);
+
+    double near = 0.1;
+    double far  = 100;
+    mMainCamera->setLensProjection(mCameraFocalLength, double(mainWidth) / mWindowSize.y, near, far);
+    mDebugCamera->setProjection(45.0, double(mainWidth) / mWindowSize.y, 0.0625, 4096, filament::Camera::Fov::VERTICAL);
+
+    // We're in split view when there are more views than just the Main and UI views.
+    if (splitview)
+    {
+        uint32_t vpw = mainWidth / 2;
+        uint32_t vph = mWindowSize.y / 2;
+        mMainView->setViewport({0, 0, vpw, vph});
+        mDepthView->setViewport({int32_t(vpw), 0, vpw, vph});
+        mGodView->setViewport({int32_t(vpw), int32_t(vph), vpw, mWindowSize.y - vph});
+        mOrthoView->setViewport({0, int32_t(vph), vpw, mWindowSize.y - vph});
+    }
+    else
+    {
+        mMainView->setViewport({0, 0, (uint32_t)mainWidth, (uint32_t)mWindowSize.y});
+    }
+    mUiView->setViewport({0, 0, (uint32_t)mWindowSize.x, (uint32_t)mWindowSize.y});
+
+
+    {
+        auto              view   = mMainView->getView();
+        filament::Camera& camera = view->getCamera();
+        if (&camera == mMainCamera)
+        {
+            // Don't adjust the aspect ratio of the main camera, this is done inside of
+            // GameDriver.cpp
+            return;
+        }
+        const filament::Viewport& vp          = view->getViewport();
+        double                    aspectRatio = (double)vp.width / vp.height;
+        camera.setScaling({1.0 / aspectRatio, 1.0});
+    }
+}
+
+
+void GameDriver::onMouseDown(int button, ssize_t x, ssize_t y)
+{
+    mMainWindow->fixupCoordinatesForHdpi(x, y);
+    y = mMainWindow->getDrawableSize().y - y;
+    for (auto const& view : mViews)
+    {
+        if (view->intersects(x, y))
+        {
+            mMouseEventTarget = view.get();
+            view->mouseDown(button, x, y);
+            break;
+        }
+    }
+}
+
+void GameDriver::onMouseWheel(ssize_t x)
+{
+    if (mMouseEventTarget)
+    {
+        mMouseEventTarget->mouseWheel(x);
+    }
+    else
+    {
+        for (auto const& view : mViews)
+        {
+            if (view->intersects(mLastX, mLastY))
+            {
+                view->mouseWheel(x);
+                break;
+            }
+        }
+    }
+}
+
+void GameDriver::onMouseUp(ssize_t x, ssize_t y)
+{
+    mMainWindow->fixupCoordinatesForHdpi(x, y);
+    if (mMouseEventTarget)
+    {
+        y = mMainWindow->getDrawableSize().y - y;
+        mMouseEventTarget->mouseUp(x, y);
+        mMouseEventTarget = nullptr;
+    }
+}
+
+void GameDriver::onMouseMoved(ssize_t x, ssize_t y)
+{
+    mMainWindow->fixupCoordinatesForHdpi(x, y);
+    y = mMainWindow->getDrawableSize().y - y;
+    if (mMouseEventTarget)
+    {
+        mMouseEventTarget->mouseMoved(x, y);
+    }
+    mLastX = x;
+    mLastY = y;
+}
+
+void GameDriver::onKeyDown(SDL_Scancode key)
+{
+    auto& eventTarget = mKeyEventTarget[key];
+
+    // keyDown events can be sent multiple times per key (for key repeat)
+    // If this key is already down, do nothing.
+    if (eventTarget)
+    {
+        return;
+    }
+
+    // Decide which view will get this key's corresponding keyUp event.
+    // If we're currently in a mouse grap session, it should be the mouse grab's target view.
+    // Otherwise, it should be whichever view we're currently hovering over.
+    CView* targetView = nullptr;
+    if (mMouseEventTarget)
+    {
+        targetView = mMouseEventTarget;
+    }
+    else
+    {
+        for (auto const& view : mViews)
+        {
+            if (view->intersects(mLastX, mLastY))
+            {
+                targetView = view.get();
+                break;
+            }
+        }
+    }
+
+    if (targetView)
+    {
+        targetView->keyDown(key);
+        eventTarget = targetView;
+    }
+}
+
+void GameDriver::onKeyUp(SDL_Scancode key)
+{
+    auto& eventTarget = mKeyEventTarget[key];
+    if (!eventTarget)
+    {
+        return;
+    }
+    eventTarget->keyUp(key);
+    eventTarget = nullptr;
+}
+
+
+
 void GameDriver::initialize()
 {
     static const char* DEFAULT_IBL = "assets/ibl/lightroom_14b";
@@ -46,6 +204,61 @@ void GameDriver::initialize()
     mMainWindow = std::make_unique<Window>(mRenderEngine);
 
     mMainWindow->setup();
+
+    {
+        utils::EntityManager& em = utils::EntityManager::get();
+        em.create(3, mCameraEntities);
+        mCameras[0] = mMainCamera = mRenderEngine->createCamera(mCameraEntities[0]);
+        mCameras[1] = mDebugCamera = mRenderEngine->createCamera(mCameraEntities[1]);
+        mCameras[2] = mOrthoCamera = mRenderEngine->createCamera(mCameraEntities[2]);
+
+        // set exposure
+        for (auto camera : mCameras)
+        {
+            camera->setExposure(16.0f, 1 / 125.0f, 100.0f);
+        }
+
+        // create views
+        mViews.emplace_back(mMainView = new CView(*mRenderEngine, "Main View"));
+        if (mIsSplitView)
+        {
+            mViews.emplace_back(mDepthView = new CView(*mRenderEngine, "Depth View"));
+            mViews.emplace_back(mGodView = new CView(*mRenderEngine, "God View"));
+            mViews.emplace_back(mOrthoView = new CView(*mRenderEngine, "Shadow View"));
+        }
+        mViews.emplace_back(mUiView = new CView(*mRenderEngine, "UI View"));
+
+        // set-up the camera manipulators
+        mMainCameraMan = CameraManipulator::Builder()
+                             .targetPosition(0, 0, -4)
+                             .flightMoveDamping(15.0)
+                             .build(gConfigure.cameraMode);
+        mDebugCameraMan = CameraManipulator::Builder()
+                              .targetPosition(0, 0, -4)
+                              .flightMoveDamping(15.0)
+                              .build(gConfigure.cameraMode);
+
+        mMainView->setCamera(mMainCamera);
+        mMainView->setCameraManipulator(mMainCameraMan);
+        if (mIsSplitView)
+        {
+            // Depth view always uses the main camera
+            mDepthView->setCamera(mMainCamera);
+            mDepthView->setCameraManipulator(mMainCameraMan);
+
+            // The god view uses the main camera for culling, but the debug camera for viewing
+            mGodView->setCamera(mMainCamera);
+            mGodView->setGodCamera(mDebugCamera);
+            mGodView->setCameraManipulator(mDebugCameraMan);
+
+            // Ortho view obviously uses an ortho camera
+            mOrthoView->setCamera((filament::Camera*)mMainView->getView()->getDirectionalLightCamera());
+        }
+
+        configureCamerasForWindow();
+
+        mMainCamera->lookAt({4, 0, -4}, {0, 0, -4}, {0, 1, 0});
+    }
 
 
     mDepthMaterial = Material::Builder()
@@ -102,6 +315,17 @@ void GameDriver::release()
 
     mMainWindow->cleanup();
 
+    mViews.clear();
+    utils::EntityManager& em = utils::EntityManager::get();
+    for (auto e : mCameraEntities)
+    {
+        mRenderEngine->destroyCameraComponent(e);
+        em.destroy(e);
+    }
+
+    delete mMainCameraMan;
+    delete mDebugCameraMan;
+
     mIBL.reset();
     mRenderEngine->destroy(mDepthMI);
     mRenderEngine->destroy(mDepthMaterial);
@@ -126,7 +350,7 @@ void GameDriver::mainLoop()
     std::unique_ptr<Cube> lightmapCube(new Cube(*mRenderEngine, mTransparentMaterial, {0, 1, 0}, false));
     mScene = mRenderEngine->createScene();
 
-    mMainWindow->getMainView()->getView()->setVisibleLayers(0x4, 0x4);
+    mMainView->getView()->setVisibleLayers(0x4, 0x4);
     if (gConfigure.splitView)
     {
         auto& rcm = mRenderEngine->getRenderableManager();
@@ -144,23 +368,23 @@ void GameDriver::mainLoop()
         mScene->addEntity(lightmapCube->getWireFrameRenderable());
         mScene->addEntity(lightmapCube->getSolidRenderable());
 
-        mMainWindow->getDepthView()->getView()->setVisibleLayers(0x4, 0x4);
-        mMainWindow->getGodView()->getView()->setVisibleLayers(0x6, 0x6);
-        mMainWindow->getOrthoView()->getView()->setVisibleLayers(0x6, 0x6);
+        mDepthView->getView()->setVisibleLayers(0x4, 0x4);
+        mGodView->getView()->setVisibleLayers(0x6, 0x6);
+        mOrthoView->getView()->setVisibleLayers(0x6, 0x6);
 
         // only preserve the color buffer for additional views; depth and stencil can be discarded.
-        mMainWindow->getDepthView()->getView()->setShadowingEnabled(false);
-        mMainWindow->getGodView()->getView()->setShadowingEnabled(false);
-        mMainWindow->getOrthoView()->getView()->setShadowingEnabled(false);
+        mDepthView->getView()->setShadowingEnabled(false);
+        mGodView->getView()->setShadowingEnabled(false);
+        mOrthoView->getView()->setShadowingEnabled(false);
     }
 
     loadDirt();
     loadIBL();
    
 
-    for (auto& view : mMainWindow->getViews())
+    for (auto& view : mViews)
     {
-        if (view.get() != mMainWindow->getUiView())
+        if (view.get() != mUiView)
         {
             view->getView()->setScene(mScene);
         }
@@ -172,8 +396,11 @@ void GameDriver::mainLoop()
 
     if (imguiCallback)
     {
-        mImGuiHelper                 = std::make_unique<ImGuiHelper>(mRenderEngine, mMainWindow->getUiView()->getView(),
+        
+        mImGuiHelper                 = std::make_unique<ImGuiHelper>(mRenderEngine, mUiView->getView(),
                                                      Resource::get().getRootPath() + "assets/fonts/Roboto-Medium.ttf");
+
+
         ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
         ImGuiIO& io  = ImGui::GetIO();
 #ifdef WIN32
@@ -211,17 +438,17 @@ void GameDriver::mainLoop()
 
     bool mousePressed[3] = {false};
 
-    float cameraFocalLength = mMainWindow->getCameraFocalLength();
+    float cameraFocalLength = mCameraFocalLength;
 
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
     while (!mClosed)
     {
 
-        if (mMainWindow->getCameraFocalLength() != cameraFocalLength)
+        if (mCameraFocalLength != cameraFocalLength)
         {
-            mMainWindow->configureCamerasForWindow();
-            cameraFocalLength = mMainWindow->getCameraFocalLength();
+            configureCamerasForWindow();
+            cameraFocalLength = mCameraFocalLength;
         }
 
         if (!UTILS_HAS_THREADING)
@@ -310,32 +537,33 @@ void GameDriver::mainLoop()
                         *captureFrame = true;
                     }
 #endif
-                    mMainWindow->onKeyDown(event.key.keysym.scancode);
+                    onKeyDown(event.key.keysym.scancode);
                     break;
                 case SDL_KEYUP:
-                    mMainWindow->onKeyUp(event.key.keysym.scancode);
+                    onKeyUp(event.key.keysym.scancode);
                     break;
                 case SDL_MOUSEWHEEL:
                     if (!io || !io->WantCaptureMouse)
-                        mMainWindow->onMouseWheel(event.wheel.y);
+                       onMouseWheel(event.wheel.y);
                     break;
                 case SDL_MOUSEBUTTONDOWN:
                     if (!io || !io->WantCaptureMouse)
-                        mMainWindow->onMouseDown(event.button.button, event.button.x, event.button.y);
+                        onMouseDown(event.button.button, event.button.x, event.button.y);
                     break;
                 case SDL_MOUSEBUTTONUP:
                     if (!io || !io->WantCaptureMouse)
-                        mMainWindow->onMouseUp(event.button.x, event.button.y);
+                       onMouseUp(event.button.x, event.button.y);
                     break;
                 case SDL_MOUSEMOTION:
                     if (!io || !io->WantCaptureMouse)
-                        mMainWindow->onMouseMoved(event.motion.x, event.motion.y);
+                        onMouseMoved(event.motion.x, event.motion.y);
                     break;
                 case SDL_WINDOWEVENT:
                     switch (event.window.event)
                     {
                         case SDL_WINDOWEVENT_RESIZED:
                             mMainWindow->onResize();
+                            configureCamerasForWindow();
                             break;
                         default:
                             break;
@@ -366,7 +594,6 @@ void GameDriver::mainLoop()
         {
 
             // Inform ImGui of the current window size in case it was resized.
-
             int windowWidth, windowHeight;
             int displayWidth, displayHeight;
             SDL_GetWindowSize(mMainWindow->getWindowHandle(), &windowWidth, &windowHeight);
@@ -399,26 +626,16 @@ void GameDriver::mainLoop()
         }
 
         // Update the camera manipulators for each view.
-        for (auto const& view : mMainWindow->getViews())
+
+         for (auto const& view : mViews)
         {
-            auto* cm = view->getCameraManipulator();
-            if (cm)
-            {
-                cm->update(timeStep);
-            }
+            view->tick(timeStep);
         }
 
-        // Update the position and orientation of the two cameras.
-        filament::math::float3 eye, center, up;
-        mMainWindow->getMainCameraMan()->getLookAt(&eye, &center, &up);
-        mMainWindow->getMainCamera()->lookAt(eye, center, up);
-        mMainWindow->getDebugCameraMan()->getLookAt(&eye, &center, &up);
-        mMainWindow->getDebugCamera()->lookAt(eye, center, up);
-
         // Update the cube distortion matrix used for frustum visualization.
-        const Camera* lightmapCamera = mMainWindow->getMainView()->getView()->getDirectionalLightCamera();
+        const Camera* lightmapCamera = mMainView->getView()->getDirectionalLightCamera();
         lightmapCube->mapFrustum(*mRenderEngine, lightmapCamera);
-        cameraCube->mapFrustum(*mRenderEngine, mMainWindow->getMainCamera());
+        cameraCube->mapFrustum(*mRenderEngine, mMainCamera);
 
         // Delay rendering for roughly one monitor refresh interval
         // TODO: Use SDL_GL_SetSwapInterval for proper vsync
@@ -430,7 +647,7 @@ void GameDriver::mainLoop()
                         16;
         SDL_Delay(refreshIntervalMS);
 
-        preRender(mMainWindow->getMainView()->getView(), mScene, mMainWindow->getRenderer());
+        preRender(mMainView->getView(), mScene, mMainWindow->getRenderer());
 
         if (mMainWindow->getRenderer()->beginFrame(mMainWindow->getSwapChain()))
         {
@@ -438,12 +655,12 @@ void GameDriver::mainLoop()
             {
                 mMainWindow->getRenderer()->render(offscreenView);
             }
-            for (auto const& view : mMainWindow->getViews())
+            for (auto const& view : mViews)
             {
                 mMainWindow->getRenderer()->render(view->getView());
             }
 
-            postRender(mMainWindow->getMainView()->getView(), mScene, mMainWindow->getRenderer());
+            postRender(mMainView->getView(), mScene, mMainWindow->getRenderer());
 
             mMainWindow->getRenderer()->endFrame();
         }
@@ -493,11 +710,9 @@ void GameDriver::loadIBL()
         }
     }
 
-
     mIBL->getSkybox()->setLayerMask(0x7, 0x4);
     mScene->setSkybox(mIBL->getSkybox());
     mScene->setIndirectLight(mIBL->getIndirectLight());
-
 
     gSettings.view.fog.color = mIBL->getSphericalHarmonics()[0];
     mIndirectLight           = mIBL->getIndirectLight();
@@ -635,10 +850,10 @@ void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
 
     // Note that this focal length might be different from the slider value because the
     // automation engine applies Camera::computeEffectiveFocalLength when DoF is enabled.
-    mMainWindow->getCameraFocalLength() = viewerOptions.cameraFocalLength;
+    mCameraFocalLength = viewerOptions.cameraFocalLength;
 
     const size_t cameraCount = mAsset->getCameraEntityCount();
-    view->setCamera(mMainWindow->getMainCamera());
+    view->setCamera(mMainCamera);
 
     const int currentCamera = getCurrentCamera();
     if (currentCamera > 0 && currentCamera <= cameraCount)
@@ -723,7 +938,7 @@ void GameDriver::setup()
     {
         mScene->addEntity(mSunlight);
     }
-    mMainWindow->getMainView()->getView()->setAmbientOcclusionOptions({.upsampling = View::QualityLevel::HIGH});
+    mMainView->getView()->setAmbientOcclusionOptions({.upsampling = View::QualityLevel::HIGH});
 
     gSettings.viewer.autoScaleEnabled = !mActualSize;
 

@@ -55,6 +55,8 @@ public:
     void setGodCamera(filament::Camera* camera);
     bool intersects(ssize_t x, ssize_t y);
 
+
+    void tick(double dt);
     void mouseDown(int button, ssize_t x, ssize_t y);
     void mouseUp(ssize_t x, ssize_t y);
     void mouseMoved(ssize_t x, ssize_t y);
@@ -77,6 +79,8 @@ private:
     filament::Engine&  mRenderEngine;
     filament::Viewport mViewport;
     filament::View*    mView               = nullptr;
+    filament::Camera*  mCamera            = nullptr;
+    filament::Camera*  mGodCamera          = nullptr;
     CameraManipulator* mCameraManipulator = nullptr;
     std::string        mName;
 };

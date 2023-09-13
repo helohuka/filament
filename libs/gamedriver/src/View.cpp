@@ -24,6 +24,26 @@ void CView::setViewport(filament::Viewport const& viewport)
     }
 }
 
+void CView::tick(double dt)
+{
+    filament::math::float3 eye, center, up;
+    if (mCameraManipulator)
+    {
+        mCameraManipulator->update(dt);
+        mCameraManipulator->getLookAt(&eye, &center, &up);
+    }
+
+    if (mCamera)
+    {
+        mCamera->lookAt(eye,center,up);
+    }
+
+    if (mGodCamera)
+    {
+        mGodCamera->lookAt(eye, center, up);
+    }
+}
+
 void CView::mouseDown(int button, ssize_t x, ssize_t y) {
     if (mCameraManipulator) {
         mCameraManipulator->grabBegin(x, y, button == 3);
@@ -107,11 +127,13 @@ void CView::setCameraManipulator(CameraManipulator* cm) {
 
 void CView::setCamera(filament::Camera* camera)
 {
+    mCamera = camera;
     mView->setCamera(camera);
 }
 
 void CView::setGodCamera(filament::Camera* camera)
 {
+    mGodCamera = camera;
     mView->setDebugCamera(camera);
 }
 

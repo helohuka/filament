@@ -40,41 +40,16 @@ public:
     filament::Renderer*          getRenderer() { return mRenderer; }
     filament::SwapChain*         getSwapChain() { return mSwapChain; }
     bool                         getIsResizeable() { return mIsResizeable; }
-    bool                         getIsSplitView() { return mIsSplitView; }
     filament::math::vec2<int>&   getWindowSize() { return mWindowSize; }
     filament::math::vec2<int>&   getDrawableSize() { return mDrawableSize; }
     filament::math::vec2<float>& getDpiScale() { return mDpiScale; }
     std::string&                 getWindowTitle() { return mWindowTitle; }
-    float  &                      getCameraFocalLength() { return mCameraFocalLength; }
-    CameraManipulator*           getMainCameraMan() { return mMainCameraMan; }
-    CameraManipulator*           getDebugCameraMan() { return mDebugCameraMan; }
-    //utils::Entity                       getCameraEntities() { return mCameraEntities; }
-    //filament::Camera*                   getCameras() { return mCameras[3]; }
-    filament::Camera*                   getMainCamera() { return mMainCamera; }
-    filament::Camera*                   getDebugCamera() { return mDebugCamera; }
-    filament::Camera*                   getOrthoCamera() { return mOrthoCamera; }
-    std::vector<std::unique_ptr<CView>>& getViews() { return mViews; }
-    CView*                              getMainView() { return mMainView; }
-    CView*                              getUiView() { return mUiView; }
-    CView*                              getDepthView() { return mDepthView; }
-    CView*                              getGodView() { return mGodView; }
-    CView*                              getOrthoView() { return mOrthoView; }
-
 
     void onResize();
-    void onMouseDown(int button, ssize_t x, ssize_t y);
-    void onMouseUp(ssize_t x, ssize_t y);
-    void onMouseMoved(ssize_t x, ssize_t y);
-    void onMouseWheel(ssize_t x);
-    void onKeyDown(SDL_Scancode scancode);
-    void onKeyUp(SDL_Scancode scancode);
-
-    void configureCamerasForWindow();
 
 private:
     void updateWindowInfo();
     
-
 private:
     filament::Engine* mRenderEngine;
 
@@ -86,34 +61,10 @@ private:
     filament::SwapChain* mSwapChain = nullptr;
 
     bool                        mIsResizeable = true;
-    bool                        mIsSplitView  = false;
+    
     filament::math::vec2<int>   mWindowSize;
     filament::math::vec2<int>   mDrawableSize;
     filament::math::vec2<float> mDpiScale;
     std::string                 mWindowTitle; //<
-
-    float              mCameraFocalLength = 28.0f;
-    CameraManipulator* mMainCameraMan;
-    CameraManipulator* mDebugCameraMan;
-
-    utils::Entity     mCameraEntities[3];
-    filament::Camera* mCameras[3] = {nullptr};
-    filament::Camera* mMainCamera;
-    filament::Camera* mDebugCamera;
-    filament::Camera* mOrthoCamera;
-
-    std::vector<std::unique_ptr<CView>> mViews;
-    CView*                              mMainView;
-    CView*                              mUiView;
-    CView*                              mDepthView;
-    CView*                              mGodView;
-    CView*                              mOrthoView;
-
-    ssize_t mLastX = 0;
-    ssize_t mLastY = 0;
-
-    CView* mMouseEventTarget = nullptr;
-    // Keep track of which view should receive a key's keyUp event.
-    std::unordered_map<SDL_Scancode, CView*> mKeyEventTarget;
 };
 #endif // __WINDOW_H__

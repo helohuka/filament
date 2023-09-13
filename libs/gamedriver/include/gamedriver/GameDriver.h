@@ -82,6 +82,16 @@ private:
     void loadIBL();
     void loadDirt();
 
+  
+    void onMouseDown(int button, ssize_t x, ssize_t y);
+    void onMouseUp(ssize_t x, ssize_t y);
+    void onMouseMoved(ssize_t x, ssize_t y);
+    void onMouseWheel(ssize_t x);
+    void onKeyDown(SDL_Scancode scancode);
+    void onKeyUp(SDL_Scancode scancode);
+
+    void configureCamerasForWindow();
+
     std::unique_ptr<Window>               mMainWindow;
     filament::Engine::Backend             mBackend      = filament::Engine::Backend::OPENGL;
     filament::backend::FeatureLevel       mFeatureLevel = filament::backend::FeatureLevel::FEATURE_LEVEL_3;
@@ -103,6 +113,32 @@ private:
 
     //////////////////////////////////////////////////////////////////////////
 public:
+    bool               mIsSplitView       = false;
+    float              mCameraFocalLength = 28.0f;
+    CameraManipulator* mMainCameraMan;
+    CameraManipulator* mDebugCameraMan;
+
+    utils::Entity     mCameraEntities[3];
+    filament::Camera* mCameras[3] = {nullptr};
+    filament::Camera* mMainCamera;
+    filament::Camera* mDebugCamera;
+    filament::Camera* mOrthoCamera;
+
+    std::vector<std::unique_ptr<CView>> mViews;
+    CView*                              mMainView;
+    CView*                              mUiView;
+    CView*                              mDepthView;
+    CView*                              mGodView;
+    CView*                              mOrthoView;
+
+    ssize_t mLastX = 0;
+    ssize_t mLastY = 0;
+
+    CView* mMouseEventTarget = nullptr;
+    // Keep track of which view should receive a key's keyUp event.
+    std::unordered_map<SDL_Scancode, CView*> mKeyEventTarget;
+
+    //////////////////////////////////////////////////////////////////////////
     filament::gltfio::AssetLoader*      mAssetLoader;
     filament::gltfio::FilamentAsset*    mAsset    = nullptr;
     filament::gltfio::FilamentInstance* mInstance = nullptr;

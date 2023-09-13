@@ -479,7 +479,7 @@ void GameDriver::customUI()
 {
 
     auto& automation = Automation::get().getAutomationEngine();
-    auto  view       = mMainWindow->getMainView()->getView();
+    auto  view       = mMainView->getView();
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
     {
         ImVec2 pos = ImGui::GetMousePos();
@@ -1221,13 +1221,13 @@ void GameDriver::updateUserInterface()
             ImGui::ListBox("Cameras", &mCurrentCamera, cstrings.data(), cstrings.size());
         }
 
-        StereoscopicOptions stereoOptions = mMainWindow->getMainView()->getView()->getStereoscopicOptions();
+        StereoscopicOptions stereoOptions = mMainView->getView()->getStereoscopicOptions();
         ImGui::Checkbox("Instanced stereo", &stereoOptions.enabled);
         if (stereoOptions.enabled)
         {
             ImGui::SliderFloat("Ocular distance", &mOcularDistance, 0.0f, 10.0f);
         }
-        mMainWindow->getMainView()->getView()->setStereoscopicOptions(stereoOptions);
+        mMainView->getView()->setStereoscopicOptions(stereoOptions);
 
         ImGui::Unindent();
     }
@@ -1236,9 +1236,9 @@ void GameDriver::updateUserInterface()
 
     // At this point, all View settings have been modified,
     //  so we can now push them into the Filament View.
-    applySettings(mRenderEngine, gSettings.view, mMainWindow->getMainView()->getView());
+    applySettings(mRenderEngine, gSettings.view, mMainView->getView());
     applySettings(mRenderEngine, gSettings.lighting, mIndirectLight, mSunlight,
-                  lm.getEntities(), lm.getComponentCount(), &lm, mScene, mMainWindow->getMainView()->getView());
+                  lm.getEntities(), lm.getComponentCount(), &lm, mScene, mMainView->getView());
 
     // TODO(prideout): add support for hierarchy, animation and variant selection in remote mode. To
     // support these features, we will need to send a message (list of strings) from DebugServer to
@@ -1333,13 +1333,6 @@ void GameDriver::updateUserInterface()
 
     ImGui::End();
 
-    {
-        ImGuiIO& io = ImGui::GetIO();
-        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-        {
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
-        }
-    }
+   
 }
 

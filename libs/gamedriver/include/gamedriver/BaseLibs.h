@@ -67,13 +67,7 @@
 #include <filament/DebugRegistry.h>
 #include <filament/IndirectLight.h>
 #include <filament/View.h>
-
-
-
-#include <imgui.h>
-#include <filagui/ImGuiExtensions.h>
-
-
+#include <filament/TextureSampler.h>
 #ifndef NDEBUG
 #include <filament/DebugRegistry.h>
 #endif

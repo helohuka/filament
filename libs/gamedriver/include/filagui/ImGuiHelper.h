@@ -18,20 +18,7 @@
 
 
 
-#include <vector>
-#include <functional>
-
-#include <filament/Engine.h>
-#include <filament/IndexBuffer.h>
-#include <filament/Material.h>
-#include <filament/MaterialInstance.h>
-#include <filament/Texture.h>
-#include <filament/TextureSampler.h>
-#include <filament/VertexBuffer.h>
-#include <filament/View.h>
-
-#include <utils/Entity.h>
-#include <utils/Path.h>
+#include "gamedriver/BaseLibs.h"
 
 struct ImDrawData;
 struct ImGuiIO;
