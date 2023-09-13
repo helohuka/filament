@@ -13,7 +13,6 @@
 #include "generated/resources/gamedriver.h"
 
 using namespace filament;
-using namespace filagui;
 using namespace filament::math;
 using namespace utils;
 
@@ -169,7 +168,7 @@ void GameDriver::mainLoop()
 
     setup();
 
-    ImGuiHelper::Callback imguiCallback = std::bind(&GameDriver::gui, this, mRenderEngine, std::placeholders::_2);
+    ImGuiHelper::Callback imguiCallback = std::bind(&GameDriver::updateUserInterface, this);
 
     if (imguiCallback)
     {
@@ -212,7 +211,6 @@ void GameDriver::mainLoop()
 
     bool mousePressed[3] = {false};
 
-    int   sidebarWidth      = mMainWindow->getSidebarWidth();
     float cameraFocalLength = mMainWindow->getCameraFocalLength();
 
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
@@ -220,10 +218,9 @@ void GameDriver::mainLoop()
     while (!mClosed)
     {
 
-        if (mMainWindow->getSidebarWidth() != sidebarWidth || mMainWindow->getCameraFocalLength() != cameraFocalLength)
+        if (mMainWindow->getCameraFocalLength() != cameraFocalLength)
         {
             mMainWindow->configureCamerasForWindow();
-            sidebarWidth      = mMainWindow->getSidebarWidth();
             cameraFocalLength = mMainWindow->getCameraFocalLength();
         }
 
@@ -376,7 +373,7 @@ void GameDriver::mainLoop()
             SDL_GL_GetDrawableSize(mMainWindow->getWindowHandle(), &displayWidth, &displayHeight);
             mImGuiHelper->setDisplaySize(windowWidth, windowHeight,
                                          windowWidth > 0 ? ((float)displayWidth / windowWidth) : 0,
-                                         displayHeight > 0 ? ((float)displayHeight / windowHeight) : 0);
+                                         windowHeight > 0 ? ((float)displayHeight / windowHeight) : 0);
 
             
             // Setup mouse inputs (we already got mouse wheel, keyboard keys & characters
@@ -623,12 +620,8 @@ void GameDriver::loadResources(utils::Path filename)
         instances[mi]->setStencilWrite(true);
         instances[mi]->setStencilOpDepthStencilPass(filament::MaterialInstance::StencilOperation::INCR);
     }
-
-    
+ 
 }
-
-
-
 
 void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
 {
@@ -703,12 +696,6 @@ void GameDriver::animate(double now)
     populateScene();
 
     applyAnimation(now);
-}
-
-void GameDriver::gui(filament::Engine* ,filament::View* view)
-{
-    updateUserInterface();
-
 }
 
 void GameDriver::setup()

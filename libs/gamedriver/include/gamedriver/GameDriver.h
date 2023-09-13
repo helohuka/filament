@@ -63,8 +63,6 @@ private:
 
     void animate(double now);
 
-    void gui(filament::Engine*, filament::View* view);
-
 public:
     void initialize();
     void release();
@@ -99,7 +97,7 @@ private:
     filament::Material const*             mShadowMaterial      = nullptr;
     filament::Material const*             mOverdrawMaterial    = nullptr;
     filament::MaterialInstance*           mDepthMI             = nullptr;
-    std::unique_ptr<filagui::ImGuiHelper> mImGuiHelper;
+    std::unique_ptr<ImGuiHelper> mImGuiHelper;
     size_t                                mSkippedFrames = 0;
     std::vector<filament::View*>          mOffscreenViews;
 
@@ -141,8 +139,6 @@ private:
     void applyAnimation(double currentTime, filament::gltfio::FilamentInstance* instance = nullptr);
 
     void updateUserInterface();
-
-    void renderUserInterface(float timeStepInSeconds, filament::View* guiView, float pixelRatio);
 
     void mouseEvent(float mouseX, float mouseY, bool mouseButton, float mouseWheelY, bool control);
     void keyDownEvent(int keyCode);

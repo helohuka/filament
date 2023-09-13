@@ -35,6 +35,14 @@ set(PUBLIC_HDRS
 
         include/gamedriver/Overdraw.h
         include/gamedriver/Ground.h
+
+        include/gamedriver/AutomationEngine.h
+        include/gamedriver/AutomationSpec.h
+        include/gamedriver/Settings.h
+
+        include/filagui/ImGuiExtensions.h
+        include/filagui/ImGuiHelper.h
+        include/filagui/ImGuiMath.h
 )
 
 set(SRCS
@@ -58,12 +66,19 @@ set(SRCS
 
         src/Overdraw.cpp
         src/Ground.cpp
+
+        src/AutomationEngine.cpp
+        src/AutomationSpec.cpp
+        src/Settings.cpp
+        src/Settings_generated.cpp
+
+        src/ImGuiHelper.cpp
+        src/ImGuiExtensions.cpp
 )
 
 set(LIBS
         assimp
         camutils
-        filagui
         filamat
         filament
         filament-iblprefilter
@@ -76,7 +91,8 @@ set(LIBS
         stb
         utils
         gltfio
-        viewer
+        jsmn
+        #viewer
         uberarchive
         SDL2-static
         SDL2main
@@ -118,6 +134,7 @@ set(MATERIAL_SRCS
         materials/sandboxSubsurface.mat
         materials/sandboxUnlit.mat
         materials/texturedLit.mat
+        materials/uiBlit.mat
 )
 
 set(SCHEMA_SRCS

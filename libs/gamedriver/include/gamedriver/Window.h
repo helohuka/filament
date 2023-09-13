@@ -45,7 +45,6 @@ public:
     filament::math::vec2<int>&   getDrawableSize() { return mDrawableSize; }
     filament::math::vec2<float>& getDpiScale() { return mDpiScale; }
     std::string&                 getWindowTitle() { return mWindowTitle; }
-    int &                         getSidebarWidth() { return mSidebarWidth; }
     float  &                      getCameraFocalLength() { return mCameraFocalLength; }
     CameraManipulator*           getMainCameraMan() { return mMainCameraMan; }
     CameraManipulator*           getDebugCameraMan() { return mDebugCameraMan; }
@@ -93,7 +92,6 @@ private:
     filament::math::vec2<float> mDpiScale;
     std::string                 mWindowTitle; //<
 
-    int                mSidebarWidth      = 300;
     float              mCameraFocalLength = 28.0f;
     CameraManipulator* mMainCameraMan;
     CameraManipulator* mDebugCameraMan;

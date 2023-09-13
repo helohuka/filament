@@ -93,8 +93,8 @@
 
 #include <stb_image.h>
 #include <imgui.h>
-#include <filagui/ImGuiHelper.h>
-#include <filagui/ImGuiExtensions.h>
+#include "filagui/ImGuiHelper.h"
+#include "filagui/ImGuiExtensions.h"
 
 #include <gltfio/AssetLoader.h>
 #include <gltfio/FilamentAsset.h>
@@ -105,11 +105,11 @@
 
 #include "materials/uberarchive.h"
 
-#include <viewer/AutomationEngine.h>
-#include <viewer/AutomationSpec.h>
+#include "AutomationEngine.h"
+#include "AutomationSpec.h"
 
-#include <viewer/Settings.h>
-#include <viewer/ViewerGui.h>
+#include "Settings.h"
+//#include<viewer / ViewerGui.h>
 
 #include <flatbuffers/idl.h>
 #include <flatbuffers/flatbuffers.h>

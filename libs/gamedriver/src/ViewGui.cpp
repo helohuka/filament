@@ -1,10 +1,6 @@
 
 #include "gamedriver/GameDriver.h"
-
 #include "gamedriver/Automation.h"
-
-
-
 
 static void computeRangePlot(filament::viewer::Settings& settings, float* rangePlot)
 {
@@ -444,16 +440,6 @@ void GameDriver::applyAnimation(double currentTime, filament::gltfio::FilamentIn
     }
 }
 
-void GameDriver::renderUserInterface(float timeStepInSeconds, filament::View* guiView, float pixelRatio)
-{
-    const auto size = guiView->getViewport();
-    mImGuiHelper->setDisplaySize(size.width, size.height, 1, 1);
-
-    mImGuiHelper->render(timeStepInSeconds, [this](filament::Engine*, filament::View*) {
-        this->updateUserInterface();
-    });
-}
-
 void GameDriver::mouseEvent(float mouseX, float mouseY, bool mouseButton, float mouseWheelY,
         bool control) {
     if (mImGuiHelper) {
@@ -497,7 +483,6 @@ void GameDriver::customUI()
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
     {
         ImVec2 pos = ImGui::GetMousePos();
-        pos.x -= mMainWindow->getSidebarWidth();
         pos.x *= ImGui::GetIO().DisplayFramebufferScale.x;
         pos.y *= ImGui::GetIO().DisplayFramebufferScale.y;
         if (pos.x > 0)
@@ -698,35 +683,46 @@ void GameDriver::updateUserInterface()
     auto renderableTreeItem = [this, &rm](utils::Entity entity) {
         bool rvis = mScene->hasEntity(entity);
         ImGui::Checkbox("visible", &rvis);
-        if (rvis) {
+        if (rvis)
+        {
             mScene->addEntity(entity);
-        } else {
+        }
+        else
+        {
             mScene->remove(entity);
         }
-        auto instance = rm.getInstance(entity);
-        bool scaster = rm.isShadowCaster(instance);
+        auto instance  = rm.getInstance(entity);
+        bool scaster   = rm.isShadowCaster(instance);
         bool sreceiver = rm.isShadowReceiver(instance);
         ImGui::Checkbox("casts shadows", &scaster);
         rm.setCastShadows(instance, scaster);
         ImGui::Checkbox("receives shadows", &sreceiver);
         rm.setReceiveShadows(instance, sreceiver);
         auto numMorphTargets = rm.getMorphTargetCount(instance);
-        if (numMorphTargets > 0) {
+        if (numMorphTargets > 0)
+        {
             bool selected = entity == mCurrentMorphingEntity;
             ImGui::Checkbox("morphing", &selected);
-            if (selected) {
+            if (selected)
+            {
                 mCurrentMorphingEntity = entity;
                 mMorphWeights.resize(numMorphTargets, 0.0f);
-            } else {
+            }
+            else
+            {
                 mCurrentMorphingEntity = utils::Entity();
             }
         }
         size_t numPrims = rm.getPrimitiveCount(instance);
-        for (size_t prim = 0; prim < numPrims; ++prim) {
+        for (size_t prim = 0; prim < numPrims; ++prim)
+        {
             const char* mname = rm.getMaterialInstanceAt(instance, prim)->getName();
-            if (mname) {
+            if (mname)
+            {
                 ImGui::Text("prim %zu: material %s", prim, mname);
-            } else {
+            }
+            else
+            {
                 ImGui::Text("prim %zu: (unnamed material)", prim);
             }
         }
@@ -736,14 +732,17 @@ void GameDriver::updateUserInterface()
         bool lvis = mScene->hasEntity(entity);
         ImGui::Checkbox("visible", &lvis);
 
-        if (lvis) {
+        if (lvis)
+        {
             mScene->addEntity(entity);
-        } else {
+        }
+        else
+        {
             mScene->remove(entity);
         }
 
         auto instance = lm.getInstance(entity);
-        bool lcaster = lm.isShadowCaster(instance);
+        bool lcaster  = lm.isShadowCaster(instance);
         ImGui::Checkbox("shadow caster", &lcaster);
         lm.setShadowCaster(instance, lcaster);
     };
@@ -752,54 +751,59 @@ void GameDriver::updateUserInterface()
     std::function<void(utils::Entity)> treeNode;
 
     treeNode = [&](utils::Entity entity) {
-        auto tinstance = tm.getInstance(entity);
-        auto rinstance = rm.getInstance(entity);
-        auto linstance = lm.getInstance(entity);
+        auto     tinstance  = tm.getInstance(entity);
+        auto     rinstance  = rm.getInstance(entity);
+        auto     linstance  = lm.getInstance(entity);
         intptr_t treeNodeId = 1 + entity.getId();
 
-        const char* name = mAsset->getName(entity);
-        auto getLabel = [&name, &rinstance, &linstance]() {
-            if (name) {
+        const char* name     = mAsset->getName(entity);
+        auto        getLabel = [&name, &rinstance, &linstance]() {
+            if (name)
+            {
                 return name;
             }
-            if (rinstance) {
+            if (rinstance)
+            {
                 return "Mesh";
             }
-            if (linstance) {
+            if (linstance)
+            {
                 return "Light";
             }
             return "Node";
         };
         const char* label = getLabel();
 
-        ImGuiTreeNodeFlags flags = 0; // rinstance ? 0 : ImGuiTreeNodeFlags_DefaultOpen;
+        ImGuiTreeNodeFlags         flags = 0; // rinstance ? 0 : ImGuiTreeNodeFlags_DefaultOpen;
         std::vector<utils::Entity> children(tm.getChildCount(tinstance));
-        if (ImGui::TreeNodeEx((const void*) treeNodeId, flags, "%s", label)) {
-            if (rinstance) {
+        if (ImGui::TreeNodeEx((const void*)treeNodeId, flags, "%s", label))
+        {
+            if (rinstance)
+            {
                 renderableTreeItem(entity);
             }
-            if (linstance) {
+            if (linstance)
+            {
                 lightTreeItem(entity);
             }
             tm.getChildren(tinstance, children.data(), children.size());
-            for (auto ce : children) {
+            for (auto ce : children)
+            {
                 treeNode(ce);
             }
             ImGui::TreePop();
         }
     };
 
-    // Disable rounding and draw a fixed-height ImGui window that looks like a sidebar.
-    ImGui::GetStyle().WindowRounding = 0;
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
-
-    static bool               opt_fullscreen  = false;
+    static bool               opt_open        = true;
+    static bool*              p_open          = &opt_open;
+    static bool               opt_fullscreen  = true;
     static bool               opt_padding     = false;
     static ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_None;
 
     // We are using the ImGuiWindowFlags_NoDocking flag to make the parent window not dockable into,
     // because it would be confusing to have two docking targets within each others.
-    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDocking;
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
     if (opt_fullscreen)
     {
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -816,60 +820,115 @@ void GameDriver::updateUserInterface()
         dockspace_flags &= ~ImGuiDockNodeFlags_PassthruCentralNode;
     }
 
+    // When using ImGuiDockNodeFlags_PassthruCentralNode, DockSpace() will render our background
+    // and handle the pass-thru hole, so we ask Begin() to not render a background.
+    if (dockspace_flags & ImGuiDockNodeFlags_PassthruCentralNode)
+        window_flags |= ImGuiWindowFlags_NoBackground;
+
+    // Important: note that we proceed even if Begin() returns false (aka window is collapsed).
+    // This is because we want to keep our DockSpace() active. If a DockSpace() is inactive,
+    // all active windows docked into it will lose their parent and become undocked.
+    // We cannot preserve the docking relationship between an active window and an inactive docking, otherwise
+    // any change of dockspace/settings would lead to windows being stuck in limbo and never being visible.
+    if (!opt_padding)
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::Begin("DockSpace", p_open, window_flags);
+    if (!opt_padding)
+        ImGui::PopStyleVar();
+
+    if (opt_fullscreen)
+        ImGui::PopStyleVar(2);
 
 
+    // Submit the DockSpace
     ImGuiIO& io = ImGui::GetIO();
     if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable)
     {
-        ImGuiID dockspace_id = ImGui::GetID("Root");
+        ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
         ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
     }
 
     //const float width = ImGui::GetIO().DisplaySize.x;
     //const float height = ImGui::GetIO().DisplaySize.y;
-    //ImGui::SetNextWindowSize(ImVec2(mSidebarWidth, height), ImGuiCond_Once);
-    //ImGui::SetNextWindowSizeConstraints(ImVec2(20, height), ImVec2(width, height));
+    //ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_FirstUseEver);
+    //ImGui::SetNextWindowSizeConstraints(ImVec2(width, height), ImVec2(width, height));
 
-    ImGui::Begin("GameDriver");
-    
+    if (ImGui::BeginMenuBar())
+    {
+        if (ImGui::BeginMenu("Options"))
+        {
+            // Disabling fullscreen would allow the window to be moved to the front of other windows,
+            // which we can't undo at the moment without finer window depth/z control.
+            ImGui::MenuItem("Fullscreen", NULL, &opt_fullscreen);
+            ImGui::MenuItem("Padding", NULL, &opt_padding);
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("Flag: NoSplit", "", (dockspace_flags & ImGuiDockNodeFlags_NoSplit) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoSplit; }
+            if (ImGui::MenuItem("Flag: NoResize", "", (dockspace_flags & ImGuiDockNodeFlags_NoResize) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoResize; }
+            if (ImGui::MenuItem("Flag: NoDockingInCentralNode", "", (dockspace_flags & ImGuiDockNodeFlags_NoDockingInCentralNode) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoDockingInCentralNode; }
+            if (ImGui::MenuItem("Flag: AutoHideTabBar", "", (dockspace_flags & ImGuiDockNodeFlags_AutoHideTabBar) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_AutoHideTabBar; }
+            if (ImGui::MenuItem("Flag: PassthruCentralNode", "", (dockspace_flags & ImGuiDockNodeFlags_PassthruCentralNode) != 0, opt_fullscreen)) { dockspace_flags ^= ImGuiDockNodeFlags_PassthruCentralNode; }
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("Close", NULL, false, p_open != NULL))
+                *p_open = false;
+            ImGui::EndMenu();
+        }
+
+
+        ImGui::EndMenuBar();
+    }
+
+    ImGui::End(); 
+
+    const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(main_viewport->WorkPos.x + 650, main_viewport->WorkPos.y + 20), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(550, 680), ImGuiCond_FirstUseEver);
+
+    window_flags = 0;
+
+    ImGui::Begin("Configure", p_open, window_flags);
+
     customUI();
 
     DebugRegistry& debug = mRenderEngine->getDebugRegistry();
 
-    if (ImGui::CollapsingHeader("View")) {
+    if (ImGui::CollapsingHeader("View"))
+    {
         ImGui::Indent();
 
         ImGui::Checkbox("Post-processing", &gSettings.view.postProcessingEnabled);
         ImGui::Indent();
-            bool dither = gSettings.view.dithering == Dithering::TEMPORAL;
-            ImGui::Checkbox("Dithering", &dither);
-            enableDithering(dither);
-            ImGui::Checkbox("Bloom", &gSettings.view.bloom.enabled);
-            ImGui::Checkbox("Flare", &gSettings.view.bloom.lensFlare);
+        bool dither = gSettings.view.dithering == Dithering::TEMPORAL;
+        ImGui::Checkbox("Dithering", &dither);
+        enableDithering(dither);
+        ImGui::Checkbox("Bloom", &gSettings.view.bloom.enabled);
+        ImGui::Checkbox("Flare", &gSettings.view.bloom.lensFlare);
 
-            ImGui::Checkbox("TAA", &gSettings.view.taa.enabled);
-            // this clutters the UI and isn't that useful (except when working on TAA)
-            ImGui::Indent();
-            ImGui::SliderFloat("feedback", &gSettings.view.taa.feedback, 0.0f, 1.0f);
-            ImGui::SliderFloat("filter", &gSettings.view.taa.filterWidth, 0.0f, 2.0f);
-            ImGui::Unindent();
+        ImGui::Checkbox("TAA", &gSettings.view.taa.enabled);
+        // this clutters the UI and isn't that useful (except when working on TAA)
+        ImGui::Indent();
+        ImGui::SliderFloat("feedback", &gSettings.view.taa.feedback, 0.0f, 1.0f);
+        ImGui::SliderFloat("filter", &gSettings.view.taa.filterWidth, 0.0f, 2.0f);
+        ImGui::Unindent();
 
-            bool fxaa = gSettings.view.antiAliasing == AntiAliasing::FXAA;
-            ImGui::Checkbox("FXAA", &fxaa);
-            enableFxaa(fxaa);
+        bool fxaa = gSettings.view.antiAliasing == AntiAliasing::FXAA;
+        ImGui::Checkbox("FXAA", &fxaa);
+        enableFxaa(fxaa);
         ImGui::Unindent();
 
         ImGui::Checkbox("MSAA 4x", &gSettings.view.msaa.enabled);
         ImGui::Indent();
-            ImGui::Checkbox("Custom resolve", &gSettings.view.msaa.customResolve);
+        ImGui::Checkbox("Custom resolve", &gSettings.view.msaa.customResolve);
         ImGui::Unindent();
 
         ImGui::Checkbox("SSAO", &gSettings.view.ssao.enabled);
-        if (ImGui::CollapsingHeader("SSAO Options")) {
+        if (ImGui::CollapsingHeader("SSAO Options"))
+        {
             auto& ssao = gSettings.view.ssao;
 
-            int quality = (int) ssao.quality;
-            int lowpass = (int) ssao.lowPassFilter;
+            int  quality    = (int)ssao.quality;
+            int  lowpass    = (int)ssao.lowPassFilter;
             bool upsampling = ssao.upsampling != View::QualityLevel::LOW;
 
             bool halfRes = ssao.resolution != 1.0f;
@@ -883,11 +942,12 @@ void GameDriver::updateUserInterface()
             ssao.resolution = halfRes ? 0.5f : 1.0f;
 
 
-            ssao.upsampling = upsampling ? View::QualityLevel::HIGH : View::QualityLevel::LOW;
-            ssao.lowPassFilter = (View::QualityLevel) lowpass;
-            ssao.quality = (View::QualityLevel) quality;
+            ssao.upsampling    = upsampling ? View::QualityLevel::HIGH : View::QualityLevel::LOW;
+            ssao.lowPassFilter = (View::QualityLevel)lowpass;
+            ssao.quality       = (View::QualityLevel)quality;
 
-            if (ImGui::CollapsingHeader("Dominant Light Shadows (experimental)")) {
+            if (ImGui::CollapsingHeader("Dominant Light Shadows (experimental)"))
+            {
                 int sampleCount = ssao.ssct.sampleCount;
                 ImGui::Checkbox("Enabled##dls", &ssao.ssct.enabled);
                 ImGui::SliderFloat("Cone angle", &ssao.ssct.lightConeRad, 0.0f, (float)M_PI_2);
@@ -903,7 +963,8 @@ void GameDriver::updateUserInterface()
         }
 
         ImGui::Checkbox("Screen-space reflections", &gSettings.view.screenSpaceReflections.enabled);
-        if (ImGui::CollapsingHeader("Screen-space reflections Options")) {
+        if (ImGui::CollapsingHeader("Screen-space reflections Options"))
+        {
             auto& ssrefl = gSettings.view.screenSpaceReflections;
             ImGui::SliderFloat("Ray thickness", &ssrefl.thickness, 0.001f, 0.2f);
             ImGui::SliderFloat("Bias", &ssrefl.bias, 0.001f, 0.5f);
@@ -915,9 +976,10 @@ void GameDriver::updateUserInterface()
         ImGui::Checkbox("Screen-space Guard Band", &gSettings.view.guardBand.enabled);
     }
 
-    if (ImGui::CollapsingHeader("Dynamic Resolution")) {
-        auto& dsr = gSettings.view.dsr;
-        int quality = (int)dsr.quality;
+    if (ImGui::CollapsingHeader("Dynamic Resolution"))
+    {
+        auto& dsr     = gSettings.view.dsr;
+        int   quality = (int)dsr.quality;
         ImGui::Checkbox("enabled", &dsr.enabled);
         ImGui::Checkbox("homogeneous", &dsr.homogeneousScaling);
         ImGui::SliderFloat("min. scale", &dsr.minScale.x, 0.25f, 1.0f);
@@ -927,17 +989,20 @@ void GameDriver::updateUserInterface()
         dsr.minScale.x = std::min(dsr.minScale.x, dsr.maxScale.x);
         dsr.minScale.y = dsr.minScale.x;
         dsr.maxScale.y = dsr.maxScale.x;
-        dsr.quality = (QualityLevel)quality;
+        dsr.quality    = (QualityLevel)quality;
     }
 
     auto& light = gSettings.lighting;
-    if (ImGui::CollapsingHeader("Light")) {
+    if (ImGui::CollapsingHeader("Light"))
+    {
         ImGui::Indent();
-        if (ImGui::CollapsingHeader("Indirect light")) {
+        if (ImGui::CollapsingHeader("Indirect light"))
+        {
             ImGui::SliderFloat("IBL intensity", &light.iblIntensity, 0.0f, 100000.0f);
             ImGui::SliderAngle("IBL rotation", &light.iblRotation);
         }
-        if (ImGui::CollapsingHeader("Sunlight")) {
+        if (ImGui::CollapsingHeader("Sunlight"))
+        {
             ImGui::Checkbox("Enable sunlight", &light.enableSunlight);
             ImGui::SliderFloat("Sun intensity", &light.sunlightIntensity, 50000.0f, 150000.0f);
             ImGui::SliderFloat("Halo size", &light.sunlightHaloSize, 1.01f, 40.0f);
@@ -945,7 +1010,8 @@ void GameDriver::updateUserInterface()
             ImGui::SliderFloat("Sun radius", &light.sunlightAngularRadius, 0.1f, 10.0f);
             ImGuiExt::DirectionWidget("Sun direction", light.sunlightDirection.v);
         }
-        if (ImGui::CollapsingHeader("All lights")) {
+        if (ImGui::CollapsingHeader("All lights"))
+        {
             ImGui::Checkbox("Enable shadows", &light.enableShadows);
             int mapSize = light.shadowOptions.mapSize;
             ImGui::SliderInt("Shadow map size", &mapSize, 32, 1024);
@@ -957,14 +1023,15 @@ void GameDriver::updateUserInterface()
             ImGui::Combo("Shadow type", &shadowType, "PCF\0VSM\0DPCF\0PCSS\0\0");
             gSettings.view.shadowType = (ShadowType)shadowType;
 
-            if (gSettings.view.shadowType == ShadowType::VSM) {
+            if (gSettings.view.shadowType == ShadowType::VSM)
+            {
                 ImGui::Checkbox("High precision", &gSettings.view.vsmShadowOptions.highPrecision);
                 ImGui::Checkbox("ELVSM", &gSettings.lighting.shadowOptions.vsm.elvsm);
                 char label[32];
                 snprintf(label, 32, "%d", 1 << mVsmMsaaSamplesLog2);
                 ImGui::SliderInt("VSM MSAA samples", &mVsmMsaaSamplesLog2, 0, 3, label);
                 gSettings.view.vsmShadowOptions.msaaSamples =
-                        static_cast<uint8_t>(1u << mVsmMsaaSamplesLog2);
+                    static_cast<uint8_t>(1u << mVsmMsaaSamplesLog2);
 
                 int vsmAnisotropy = gSettings.view.vsmShadowOptions.anisotropy;
                 snprintf(label, 32, "%d", 1 << vsmAnisotropy);
@@ -977,7 +1044,9 @@ void GameDriver::updateUserInterface()
                 //ImGui::SliderFloat("VSM exponent", &gSettings.view.vsmShadowOptions.exponent, 0.0, 6.0f);
                 ImGui::SliderFloat("VSM Light bleed", &gSettings.view.vsmShadowOptions.lightBleedReduction, 0.0, 1.0f);
                 ImGui::SliderFloat("VSM min variance scale", &gSettings.view.vsmShadowOptions.minVarianceScale, 0.0, 10.0f);
-            } else if (gSettings.view.shadowType == ShadowType::DPCF || gSettings.view.shadowType == ShadowType::PCSS) {
+            }
+            else if (gSettings.view.shadowType == ShadowType::DPCF || gSettings.view.shadowType == ShadowType::PCSS)
+            {
                 ImGui::SliderFloat("Penumbra scale", &light.softShadowOptions.penumbraScale, 0.0f, 100.0f);
                 ImGui::SliderFloat("Penumbra Ratio scale", &light.softShadowOptions.penumbraRatioScale, 1.0f, 100.0f);
             }
@@ -985,7 +1054,7 @@ void GameDriver::updateUserInterface()
             int shadowCascades = light.shadowOptions.shadowCascades;
             ImGui::SliderInt("Cascades", &shadowCascades, 1, 4);
             ImGui::Checkbox("Debug cascades",
-                    debug.getPropertyAddress<bool>("d.shadowmap.visualize_cascades"));
+                            debug.getPropertyAddress<bool>("d.shadowmap.visualize_cascades"));
             ImGui::Checkbox("Enable contact shadows", &light.shadowOptions.screenSpaceContactShadows);
             ImGui::SliderFloat("Split pos 0", &light.shadowOptions.cascadeSplitPositions[0], 0.0f, 1.0f);
             ImGui::SliderFloat("Split pos 1", &light.shadowOptions.cascadeSplitPositions[1], 0.0f, 1.0f);
@@ -995,11 +1064,15 @@ void GameDriver::updateUserInterface()
         ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Fog")) {
+    if (ImGui::CollapsingHeader("Fog"))
+    {
         int fogColorSource = 0;
-        if (gSettings.view.fog.skyColor) {
+        if (gSettings.view.fog.skyColor)
+        {
             fogColorSource = 2;
-        } else if (gSettings.view.fog.fogColorFromIbl) {
+        }
+        else if (gSettings.view.fog.fogColorFromIbl)
+        {
             fogColorSource = 1;
         }
 
@@ -1017,27 +1090,30 @@ void GameDriver::updateUserInterface()
         ImGui::ColorPicker3("Color", gSettings.view.fog.color.v);
         ImGui::Unindent();
         gSettings.view.fog.cutOffDistance =
-                excludeSkybox ? 1e6f : std::numeric_limits<float>::infinity();
-        switch (fogColorSource) {
+            excludeSkybox ? 1e6f : std::numeric_limits<float>::infinity();
+        switch (fogColorSource)
+        {
             case 0:
-                gSettings.view.fog.skyColor = nullptr;
+                gSettings.view.fog.skyColor        = nullptr;
                 gSettings.view.fog.fogColorFromIbl = false;
                 break;
             case 1:
-                gSettings.view.fog.skyColor = nullptr;
+                gSettings.view.fog.skyColor        = nullptr;
                 gSettings.view.fog.fogColorFromIbl = true;
                 break;
             case 2:
-                gSettings.view.fog.skyColor = gSettings.view.fogSettings.fogColorTexture;
+                gSettings.view.fog.skyColor        = gSettings.view.fogSettings.fogColorTexture;
                 gSettings.view.fog.fogColorFromIbl = false;
                 break;
         }
     }
 
-    if (ImGui::CollapsingHeader("Scene")) {
+    if (ImGui::CollapsingHeader("Scene"))
+    {
         ImGui::Indent();
 
-        if (ImGui::Checkbox("Scale to unit cube", &gSettings.viewer.autoScaleEnabled)) {
+        if (ImGui::Checkbox("Scale to unit cube", &gSettings.viewer.autoScaleEnabled))
+        {
             updateRootTransform();
         }
 
@@ -1047,13 +1123,15 @@ void GameDriver::updateUserInterface()
         ImGui::ColorEdit3("Background color", &gSettings.viewer.backgroundColor.r);
 
         // We do not yet support ground shadow or scene selection in remote mode.
-        if (!isRemoteMode()) {
+        if (!isRemoteMode())
+        {
             ImGui::Checkbox("Ground shadow", &gSettings.viewer.groundPlaneEnabled);
             ImGui::Indent();
             ImGui::SliderFloat("Strength", &gSettings.viewer.groundShadowStrength, 0.0f, 1.0f);
             ImGui::Unindent();
 
-            if (mAsset->getSceneCount() > 1) {
+            if (mAsset->getSceneCount() > 1)
+            {
                 ImGui::Separator();
                 sceneSelectionUI();
             }
@@ -1062,7 +1140,8 @@ void GameDriver::updateUserInterface()
         ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Camera")) {
+    if (ImGui::CollapsingHeader("Camera"))
+    {
         ImGui::Indent();
 
         ImGui::SliderFloat("Focal length (mm)", &gSettings.viewer.cameraFocalLength, 16.0f, 90.0f);
@@ -1072,10 +1151,11 @@ void GameDriver::updateUserInterface()
         ImGui::SliderFloat("Near", &gSettings.viewer.cameraNear, 0.001f, 1.0f);
         ImGui::SliderFloat("Far", &gSettings.viewer.cameraFar, 1.0f, 10000.0f);
 
-        if (ImGui::CollapsingHeader("DoF")) {
-            bool dofMedian = gSettings.view.dof.filter == View::DepthOfFieldOptions::Filter::MEDIAN;
-            int dofRingCount = gSettings.view.dof.fastGatherRingCount;
-            int dofMaxCoC = gSettings.view.dof.maxForegroundCOC;
+        if (ImGui::CollapsingHeader("DoF"))
+        {
+            bool dofMedian    = gSettings.view.dof.filter == View::DepthOfFieldOptions::Filter::MEDIAN;
+            int  dofRingCount = gSettings.view.dof.fastGatherRingCount;
+            int  dofMaxCoC    = gSettings.view.dof.maxForegroundCOC;
             if (!dofRingCount) dofRingCount = 5;
             if (!dofMaxCoC) dofMaxCoC = 32;
             ImGui::Checkbox("Enabled##dofEnabled", &gSettings.view.dof.enabled);
@@ -1085,17 +1165,18 @@ void GameDriver::updateUserInterface()
             ImGui::SliderInt("Max CoC", &dofMaxCoC, 1, 32);
             ImGui::Checkbox("Native Resolution", &gSettings.view.dof.nativeResolution);
             ImGui::Checkbox("Median Filter", &dofMedian);
-            gSettings.view.dof.filter = dofMedian ?
-                                        View::DepthOfFieldOptions::Filter::MEDIAN :
-                                        View::DepthOfFieldOptions::Filter::NONE;
+            gSettings.view.dof.filter              = dofMedian ?
+                             View::DepthOfFieldOptions::Filter::MEDIAN :
+                             View::DepthOfFieldOptions::Filter::NONE;
             gSettings.view.dof.backgroundRingCount = dofRingCount;
             gSettings.view.dof.foregroundRingCount = dofRingCount;
             gSettings.view.dof.fastGatherRingCount = dofRingCount;
-            gSettings.view.dof.maxForegroundCOC = dofMaxCoC;
-            gSettings.view.dof.maxBackgroundCOC = dofMaxCoC;
+            gSettings.view.dof.maxForegroundCOC    = dofMaxCoC;
+            gSettings.view.dof.maxBackgroundCOC    = dofMaxCoC;
         }
 
-        if (ImGui::CollapsingHeader("Vignette")) {
+        if (ImGui::CollapsingHeader("Vignette"))
+        {
             ImGui::Checkbox("Enabled##vignetteEnabled", &gSettings.view.vignette.enabled);
             ImGui::SliderFloat("Mid point", &gSettings.view.vignette.midPoint, 0.0f, 1.0f);
             ImGui::SliderFloat("Roundness", &gSettings.view.vignette.roundness, 0.0f, 1.0f);
@@ -1105,20 +1186,25 @@ void GameDriver::updateUserInterface()
 
         // We do not yet support camera selection in the remote UI. To support this feature, we
         // would need to send a message from DebugServer to the WebSockets client.
-        if (!isRemoteMode()) {
+        if (!isRemoteMode())
+        {
 
-            const utils::Entity* cameras = mAsset->getCameraEntities();
-            const size_t cameraCount = mAsset->getCameraEntityCount();
+            const utils::Entity* cameras     = mAsset->getCameraEntities();
+            const size_t         cameraCount = mAsset->getCameraEntityCount();
 
             std::vector<std::string> names;
             names.reserve(cameraCount + 1);
             names.push_back("Free camera");
             int c = 0;
-            for (size_t i = 0; i < cameraCount; i++) {
+            for (size_t i = 0; i < cameraCount; i++)
+            {
                 const char* n = mAsset->getName(cameras[i]);
-                if (n) {
+                if (n)
+                {
                     names.emplace_back(n);
-                } else {
+                }
+                else
+                {
                     char buf[32];
                     sprintf(buf, "Unnamed camera %d", c++);
                     names.emplace_back(buf);
@@ -1127,7 +1213,8 @@ void GameDriver::updateUserInterface()
 
             std::vector<const char*> cstrings;
             cstrings.reserve(names.size());
-            for (size_t i = 0; i < names.size(); i++) {
+            for (size_t i = 0; i < names.size(); i++)
+            {
                 cstrings.push_back(names[i].c_str());
             }
 
@@ -1136,9 +1223,9 @@ void GameDriver::updateUserInterface()
 
         StereoscopicOptions stereoOptions = mMainWindow->getMainView()->getView()->getStereoscopicOptions();
         ImGui::Checkbox("Instanced stereo", &stereoOptions.enabled);
-        if (stereoOptions.enabled) {
+        if (stereoOptions.enabled)
+        {
             ImGui::SliderFloat("Ocular distance", &mOcularDistance, 0.0f, 10.0f);
-
         }
         mMainWindow->getMainView()->getView()->setStereoscopicOptions(stereoOptions);
 
@@ -1156,22 +1243,27 @@ void GameDriver::updateUserInterface()
     // TODO(prideout): add support for hierarchy, animation and variant selection in remote mode. To
     // support these features, we will need to send a message (list of strings) from DebugServer to
     // the WebSockets client.
-    if (!isRemoteMode()) {
-        if (ImGui::CollapsingHeader("Hierarchy")) {
+    if (!isRemoteMode())
+    {
+        if (ImGui::CollapsingHeader("Hierarchy"))
+        {
             ImGui::Indent();
             ImGui::Checkbox("Show bounds", &mEnableWireframe);
             treeNode(mAsset->getRoot());
             ImGui::Unindent();
         }
 
-        if (mInstance->getMaterialVariantCount() > 0 && ImGui::CollapsingHeader("Variants")) {
+        if (mInstance->getMaterialVariantCount() > 0 && ImGui::CollapsingHeader("Variants"))
+        {
             ImGui::Indent();
             int selectedVariant = mCurrentVariant;
-            for (size_t i = 0, count = mInstance->getMaterialVariantCount(); i < count; ++i) {
+            for (size_t i = 0, count = mInstance->getMaterialVariantCount(); i < count; ++i)
+            {
                 const char* label = mInstance->getMaterialVariantName(i);
                 ImGui::RadioButton(label, &selectedVariant, i);
             }
-            if (selectedVariant != mCurrentVariant) {
+            if (selectedVariant != mCurrentVariant)
+            {
                 mCurrentVariant = selectedVariant;
                 mInstance->applyMaterialVariant(mCurrentVariant);
             }
@@ -1179,55 +1271,66 @@ void GameDriver::updateUserInterface()
         }
 
         filament::gltfio::Animator& animator = *mInstance->getAnimator();
-        if (animator.getAnimationCount() > 0 && ImGui::CollapsingHeader("Animation")) {
+        if (animator.getAnimationCount() > 0 && ImGui::CollapsingHeader("Animation"))
+        {
             ImGui::Indent();
             int selectedAnimation = mCurrentAnimation;
             ImGui::RadioButton("Disable", &selectedAnimation, 0);
             ImGui::SliderFloat("Cross fade", &mCrossFadeDuration, 0.0f, 2.0f,
-                    "%4.2f seconds", ImGuiSliderFlags_AlwaysClamp);
-            for (size_t i = 0, count = animator.getAnimationCount(); i < count; ++i) {
+                               "%4.2f seconds", ImGuiSliderFlags_AlwaysClamp);
+            for (size_t i = 0, count = animator.getAnimationCount(); i < count; ++i)
+            {
                 std::string label = animator.getAnimationName(i);
-                if (label.empty()) {
+                if (label.empty())
+                {
                     label = "Unnamed " + std::to_string(i);
                 }
                 ImGui::RadioButton(label.c_str(), &selectedAnimation, i + 1);
             }
-            if (selectedAnimation != mCurrentAnimation) {
+            if (selectedAnimation != mCurrentAnimation)
+            {
                 mPreviousAnimation = mCurrentAnimation;
-                mCurrentAnimation = selectedAnimation;
-                mResetAnimation = true;
+                mCurrentAnimation  = selectedAnimation;
+                mResetAnimation    = true;
             }
             ImGui::Checkbox("Show rest pose", &mShowingRestPose);
             ImGui::Unindent();
         }
 
-        if (mCurrentMorphingEntity && ImGui::CollapsingHeader("Morphing")) {
+        if (mCurrentMorphingEntity && ImGui::CollapsingHeader("Morphing"))
+        {
             const bool isAnimating = mCurrentAnimation > 0 && animator.getAnimationCount() > 0;
-            if (isAnimating) {
+            if (isAnimating)
+            {
                 ImGui::BeginDisabled();
             }
-            for (int i = 0; i != mMorphWeights.size(); ++i) {
-                const char* name = mAsset->getMorphTargetNameAt(mCurrentMorphingEntity, i);
+            for (int i = 0; i != mMorphWeights.size(); ++i)
+            {
+                const char* name  = mAsset->getMorphTargetNameAt(mCurrentMorphingEntity, i);
                 std::string label = name ? name : "Unnamed target " + std::to_string(i);
                 ImGui::SliderFloat(label.c_str(), &mMorphWeights[i], 0.0f, 1.0);
             }
-            if (isAnimating) {
+            if (isAnimating)
+            {
                 ImGui::EndDisabled();
             }
-            if (!isAnimating) {
+            if (!isAnimating)
+            {
                 auto instance = rm.getInstance(mCurrentMorphingEntity);
                 rm.setMorphWeights(instance, mMorphWeights.data(), mMorphWeights.size());
             }
         }
 
-        if (mEnableWireframe) {
+        if (mEnableWireframe)
+        {
             mScene->addEntity(mAsset->getWireframe());
-        } else {
+        }
+        else
+        {
             mScene->remove(mAsset->getWireframe());
         }
     }
 
-    mMainWindow->getSidebarWidth() = ImGui::GetWindowWidth();
     ImGui::End();
 
     {

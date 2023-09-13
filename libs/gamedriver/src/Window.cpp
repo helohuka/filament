@@ -180,13 +180,12 @@ void Window::configureCamerasForWindow()
     
     const filament::math::float3 at(0, 0, -4);
     const double                 ratio   = double(mWindowSize.y) / double(mWindowSize.x);
-    const int                    sidebar = mSidebarWidth * mDpiScale.x;
 
     const bool splitview = mViews.size() > 2;
 
     // To trigger a floating-point exception, users could shrink the window to be smaller than
     // the sidebar. To prevent this we simply clamp the width of the main viewport.
-    const uint32_t mainWidth = splitview ? mWindowSize.x - sidebar : std::max(1, (int)mWindowSize.x - sidebar);
+    const uint32_t mainWidth = splitview ? mWindowSize.x  : std::max(1, (int)mWindowSize.x );
 
     double near = 0.1;
     double far  = 100;
@@ -198,14 +197,14 @@ void Window::configureCamerasForWindow()
     {
         uint32_t vpw = mainWidth / 2;
         uint32_t vph = mWindowSize.y / 2;
-        mMainView->setViewport({sidebar, 0, vpw, vph});
-        mDepthView->setViewport({int32_t(sidebar + vpw), 0, vpw, vph});
-        mGodView->setViewport({int32_t(sidebar + vpw), int32_t(vph), vpw, mWindowSize.y - vph});
-        mOrthoView->setViewport({sidebar, int32_t(vph), vpw, mWindowSize.y - vph});
+        mMainView->setViewport({0, 0, vpw, vph});
+        mDepthView->setViewport({int32_t(vpw), 0, vpw, vph});
+        mGodView->setViewport({int32_t( vpw), int32_t(vph), vpw, mWindowSize.y - vph});
+        mOrthoView->setViewport({0, int32_t(vph), vpw, mWindowSize.y - vph});
     }
     else
     {
-        mMainView->setViewport({sidebar, 0, (uint32_t)mainWidth, (uint32_t)mWindowSize.y});
+        mMainView->setViewport({0, 0, (uint32_t)mainWidth, (uint32_t)mWindowSize.y});
     }
     mUiView->setViewport({0, 0, (uint32_t)mWindowSize.x, (uint32_t)mWindowSize.y});
 
