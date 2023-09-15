@@ -28,5 +28,5 @@ struct Configure
 
 extern Configure                  gConfigure;
 extern filament::viewer::Settings gSettings;
-
+extern filament::Engine*          gEngine;
 #endif // __CONFIG_H

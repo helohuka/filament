@@ -323,8 +323,8 @@ static void colorGradingUI(filament::viewer::Settings& settings, float* rangePlo
 
 void GameDriver::setAsset(filament::gltfio::FilamentAsset* asset, filament::gltfio::FilamentInstance* instance)
 {
-    if (mInstance != instance || mAsset != asset) {
-        removeAsset();
+    //if (mInstance != instance || mAsset != asset) {
+    //    removeAsset();
 
         // We keep a non-const reference to the asset for popRenderables and getWireframe.
         mAsset = asset;
@@ -345,7 +345,7 @@ void GameDriver::setAsset(filament::gltfio::FilamentAsset* asset, filament::gltf
             auto ri = rcm.getInstance(asset->getRenderableEntities()[i]);
             rcm.setScreenSpaceContactShadows(ri, true);
         }
-    }
+    //}
 }
 
 void GameDriver::populateScene()
@@ -442,7 +442,7 @@ void GameDriver::applyAnimation(double currentTime, filament::gltfio::FilamentIn
 
 void GameDriver::mouseEvent(float mouseX, float mouseY, bool mouseButton, float mouseWheelY,
         bool control) {
-    if (mImGuiHelper) {
+    //if (mImGuiHelper) {
         ImGuiIO& io = ImGui::GetIO();
         io.MousePos.x = mouseX;
         io.MousePos.y = mouseY;
@@ -451,28 +451,28 @@ void GameDriver::mouseEvent(float mouseX, float mouseY, bool mouseButton, float 
         io.MouseDown[1] = false;
         io.MouseDown[2] = false;
         io.KeyCtrl = control;
-    }
+    //}
 }
 
 void GameDriver::keyDownEvent(int keyCode)
 {
-    if (mImGuiHelper && keyCode < IM_ARRAYSIZE(ImGui::GetIO().KeysDown)) {
+    if (/*mImGuiHelper &&*/ keyCode < IM_ARRAYSIZE(ImGui::GetIO().KeysDown)) {
         ImGui::GetIO().KeysDown[keyCode] = true;
     }
 }
 
 void GameDriver::keyUpEvent(int keyCode)
 {
-    if (mImGuiHelper && keyCode < IM_ARRAYSIZE(ImGui::GetIO().KeysDown)) {
+    if (/*mImGuiHelper &&*/ keyCode < IM_ARRAYSIZE(ImGui::GetIO().KeysDown)) {
         ImGui::GetIO().KeysDown[keyCode] = false;
     }
 }
 
 void GameDriver::keyPressEvent(int charCode)
 {
-    if (mImGuiHelper) {
+    //if (mImGuiHelper) {
         ImGui::GetIO().AddInputCharacter(charCode);
-    }
+    //}
 }
 
 void GameDriver::customUI()
@@ -729,7 +729,7 @@ void GameDriver::updateUserInterface()
     };
 
     auto lightTreeItem = [this, &lm](utils::Entity entity) {
-        bool lvis = mScene->hasEntity(entity);
+        bool lvis = !mScene->hasEntity(entity);
         ImGui::Checkbox("visible", &lvis);
 
         if (lvis)
@@ -881,9 +881,9 @@ void GameDriver::updateUserInterface()
 
     ImGui::End(); 
 
-    const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+    /*const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(main_viewport->WorkPos.x + 650, main_viewport->WorkPos.y + 20), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(550, 680), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(550, 680), ImGuiCond_FirstUseEver);*/
 
     window_flags = 0;
 

@@ -12,8 +12,8 @@ Window::Window(filament::Engine* engine) :
     mWindowTitle          = gConfigure.title;
     mWindowSize.x           = gConfigure.width;
     mWindowSize.y         = gConfigure.height;
-    const int x           = SDL_WINDOWPOS_CENTERED;
-    const int y           = SDL_WINDOWPOS_CENTERED;
+    const int x             = SDL_WINDOWPOS_CENTERED;
+    const int y =  SDL_WINDOWPOS_CENTERED;
     uint32_t  windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
     if (mIsResizeable)
     {

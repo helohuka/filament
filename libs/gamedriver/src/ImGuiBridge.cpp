@@ -1,5 +1,397 @@
 #include "gamedriver/ImGuiBridge.h"
 #include "gamedriver/Window.h"
+#include "gamedriver/GameDriver.h"
+#include "generated/resources/gamedriver.h"
+
+using namespace filament::math;
+using namespace filament;
+using namespace utils;
+
+using MinFilter = TextureSampler::MinFilter;
+using MagFilter = TextureSampler::MagFilter;
+
+Engine* gEngine = nullptr;
+ImGuiContext* gImGuiContext;
+
+ImGuiWindowImpl::ImGuiWindowImpl(filament::View* view, const utils::Path& fontPath) :
+    mScene(gEngine->createScene())
+{
+
+    ImGuiIO& io = ImGui::GetIO();
+
+    // Create a simple alpha-blended 2D blitting material.
+    mMaterial = Material::Builder()
+                    .package(GAMEDRIVER_UIBLIT_DATA, GAMEDRIVER_UIBLIT_SIZE)
+                    .build(*gEngine);
+
+    // If the given font path is invalid, ImGui will silently fall back to proggy, which is a
+    // tiny "pixel art" texture that is compiled into the library.
+    if (fontPath.isFile())
+    {
+        io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 16.0f);
+    }
+    createAtlasTexture();
+
+    // For proggy, switch to NEAREST for pixel-perfect text.
+    if (!fontPath.isFile())
+    {
+        mSampler = TextureSampler(MinFilter::NEAREST, MagFilter::NEAREST);
+        mMaterial->setDefaultParameter("albedo", mTexture, mSampler);
+    }
+
+    utils::EntityManager& em = utils::EntityManager::get();
+    mCameraEntity            = em.create();
+    mCamera                  = gEngine->createCamera(mCameraEntity);
+    mView                    = view;
+    mView->setCamera(mCamera);
+
+    mView->setPostProcessingEnabled(false);
+    mView->setBlendMode(View::BlendMode::TRANSLUCENT);
+    mView->setShadowingEnabled(false);
+
+    // Attach a scene for our one and only Renderable.
+    mView->setScene(mScene);
+
+    mRenderable = em.create();
+    mScene->addEntity(mRenderable);
+
+    ImGui::StyleColorsDark();
+}
+
+
+ImGuiWindowImpl::ImGuiWindowImpl(const Path& fontPath):
+    mScene(gEngine->createScene())
+{
+   
+    ImGuiIO& io = ImGui::GetIO();
+
+    // Create a simple alpha-blended 2D blitting material.
+    mMaterial = Material::Builder()
+                    .package(GAMEDRIVER_UIBLIT_DATA, GAMEDRIVER_UIBLIT_SIZE)
+                    .build(*gEngine);
+
+    // If the given font path is invalid, ImGui will silently fall back to proggy, which is a
+    // tiny "pixel art" texture that is compiled into the library.
+    if (fontPath.isFile())
+    {
+        io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 16.0f);
+    }
+    createAtlasTexture();
+
+    // For proggy, switch to NEAREST for pixel-perfect text.
+    if (!fontPath.isFile())
+    {
+        mSampler = TextureSampler(MinFilter::NEAREST, MagFilter::NEAREST);
+        mMaterial->setDefaultParameter("albedo", mTexture, mSampler);
+    }
+
+    utils::EntityManager& em = utils::EntityManager::get();
+    mCameraEntity            = em.create();
+    mCamera                  = gEngine->createCamera(mCameraEntity);
+    mView                    = gEngine->createView();
+    mView->setCamera(mCamera);
+
+    mView->setPostProcessingEnabled(false);
+    mView->setBlendMode(View::BlendMode::TRANSLUCENT);
+    mView->setShadowingEnabled(false);
+
+    // Attach a scene for our one and only Renderable.
+    mView->setScene(mScene);
+
+    mRenderable = em.create();
+    mScene->addEntity(mRenderable);
+
+    ImGui::StyleColorsDark();
+}
+
+void ImGuiWindowImpl::createAtlasTexture()
+{
+    gEngine->destroy(mTexture);
+    ImGuiIO& io = ImGui::GetIO();
+    // Create the grayscale texture that ImGui uses for its glyph atlas.
+    static unsigned char* pixels;
+    int                   width, height;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    size_t                         size = (size_t)(width * height * 4);
+    Texture::PixelBufferDescriptor pb(
+        pixels, size,
+        Texture::Format::RGBA, Texture::Type::UBYTE);
+    mTexture = Texture::Builder()
+                   .width((uint32_t)width)
+                   .height((uint32_t)height)
+                   .levels((uint8_t)1)
+                   .format(Texture::InternalFormat::RGBA8)
+                   .sampler(Texture::Sampler::SAMPLER_2D)
+                   .build(*gEngine);
+    mTexture->setImage(*gEngine, 0, std::move(pb));
+
+    mSampler = TextureSampler(MinFilter::LINEAR, MagFilter::LINEAR);
+    mMaterial->setDefaultParameter("albedo", mTexture, mSampler);
+}
+
+ImGuiWindowImpl::~ImGuiWindowImpl()
+{
+    gEngine->destroy(mScene);
+    gEngine->destroy(mRenderable);
+    gEngine->destroyCameraComponent(mCameraEntity);
+
+    for (auto& mi : mMaterialInstances)
+    {
+        gEngine->destroy(mi);
+    }
+    gEngine->destroy(mMaterial);
+    gEngine->destroy(mTexture);
+    for (auto& vb : mVertexBuffers)
+    {
+        gEngine->destroy(vb);
+    }
+    for (auto& ib : mIndexBuffers)
+    {
+        gEngine->destroy(ib);
+    }
+
+    EntityManager& em = utils::EntityManager::get();
+    em.destroy(mRenderable);
+    em.destroy(mCameraEntity);
+
+    //ImGui::DestroyContext(mImGuiContext);
+    //mImGuiContext = nullptr;
+}
+
+//void ImGuiWindowImpl::setDisplaySize(int width, int height, float scaleX, float scaleY, bool flipVertical)
+//{
+//    ImGuiIO& io                  = ImGui::GetIO();
+//    io.DisplaySize               = ImVec2(width, height);
+//    io.DisplayFramebufferScale.x = scaleX;
+//    io.DisplayFramebufferScale.y = scaleY;
+//    mFlipVertical                = flipVertical;
+//    if (mFlipVertical)
+//    {
+//        mCamera->setProjection(Camera::Projection::ORTHO, 0.0, double(width),
+//                               0.0, double(height), 0.0, 1.0);
+//    }
+//    else
+//    {
+//        mCamera->setProjection(Camera::Projection::ORTHO, 0.0, double(width),
+//                               double(height), 0.0, 0.0, 1.0);
+//    }
+//}
+
+
+void ImGuiWindowImpl::processImGuiCommands(ImDrawData* commands)
+{
+    //ImGui::SetCurrentContext(mImGuiContext);
+    int w, h;
+    int x, y;
+    SDL_GetWindowSize(mWindow, &w, &h);
+    SDL_GetWindowPosition(mWindow, &x, &y);
+    mCamera->setProjection(Camera::Projection::ORTHO, x, x + w, y + h, y, 0.0, 1.0);
+    mView->setViewport({0, 0, (uint32_t)w, (uint32_t)h});
+    
+    mHasSynced = false;
+    auto& rcm  = gEngine->getRenderableManager();
+
+    // Avoid rendering when minimized and scale coordinates for retina displays.
+    int fbwidth  = (int)(commands->DisplaySize.x * commands->FramebufferScale.x);
+    int fbheight = (int)(commands->DisplaySize.y * commands->FramebufferScale.y);
+    if (fbwidth == 0 || fbheight == 0)
+        return;
+    //commands->ScaleClipRects(io.DisplayFramebufferScale);
+
+    // Ensure that we have enough vertex buffers and index buffers.
+    createBuffers(commands->CmdListsCount);
+
+    // Count how many primitives we'll need, then create a Renderable builder.
+    size_t                                                    nPrims = 0;
+    std::unordered_map<uint64_t, filament::MaterialInstance*> scissorRects;
+    for (int cmdListIndex = 0; cmdListIndex < commands->CmdListsCount; cmdListIndex++)
+    {
+        const ImDrawList* cmds = commands->CmdLists[cmdListIndex];
+        nPrims += cmds->CmdBuffer.size();
+    }
+    auto rbuilder = RenderableManager::Builder(nPrims);
+    rbuilder.boundingBox({{0, 0, 0}, {10000, 10000, 10000}}).culling(false);
+
+    // Ensure that we have a material instance for each primitive.
+    size_t previousSize = mMaterialInstances.size();
+    if (nPrims > mMaterialInstances.size())
+    {
+        mMaterialInstances.resize(nPrims);
+        for (size_t i = previousSize; i < mMaterialInstances.size(); i++)
+        {
+            mMaterialInstances[i] = mMaterial->createInstance();
+        }
+    }
+
+
+     // Will project scissor/clipping rectangles into framebuffer space
+    ImVec2 clip_off   = commands->DisplayPos;        // (0,0) unless using multi-viewports
+    ImVec2 clip_scale = commands->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
+
+    // Recreate the Renderable component and point it to the vertex buffers.
+    rcm.destroy(mRenderable);
+    int bufferIndex = 0;
+    int primIndex   = 0;
+    for (int cmdListIndex = 0; cmdListIndex < commands->CmdListsCount; cmdListIndex++)
+    {
+        const ImDrawList* cmds = commands->CmdLists[cmdListIndex];
+        populateVertexData(bufferIndex,
+                           cmds->VtxBuffer.Size * sizeof(ImDrawVert), cmds->VtxBuffer.Data,
+                           cmds->IdxBuffer.Size * sizeof(ImDrawIdx), cmds->IdxBuffer.Data);
+        for (const auto& pcmd : cmds->CmdBuffer)
+        {
+            if (pcmd.UserCallback)
+            {
+                pcmd.UserCallback(cmds, &pcmd);
+            }
+            else
+            {
+
+                ImVec2 clip_min((pcmd.ClipRect.x - clip_off.x) * clip_scale.x, (pcmd.ClipRect.y - clip_off.y) * clip_scale.y);
+                ImVec2 clip_max((pcmd.ClipRect.z - clip_off.x) * clip_scale.x, (pcmd.ClipRect.w - clip_off.y) * clip_scale.y);
+                if (clip_max.x <= clip_min.x || clip_max.y <= clip_min.y)
+                    continue;
+                MaterialInstance* materialInstance = mMaterialInstances[primIndex];
+                materialInstance->setScissor(
+                    (int)clip_min.x, (int)((float)fbheight - clip_max.y),
+                    (int)(clip_max.x - clip_min.x), (int)(clip_max.y - clip_min.y));
+
+                 /*materialInstance->setScissor(
+                    pcmd.ClipRect.x,
+                    mFlipVertical ? pcmd.ClipRect.y : (fbheight - pcmd.ClipRect.w),
+                    (uint16_t)(pcmd.ClipRect.z - pcmd.ClipRect.x),
+                    (uint16_t)(pcmd.ClipRect.w - pcmd.ClipRect.y));*/
+                if (pcmd.TextureId)
+                {
+                    TextureSampler sampler(MinFilter::LINEAR, MagFilter::LINEAR);
+                    materialInstance->setParameter("albedo",
+                                                   (Texture const*)pcmd.TextureId, sampler);
+                }
+                else
+                {
+                    materialInstance->setParameter("albedo", mTexture, mSampler);
+                }
+                rbuilder
+                    .geometry(primIndex, RenderableManager::PrimitiveType::TRIANGLES,
+                              mVertexBuffers[bufferIndex], mIndexBuffers[bufferIndex],
+                              pcmd.IdxOffset, pcmd.ElemCount)
+                    .blendOrder(primIndex, primIndex)
+                    .material(primIndex, materialInstance);
+                primIndex++;
+            }
+        }
+        bufferIndex++;
+    }
+    if (commands->CmdListsCount > 0)
+    {
+        rbuilder.build(*gEngine, mRenderable);
+    }
+}
+
+void ImGuiWindowImpl::createVertexBuffer(size_t bufferIndex, size_t capacity)
+{
+    syncThreads();
+    gEngine->destroy(mVertexBuffers[bufferIndex]);
+    mVertexBuffers[bufferIndex] = VertexBuffer::Builder()
+                                      .vertexCount(capacity)
+                                      .bufferCount(1)
+                                      .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT2, 0,
+                                                 sizeof(ImDrawVert))
+                                      .attribute(VertexAttribute::UV0, 0, VertexBuffer::AttributeType::FLOAT2,
+                                                 sizeof(filament::math::float2), sizeof(ImDrawVert))
+                                      .attribute(VertexAttribute::COLOR, 0, VertexBuffer::AttributeType::UBYTE4,
+                                                 2 * sizeof(filament::math::float2), sizeof(ImDrawVert))
+                                      .normalized(VertexAttribute::COLOR)
+                                      .build(*gEngine);
+}
+
+void ImGuiWindowImpl::createIndexBuffer(size_t bufferIndex, size_t capacity)
+{
+    syncThreads();
+    gEngine->destroy(mIndexBuffers[bufferIndex]);
+    mIndexBuffers[bufferIndex] = IndexBuffer::Builder()
+                                     .indexCount(capacity)
+                                     .bufferType(IndexBuffer::IndexType::USHORT)
+                                     .build(*gEngine);
+}
+
+void ImGuiWindowImpl::createBuffers(int numRequiredBuffers)
+{
+    if (numRequiredBuffers > mVertexBuffers.size())
+    {
+        size_t previousSize = mVertexBuffers.size();
+        mVertexBuffers.resize(numRequiredBuffers, nullptr);
+        for (size_t i = previousSize; i < mVertexBuffers.size(); i++)
+        {
+            // Pick a reasonable starting capacity; it will grow if needed.
+            createVertexBuffer(i, 1000);
+        }
+    }
+    if (numRequiredBuffers > mIndexBuffers.size())
+    {
+        size_t previousSize = mIndexBuffers.size();
+        mIndexBuffers.resize(numRequiredBuffers, nullptr);
+        for (size_t i = previousSize; i < mIndexBuffers.size(); i++)
+        {
+            // Pick a reasonable starting capacity; it will grow if needed.
+            createIndexBuffer(i, 5000);
+        }
+    }
+}
+
+void ImGuiWindowImpl::populateVertexData(size_t bufferIndex, size_t vbSizeInBytes, void* vbImguiData, size_t ibSizeInBytes, void* ibImguiData)
+{
+    // Create a new vertex buffer if the size isn't large enough, then copy the ImGui data into
+    // a staging area since Filament's render thread might consume the data at any time.
+    size_t requiredVertCount = vbSizeInBytes / sizeof(ImDrawVert);
+    size_t capacityVertCount = mVertexBuffers[bufferIndex]->getVertexCount();
+    if (requiredVertCount > capacityVertCount)
+    {
+        createVertexBuffer(bufferIndex, requiredVertCount);
+    }
+    size_t nVbBytes       = requiredVertCount * sizeof(ImDrawVert);
+    void*  vbFilamentData = malloc(nVbBytes);
+    memcpy(vbFilamentData, vbImguiData, nVbBytes);
+    mVertexBuffers[bufferIndex]->setBufferAt(*gEngine, 0,
+                                             VertexBuffer::BufferDescriptor(
+                                                 vbFilamentData, nVbBytes,
+                                                 [](void* buffer, size_t size, void* user) {
+                                                     free(buffer);
+                                                 },
+                                                 /* user = */ nullptr));
+
+    // Create a new index buffer if the size isn't large enough, then copy the ImGui data into
+    // a staging area since Filament's render thread might consume the data at any time.
+    size_t requiredIndexCount = ibSizeInBytes / 2;
+    size_t capacityIndexCount = mIndexBuffers[bufferIndex]->getIndexCount();
+    if (requiredIndexCount > capacityIndexCount)
+    {
+        createIndexBuffer(bufferIndex, requiredIndexCount);
+    }
+    size_t nIbBytes       = requiredIndexCount * 2;
+    void*  ibFilamentData = malloc(nIbBytes);
+    memcpy(ibFilamentData, ibImguiData, nIbBytes);
+    mIndexBuffers[bufferIndex]->setBuffer(*gEngine,
+                                          IndexBuffer::BufferDescriptor(
+                                              ibFilamentData, nIbBytes,
+                                              [](void* buffer, size_t size, void* user) {
+                                                  free(buffer);
+                                              },
+                                              /* user = */ nullptr));
+}
+
+void ImGuiWindowImpl::syncThreads()
+{
+#if UTILS_HAS_THREADING
+    if (!mHasSynced)
+    {
+        // This is called only when ImGui needs to grow a vertex buffer, which occurs a few times
+        // after launching and rarely (if ever) after that.
+        Fence::waitAndDestroy(gEngine->createFence());
+        mHasSynced = true;
+    }
+#endif
+}
 
 ImGuiKey ImGui_ImplSDL2_KeycodeToImGuiKey(int keycode)
 {
@@ -115,40 +507,98 @@ ImGuiKey ImGui_ImplSDL2_KeycodeToImGuiKey(int keycode)
 }
 
 
-// Helper structure we store in the void* RendererUserData field of each ImGuiViewport to easily retrieve our backend data.
-struct ImGui_ImplSDL2_ViewportData
+static Window* ImGui_ImplSDL2_GetBackendData()
 {
-    void* Window = nullptr;
-
-    ImGui_ImplSDL2_ViewportData(){}
-    ~ImGui_ImplSDL2_ViewportData() { IM_ASSERT(Window == nullptr); }
-};
+    return ImGui::GetCurrentContext() ? (Window*)ImGui::GetIO().BackendPlatformUserData : nullptr;
+}
+// FIXME: Note that doesn't update with DPI/Scaling change only as SDL2 doesn't have an event for it (SDL3 has).
+static void ImGui_ImplSDL2_UpdateMonitors()
+{
+    //ImGui_ImplSDL2_Data* bd          = ImGui_ImplSDL2_GetBackendData();
+    ImGuiPlatformIO&     platform_io = ImGui::GetPlatformIO();
+    platform_io.Monitors.resize(0);
+    //bd->WantUpdateMonitors = false;
+    int display_count      = SDL_GetNumVideoDisplays();
+    for (int n = 0; n < display_count; n++)
+    {
+        // Warning: the validity of monitor DPI information on Windows depends on the application DPI awareness settings, which generally needs to be set in the manifest or at runtime.
+        ImGuiPlatformMonitor monitor;
+        SDL_Rect             r;
+        SDL_GetDisplayBounds(n, &r);
+        monitor.MainPos = monitor.WorkPos = ImVec2((float)r.x, (float)r.y);
+        monitor.MainSize = monitor.WorkSize = ImVec2((float)r.w, (float)r.h);
+#if SDL_HAS_USABLE_DISPLAY_BOUNDS
+        SDL_GetDisplayUsableBounds(n, &r);
+        monitor.WorkPos  = ImVec2((float)r.x, (float)r.y);
+        monitor.WorkSize = ImVec2((float)r.w, (float)r.h);
+#endif
+#if SDL_HAS_PER_MONITOR_DPI
+        // FIXME-VIEWPORT: On MacOS SDL reports actual monitor DPI scale, ignoring OS configuration. We may want to set
+        //  DpiScale to cocoa_window.backingScaleFactor here.
+        float dpi = 0.0f;
+        if (!SDL_GetDisplayDPI(n, &dpi, nullptr, nullptr))
+            monitor.DpiScale = dpi / 96.0f;
+#endif
+        monitor.PlatformHandle = (void*)(intptr_t)n;
+        platform_io.Monitors.push_back(monitor);
+    }
+}
 
 static void ImGui_ImplSDL2_CreateWindow(ImGuiViewport* viewport)
 {
-    ImGui_ImplSDL2_ViewportData* vd = IM_NEW(ImGui_ImplSDL2_ViewportData)();
-    viewport->PlatformUserData      = vd;
+    Window* bd    = ImGui_ImplSDL2_GetBackendData();
+    ImGuiWindowImpl* vd            = IM_NEW(ImGuiWindowImpl)(utils::Path::getCurrentExecutable().getParent() + "assets/fonts/Roboto-Medium.ttf");
+    viewport->PlatformUserData = vd;
 
-    ImGuiViewport*               main_viewport      = ImGui::GetMainViewport();
-    ImGui_ImplSDL2_ViewportData* main_viewport_data = (ImGui_ImplSDL2_ViewportData*)main_viewport->PlatformUserData;
+    ImGuiViewport* main_viewport      = ImGui::GetMainViewport();
+    ImGuiWindowImpl*   main_viewport_data = (ImGuiWindowImpl*)main_viewport->PlatformUserData;
 
+   Uint32 sdl_flags = 0;
+    sdl_flags |= SDL_GetWindowFlags(bd->getWindowHandle()) & SDL_WINDOW_ALLOW_HIGHDPI;
+    //sdl_flags |= SDL_WINDOW_HIDDEN;
+    sdl_flags |= (viewport->Flags & ImGuiViewportFlags_NoDecoration) ? SDL_WINDOW_BORDERLESS : 0;
+    sdl_flags |= (viewport->Flags & ImGuiViewportFlags_NoDecoration) ? 0 : SDL_WINDOW_RESIZABLE;
+
+    vd->mWindow     = SDL_CreateWindow("No Title Yet", (int)viewport->Pos.x, (int)viewport->Pos.y, (int)viewport->Size.x, (int)viewport->Size.y, sdl_flags);
+    vd->WindowOwned = true;
+    
+    viewport->PlatformHandle    = (void*)vd->mWindow;
+    viewport->PlatformHandleRaw = nullptr;
+    SDL_SysWMinfo info;
+    SDL_VERSION(&info.version);
+    if (SDL_GetWindowWMInfo(vd->mWindow, &info))
+    {
+#if defined(SDL_VIDEO_DRIVER_WINDOWS)
+        viewport->PlatformHandleRaw = info.info.win.window;
+#elif defined(__APPLE__) && defined(SDL_VIDEO_DRIVER_COCOA)
+        viewport->PlatformHandleRaw = (void*)info.info.cocoa.window;
+#endif
+    }
+
+    vd->mSwapChain = gEngine->createSwapChain(viewport->PlatformHandleRaw);
+    vd->mRenderer  = gEngine->createRenderer();
+   // vd->mView->setViewport();
 
 }
-
 static void ImGui_ImplSDL2_DestroyWindow(ImGuiViewport* viewport)
 {
-    if (ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData)
+    if (ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData)
     {
         
+        if (vd->mWindow && vd->WindowOwned)
+            SDL_DestroyWindow(vd->mWindow);
+       
+        vd->mWindow = nullptr;
         IM_DELETE(vd);
+        
     }
     viewport->PlatformUserData = viewport->PlatformHandle = nullptr;
 }
 
 static void ImGui_ImplSDL2_ShowWindow(ImGuiViewport* viewport)
 {
-//    ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData;
-//#if defined(_WIN32)
+    ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
+    //#if defined(_WIN32)
 //    HWND hwnd = (HWND)viewport->PlatformHandleRaw;
 //
 //    // SDL hack: Hide icon from task bar
@@ -169,43 +619,43 @@ static void ImGui_ImplSDL2_ShowWindow(ImGuiViewport* viewport)
 //    }
 //#endif
 //
-//    SDL_ShowWindow(vd->Window);
+    SDL_ShowWindow(vd->mWindow);
 }
 
 static ImVec2 ImGui_ImplSDL2_GetWindowPos(ImGuiViewport* viewport)
 {
-    //ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData;
-    //int                          x = 0, y = 0;
-    //SDL_GetWindowPosition(vd->Window, &x, &y);
-    //return ImVec2((float)x, (float)y);
+    ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
+    int                          x = 0, y = 0;
+    SDL_GetWindowPosition(vd->mWindow, &x, &y);
+    return ImVec2((float)x, (float)y);
     return ImVec2(0, 0);
 }
 
 static void ImGui_ImplSDL2_SetWindowPos(ImGuiViewport* viewport, ImVec2 pos)
 {
-    //ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData;
-    //SDL_SetWindowPosition(vd->Window, (int)pos.x, (int)pos.y);
+    ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
+    SDL_SetWindowPosition(vd->mWindow, (int)pos.x, (int)pos.y);
 }
 
 static ImVec2 ImGui_ImplSDL2_GetWindowSize(ImGuiViewport* viewport)
 {
-    //ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData;
-    //int                          w = 0, h = 0;
-    //SDL_GetWindowSize(vd->Window, &w, &h);
-    //return ImVec2((float)w, (float)h);
-    return ImVec2(0, 0);
+    ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
+    int                          w = 0, h = 0;
+    SDL_GetWindowSize(vd->mWindow, &w, &h);
+    return ImVec2((float)w, (float)h);
+    //return ImVec2(0, 0);
 }
 
 static void ImGui_ImplSDL2_SetWindowSize(ImGuiViewport* viewport, ImVec2 size)
 {
-    //ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData;
-    //SDL_SetWindowSize(vd->Window, (int)size.x, (int)size.y);
+    ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
+    SDL_SetWindowSize(vd->mWindow, (int)size.x, (int)size.y);
 }
 
 static void ImGui_ImplSDL2_SetWindowTitle(ImGuiViewport* viewport, const char* title)
 {
-  /*  ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData;
-    SDL_SetWindowTitle(vd->Window, title);*/
+    ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
+    SDL_SetWindowTitle(vd->mWindow, title);
 }
 
 #if SDL_HAS_WINDOW_ALPHA
@@ -218,43 +668,127 @@ static void ImGui_ImplSDL2_SetWindowAlpha(ImGuiViewport* viewport, float alpha)
 
 static void ImGui_ImplSDL2_SetWindowFocus(ImGuiViewport* viewport)
 {
-    /*ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData;
-    SDL_RaiseWindow(vd->Window);*/
+    ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
+    SDL_RaiseWindow(vd->mWindow);
 }
 
 static bool ImGui_ImplSDL2_GetWindowFocus(ImGuiViewport* viewport)
 {
-    /*ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData;
-    return (SDL_GetWindowFlags(vd->Window) & SDL_WINDOW_INPUT_FOCUS) != 0;*/
-    return true;
+    ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
+    return (SDL_GetWindowFlags(vd->mWindow) & SDL_WINDOW_INPUT_FOCUS) != 0;
+    //return true;
 }
 
 static bool ImGui_ImplSDL2_GetWindowMinimized(ImGuiViewport* viewport)
 {
-    /*ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData;
-    return (SDL_GetWindowFlags(vd->Window) & SDL_WINDOW_MINIMIZED) != 0;*/
-    return true;
+    ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
+    return (SDL_GetWindowFlags(vd->mWindow) & SDL_WINDOW_MINIMIZED) != 0;
+    //return true;
 }
 
 static void ImGui_ImplSDL2_RenderWindow(ImGuiViewport* viewport, void*)
 {
-    /*ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData;
-    if (vd->GLContext)
+    ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
+
+    vd->processImGuiCommands(viewport->DrawData);
+
+    if (vd->mRenderer->beginFrame(vd->mSwapChain))
+    {
+        vd->mRenderer->render(vd->mView);
+
+        vd->mRenderer->endFrame();
+    }
+    /*if (vd->GLContext)
         SDL_GL_MakeCurrent(vd->Window, vd->GLContext);*/
 }
 
 static void ImGui_ImplSDL2_SwapBuffers(ImGuiViewport* viewport, void*)
 {
-    /*ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData;
-    if (vd->GLContext)
+    ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
+    /* if (vd->GLContext)
     {
         SDL_GL_MakeCurrent(vd->Window, vd->GLContext);
         SDL_GL_SwapWindow(vd->Window);
     }*/
 }
 
-void ImGui_ImplSDL2_InitPlatformInterface(SDL_Window* window)
+
+
+void ImGui_ImplSDL2_NewFrame()
 {
+    ImGui_ImplSDL2_UpdateMonitors();
+
+     Window* bd = ImGui_ImplSDL2_GetBackendData();
+    IM_ASSERT(bd != nullptr && "Did you call ImGui_ImplSDL2_Init()?");
+    ImGuiIO& io = ImGui::GetIO();
+
+    // Setup display size (every frame to accommodate for window resizing)
+    int w, h;
+    int display_w, display_h;
+    SDL_GetWindowSize(bd->getWindowHandle(), &w, &h);
+    if (SDL_GetWindowFlags(bd->getWindowHandle()) & SDL_WINDOW_MINIMIZED)
+        w = h = 0;
+    /*if (bd->Renderer != nullptr)
+        SDL_GetRendererOutputSize(bd->Renderer, &display_w, &display_h);
+    else*/
+    SDL_GL_GetDrawableSize(bd->getWindowHandle(), &display_w, &display_h);
+    io.DisplaySize = ImVec2((float)w, (float)h);
+    if (w > 0 && h > 0)
+        io.DisplayFramebufferScale = ImVec2((float)display_w / w, (float)display_h / h);
+
+
+    // Update monitors
+    //if (bd->WantUpdateMonitors)
+        ImGui_ImplSDL2_UpdateMonitors();
+
+    // Setup time step (we don't use SDL_GetTicks() because it is using millisecond resolution)
+    // (Accept SDL_GetPerformanceCounter() not returning a monotonically increasing value. Happens in VMs and Emscripten, see #6189, #6114, #3644)
+    /*static Uint64 frequency    = SDL_GetPerformanceFrequency();
+    Uint64        current_time = SDL_GetPerformanceCounter();
+    if (current_time <= bd->Time)
+        current_time = bd->Time + 1;
+    io.DeltaTime = bd->Time > 0 ? (float)((double)(current_time - bd->Time) / frequency) : (float)(1.0f / 60.0f);
+    bd->Time     = current_time;
+
+    if (bd->PendingMouseLeaveFrame && bd->PendingMouseLeaveFrame >= ImGui::GetFrameCount() && bd->MouseButtonsDown == 0)
+    {
+        bd->MouseWindowID          = 0;
+        bd->PendingMouseLeaveFrame = 0;
+        io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+    }*/
+
+    // Our io.AddMouseViewportEvent() calls will only be valid when not capturing.
+    // Technically speaking testing for 'bd->MouseButtonsDown == 0' would be more rygorous, but testing for payload reduces noise and potential side-effects.
+   /* if (bd->MouseCanReportHoveredViewport && ImGui::GetDragDropPayload() == nullptr)
+        io.BackendFlags |= ImGuiBackendFlags_HasMouseHoveredViewport;
+    else
+        io.BackendFlags &= ~ImGuiBackendFlags_HasMouseHoveredViewport;*/
+}
+
+void ImGui_ImplSDL2_InitPlatformInterface(Window* window, Engine* engine)
+{
+    gEngine = engine;
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    (void)io;
+
+    io.BackendPlatformUserData = window;
+
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+    io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
+
+    Path settingsPath;
+    settingsPath.setPath(
+        Path::getUserSettingsDirectory() +
+        Path(std::string(".") + Path::getCurrentExecutable().getNameWithoutExtension()) +
+        Path("imgui_settings.ini"));
+    settingsPath.getParent().mkdirRecursive();
+    io.IniFilename = settingsPath.c_str();
+
     // Register platform interface (will be coupled with a renderer interface)
     ImGuiPlatformIO& platform_io            = ImGui::GetPlatformIO();
     platform_io.Platform_CreateWindow       = ImGui_ImplSDL2_CreateWindow;
@@ -280,8 +814,124 @@ void ImGui_ImplSDL2_InitPlatformInterface(SDL_Window* window)
     // Register main window handle (which is owned by the main application, not by us)
     // This is mostly for simplicity and consistency, so that our code (e.g. mouse handling etc.) can use same logic for main and secondary viewports.
     ImGuiViewport*               main_viewport = ImGui::GetMainViewport();
-    ImGui_ImplSDL2_ViewportData* vd            = IM_NEW(ImGui_ImplSDL2_ViewportData)();
-    vd->Window                                 = window;
+    ImGuiWindowImpl*   vd                          = IM_NEW(ImGuiWindowImpl)(GameDriver::get().mUiView->getView(),utils::Path::getCurrentExecutable().getParent() + "assets/fonts/Roboto-Medium.ttf");
+    vd->mWindow                                              = window->getWindowHandle();
     main_viewport->PlatformUserData            = vd;
-    main_viewport->PlatformHandle              = vd->Window;
+    main_viewport->PlatformHandle                            = vd->mWindow;
+
+
+}
+
+bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event)
+{
+    ImGuiIO&             io = ImGui::GetIO();
+    Window* bd = ImGui_ImplSDL2_GetBackendData();
+
+    switch (event->type)
+    {
+        case SDL_MOUSEMOTION:
+        {
+            
+            ImVec2 mouse_pos((float)event->motion.x, (float)event->motion.y);
+            if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+            {
+                int window_x, window_y;
+                SDL_GetWindowPosition(SDL_GetWindowFromID(event->motion.windowID), &window_x, &window_y);
+                mouse_pos.x += window_x;
+                mouse_pos.y += window_y;
+            }
+            io.AddMouseSourceEvent(event->motion.which == SDL_TOUCH_MOUSEID ? ImGuiMouseSource_TouchScreen : ImGuiMouseSource_Mouse);
+            io.AddMousePosEvent(mouse_pos.x, mouse_pos.y);
+            return true;
+        }
+        case SDL_MOUSEWHEEL:
+        {
+            //IMGUI_DEBUG_LOG("wheel %.2f %.2f, precise %.2f %.2f\n", (float)event->wheel.x, (float)event->wheel.y, event->wheel.preciseX, event->wheel.preciseY);
+#if SDL_VERSION_ATLEAST(2, 0, 18) // If this fails to compile on Emscripten: update to latest Emscripten!
+            float wheel_x = -event->wheel.preciseX;
+            float wheel_y = event->wheel.preciseY;
+#else
+            float wheel_x = -(float)event->wheel.x;
+            float wheel_y = (float)event->wheel.y;
+#endif
+#ifdef __EMSCRIPTEN__
+            wheel_x /= 100.0f;
+#endif
+            io.AddMouseSourceEvent(event->wheel.which == SDL_TOUCH_MOUSEID ? ImGuiMouseSource_TouchScreen : ImGuiMouseSource_Mouse);
+            io.AddMouseWheelEvent(wheel_x, wheel_y);
+            return true;
+        }
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEBUTTONUP:
+        {
+            int mouse_button = -1;
+            if (event->button.button == SDL_BUTTON_LEFT) { mouse_button = 0; }
+            if (event->button.button == SDL_BUTTON_RIGHT) { mouse_button = 1; }
+            if (event->button.button == SDL_BUTTON_MIDDLE) { mouse_button = 2; }
+            if (event->button.button == SDL_BUTTON_X1) { mouse_button = 3; }
+            if (event->button.button == SDL_BUTTON_X2) { mouse_button = 4; }
+            if (mouse_button == -1)
+                break;
+            io.AddMouseSourceEvent(event->button.which == SDL_TOUCH_MOUSEID ? ImGuiMouseSource_TouchScreen : ImGuiMouseSource_Mouse);
+            io.AddMouseButtonEvent(mouse_button, (event->type == SDL_MOUSEBUTTONDOWN));
+            bd->MouseButtonsDown = (event->type == SDL_MOUSEBUTTONDOWN) ? (bd->MouseButtonsDown | (1 << mouse_button)) : (bd->MouseButtonsDown & ~(1 << mouse_button));
+            return true;
+        }
+        case SDL_TEXTINPUT:
+        {
+            io.AddInputCharactersUTF8(event->text.text);
+            return true;
+        }
+        case SDL_KEYDOWN:
+        case SDL_KEYUP:
+        {
+            //ImGui_ImplSDL2_UpdateKeyModifiers((SDL_Keymod)event->key.keysym.mod);
+           // ImGuiKey key = ImGui_ImplSDL2_KeycodeToImGuiKey(event->key.keysym.sym);
+            //io.AddKeyEvent(key, (event->type == SDL_KEYDOWN));
+            //io.SetKeyEventNativeData(key, event->key.keysym.sym, event->key.keysym.scancode, event->key.keysym.scancode); // To support legacy indexing (<1.87 user code). Legacy backend uses SDLK_*** as indices to IsKeyXXX() functions.
+            return true;
+        }
+#if SDL_HAS_DISPLAY_EVENT
+        case SDL_DISPLAYEVENT:
+        {
+            // 2.0.26 has SDL_DISPLAYEVENT_CONNECTED/SDL_DISPLAYEVENT_DISCONNECTED/SDL_DISPLAYEVENT_ORIENTATION,
+            // so change of DPI/Scaling are not reflected in this event. (SDL3 has it)
+            bd->WantUpdateMonitors = true;
+            return true;
+        }
+#endif
+        case SDL_WINDOWEVENT:
+        {
+            // - When capturing mouse, SDL will send a bunch of conflicting LEAVE/ENTER event on every mouse move, but the final ENTER tends to be right.
+            // - However we won't get a correct LEAVE event for a captured window.
+            // - In some cases, when detaching a window from main viewport SDL may send SDL_WINDOWEVENT_ENTER one frame too late,
+            //   causing SDL_WINDOWEVENT_LEAVE on previous frame to interrupt drag operation by clear mouse position. This is why
+            //   we delay process the SDL_WINDOWEVENT_LEAVE events by one frame. See issue #5012 for details.
+            Uint8 window_event = event->window.event;
+           /* if (window_event == SDL_WINDOWEVENT_ENTER)
+            {
+                bd->MouseWindowID          = event->window.windowID;
+                bd->PendingMouseLeaveFrame = 0;
+            }
+            if (window_event == SDL_WINDOWEVENT_LEAVE)
+                bd->PendingMouseLeaveFrame = ImGui::GetFrameCount() + 1;*/
+            if (window_event == SDL_WINDOWEVENT_FOCUS_GAINED)
+                io.AddFocusEvent(true);
+            else if (window_event == SDL_WINDOWEVENT_FOCUS_LOST)
+                io.AddFocusEvent(false);
+            if (window_event == SDL_WINDOWEVENT_CLOSE || window_event == SDL_WINDOWEVENT_MOVED || window_event == SDL_WINDOWEVENT_RESIZED)
+                if (ImGuiViewport* viewport = ImGui::FindViewportByPlatformHandle((void*)SDL_GetWindowFromID(event->window.windowID)))
+                {
+                    if (window_event == SDL_WINDOWEVENT_CLOSE)
+                        viewport->PlatformRequestClose = true;
+                    if (window_event == SDL_WINDOWEVENT_MOVED)
+                        viewport->PlatformRequestMove = true;
+                    if (window_event == SDL_WINDOWEVENT_RESIZED)
+                        viewport->PlatformRequestResize = true;
+                    return true;
+                }
+            return true;
+        }
+    }
+    return false;
 }

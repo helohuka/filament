@@ -6,3 +6,4 @@
 
 Configure                  gConfigure;
 filament::viewer::Settings gSettings;
+filament::Engine*          gEngine = nullptr;

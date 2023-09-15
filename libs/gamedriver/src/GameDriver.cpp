@@ -12,6 +12,8 @@
 
 #include "generated/resources/gamedriver.h"
 
+#include "gamedriver/ImGuiBridge.h"
+
 using namespace filament;
 using namespace filament::math;
 using namespace utils;
@@ -180,8 +182,6 @@ void GameDriver::onKeyUp(SDL_Scancode key)
     eventTarget->keyUp(key);
     eventTarget = nullptr;
 }
-
-
 
 void GameDriver::initialize()
 {
@@ -392,7 +392,12 @@ void GameDriver::mainLoop()
 
     setup();
 
-    ImGuiHelper::Callback imguiCallback = std::bind(&GameDriver::updateUserInterface, this);
+    ImGui_ImplSDL2_InitPlatformInterface(mMainWindow.get(), mRenderEngine);
+
+    ImGuiHelper::Callback imguiCallback = nullptr; //std::bind(&GameDriver::updateUserInterface, this);
+
+
+   
 
     if (imguiCallback)
     {
@@ -400,7 +405,7 @@ void GameDriver::mainLoop()
         mImGuiHelper                 = std::make_unique<ImGuiHelper>(mRenderEngine, mUiView->getView(),
                                                      Resource::get().getRootPath() + "assets/fonts/Roboto-Medium.ttf");
 
-
+        //ImGui_ImplSDL2_InitPlatformInterface(mMainWindow->getWindowHandle());
         ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
         ImGuiIO& io  = ImGui::GetIO();
 #ifdef WIN32
@@ -510,6 +515,11 @@ void GameDriver::mainLoop()
                     }
                 }
             }
+
+            if (ImGui_ImplSDL2_ProcessEvent(&events[nevents]))
+            {
+            }
+
             nevents++;
         }
 
@@ -518,6 +528,8 @@ void GameDriver::mainLoop()
         {
             const SDL_Event& event = events[i];
             ImGuiIO*         io    = mImGuiHelper ? &ImGui::GetIO() : nullptr;
+
+            
             switch (event.type)
             {
                 case SDL_QUIT:
@@ -580,7 +592,28 @@ void GameDriver::mainLoop()
                 default:
                     break;
             }
+
+           
         }
+
+         ImGui_ImplSDL2_NewFrame();
+         ImGui::NewFrame();
+
+         ImGui::ShowDemoWindow(0);
+
+         ImGui::Render();
+
+        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+         {
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+         }
+
+        ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+
+        ImGuiWindowImpl* vd = (ImGuiWindowImpl*)main_viewport->PlatformUserData;
+
+        vd->processImGuiCommands(ImGui::GetDrawData());
 
         // Calculate the time step.
         static Uint64 frequency = SDL_GetPerformanceFrequency();
@@ -621,6 +654,7 @@ void GameDriver::mainLoop()
                 io.MousePos = ImVec2((float)mx, (float)my);
             }
 
+            ImGui_ImplSDL2_NewFrame();
             // Populate the UI Scene.
             mImGuiHelper->render(timeStep, imguiCallback);
         }
@@ -897,7 +931,7 @@ void GameDriver::preRender(View* view, Scene* scene, Renderer* renderer)
 }
 void GameDriver::postRender(View* view, Scene* scene, Renderer* renderer)
 {
-    Automation::get().tick(view, mInstance, renderer, ImGui::GetIO().DeltaTime);
+    //Automation::get().tick(view, mInstance, renderer, ImGui::GetIO().DeltaTime);
 }
 
 void GameDriver::animate(double now)

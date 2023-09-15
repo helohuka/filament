@@ -64,7 +64,7 @@
 #include <filament/LightManager.h>
 #include <filament/Texture.h>
 #include <filament/Box.h>
-#include <filament/DebugRegistry.h>
+#include <filament/Fence.h>
 #include <filament/IndirectLight.h>
 #include <filament/View.h>
 #include <filament/TextureSampler.h>

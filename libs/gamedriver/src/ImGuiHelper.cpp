@@ -51,10 +51,10 @@ ImGuiHelper::ImGuiHelper(Engine* engine, filament::View* view, const Path& fontP
     ImGuiIO& io = ImGui::GetIO();
 
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    //io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
-    //io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
-    //io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+    io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
 
     mSettingsPath.setPath(
         Path::getUserSettingsDirectory() +
@@ -184,24 +184,18 @@ void ImGuiHelper::render(float timeStepInSeconds, Callback imguiCommands)
     // This call will also update the io.WantCaptureMouse, io.WantCaptureKeyboard flag
     // that tells us whether to dispatch inputs (or not) to the app.
 
-
-
     ImGui::NewFrame();
     // Allow the client app to create widgets.
-
 
     imguiCommands(mEngine, mView);
     // Let ImGui build up its draw data.
     ImGui::Render();
-
-
 
     if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
     {
         ImGui::UpdatePlatformWindows();
         ImGui::RenderPlatformWindowsDefault();
     }
-
 
     // Finally, translate the draw data into Filament objects.
     processImGuiCommands(ImGui::GetDrawData());
