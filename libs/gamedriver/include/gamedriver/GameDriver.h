@@ -107,7 +107,6 @@ private:
     filament::Material const*             mShadowMaterial      = nullptr;
     filament::Material const*             mOverdrawMaterial    = nullptr;
     filament::MaterialInstance*           mDepthMI             = nullptr;
-    std::unique_ptr<ImGuiHelper> mImGuiHelper;
     size_t                                mSkippedFrames = 0;
     std::vector<filament::View*>          mOffscreenViews;
 

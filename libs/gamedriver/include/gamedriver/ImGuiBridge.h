@@ -43,12 +43,11 @@ struct ImGuiWindowImpl
     bool                                     mHasSynced = false;
 
     filament::TextureSampler                 mSampler;
-    bool                                     mFlipVertical = false;
     bool                                     WindowOwned   = false;
     bool   mNeedsDraw    = true;
     double mTime         = 0.0;
     double mLastDrawTime = 0.0;
-
+    bool                                     MouseButtonsDown = false;
     void processImGuiCommands(ImDrawData* commands);
 
 private:
@@ -61,12 +60,10 @@ private:
     void syncThreads();
 };
 
-
-
 ImGuiKey ImGui_ImplSDL2_KeycodeToImGuiKey(int keycode);
-
 void ImGui_ImplSDL2_InitPlatformInterface(class Window* window, filament::Engine* engine);
-
 void ImGui_ImplSDL2_NewFrame();
 bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event);
+
+
 #endif // __IMGUIBRIDGE_H__

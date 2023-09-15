@@ -287,11 +287,6 @@ void GameDriver::initialize()
 
 void GameDriver::release()
 {
-    if (mImGuiHelper)
-    {
-        mImGuiHelper.reset();
-    }
-
     mResourceLoader->asyncCancelLoad();
     mAssetLoader->destroyAsset(mAsset);
     mMaterials->destroyMaterials();
@@ -303,7 +298,6 @@ void GameDriver::release()
     mOverdrawVisualizer.reset();
 
     mRenderEngine->destroy(mSunlight);
-    mImGuiHelper = nullptr;
 
     delete mMaterials;
     delete mNames;
@@ -394,53 +388,7 @@ void GameDriver::mainLoop()
 
     ImGui_ImplSDL2_InitPlatformInterface(mMainWindow.get(), mRenderEngine);
 
-    ImGuiHelper::Callback imguiCallback = nullptr; //std::bind(&GameDriver::updateUserInterface, this);
-
-
    
-
-    if (imguiCallback)
-    {
-        
-        mImGuiHelper                 = std::make_unique<ImGuiHelper>(mRenderEngine, mUiView->getView(),
-                                                     Resource::get().getRootPath() + "assets/fonts/Roboto-Medium.ttf");
-
-        //ImGui_ImplSDL2_InitPlatformInterface(mMainWindow->getWindowHandle());
-        ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-        ImGuiIO& io  = ImGui::GetIO();
-#ifdef WIN32
-        io.ImeWindowHandle = mMainWindow->getNativeWindow();
-#endif
-        io.KeyMap[ImGuiKey_Tab]        = SDL_SCANCODE_TAB;
-        io.KeyMap[ImGuiKey_LeftArrow]  = SDL_SCANCODE_LEFT;
-        io.KeyMap[ImGuiKey_RightArrow] = SDL_SCANCODE_RIGHT;
-        io.KeyMap[ImGuiKey_UpArrow]    = SDL_SCANCODE_UP;
-        io.KeyMap[ImGuiKey_DownArrow]  = SDL_SCANCODE_DOWN;
-        io.KeyMap[ImGuiKey_PageUp]     = SDL_SCANCODE_PAGEUP;
-        io.KeyMap[ImGuiKey_PageDown]   = SDL_SCANCODE_PAGEDOWN;
-        io.KeyMap[ImGuiKey_Home]       = SDL_SCANCODE_HOME;
-        io.KeyMap[ImGuiKey_End]        = SDL_SCANCODE_END;
-        io.KeyMap[ImGuiKey_Insert]     = SDL_SCANCODE_INSERT;
-        io.KeyMap[ImGuiKey_Delete]     = SDL_SCANCODE_DELETE;
-        io.KeyMap[ImGuiKey_Backspace]  = SDL_SCANCODE_BACKSPACE;
-        io.KeyMap[ImGuiKey_Space]      = SDL_SCANCODE_SPACE;
-        io.KeyMap[ImGuiKey_Enter]      = SDL_SCANCODE_RETURN;
-        io.KeyMap[ImGuiKey_Escape]     = SDL_SCANCODE_ESCAPE;
-        io.KeyMap[ImGuiKey_A]          = SDL_SCANCODE_A;
-        io.KeyMap[ImGuiKey_C]          = SDL_SCANCODE_C;
-        io.KeyMap[ImGuiKey_V]          = SDL_SCANCODE_V;
-        io.KeyMap[ImGuiKey_X]          = SDL_SCANCODE_X;
-        io.KeyMap[ImGuiKey_Y]          = SDL_SCANCODE_Y;
-        io.KeyMap[ImGuiKey_Z]          = SDL_SCANCODE_Z;
-        io.SetClipboardTextFn          = [](void*, const char* text) {
-            SDL_SetClipboardText(text);
-        };
-        io.GetClipboardTextFn = [](void*) -> const char* {
-            return SDL_GetClipboardText();
-        };
-        io.ClipboardUserData = nullptr;
-    }
-
     bool mousePressed[3] = {false};
 
     float cameraFocalLength = mCameraFocalLength;
@@ -475,46 +423,6 @@ void GameDriver::mainLoop()
         int           nevents = 0;
         while (nevents < kMaxEvents && SDL_PollEvent(&events[nevents]) != 0)
         {
-            if (mImGuiHelper)
-            {
-                ImGuiIO&   io    = ImGui::GetIO();
-                SDL_Event* event = &events[nevents];
-                switch (event->type)
-                {
-                    case SDL_MOUSEWHEEL:
-                    {
-                        if (event->wheel.x > 0) io.MouseWheelH += 1;
-                        if (event->wheel.x < 0) io.MouseWheelH -= 1;
-                        if (event->wheel.y > 0) io.MouseWheel += 1;
-                        if (event->wheel.y < 0) io.MouseWheel -= 1;
-                        break;
-                    }
-                    case SDL_MOUSEBUTTONDOWN:
-                    {
-                        if (event->button.button == SDL_BUTTON_LEFT) mousePressed[0] = true;
-                        if (event->button.button == SDL_BUTTON_RIGHT) mousePressed[1] = true;
-                        if (event->button.button == SDL_BUTTON_MIDDLE) mousePressed[2] = true;
-                        break;
-                    }
-                    case SDL_TEXTINPUT:
-                    {
-                        io.AddInputCharactersUTF8(event->text.text);
-                        break;
-                    }
-                    case SDL_KEYDOWN:
-                    case SDL_KEYUP:
-                    {
-                        int key = event->key.keysym.scancode;
-                        IM_ASSERT(key >= 0 && key < IM_ARRAYSIZE(io.KeysDown));
-                        io.KeysDown[key] = (event->type == SDL_KEYDOWN);
-                        io.KeyShift      = ((SDL_GetModState() & KMOD_SHIFT) != 0);
-                        io.KeyAlt        = ((SDL_GetModState() & KMOD_ALT) != 0);
-                        io.KeyCtrl       = ((SDL_GetModState() & KMOD_CTRL) != 0);
-                        io.KeySuper      = ((SDL_GetModState() & KMOD_GUI) != 0);
-                        break;
-                    }
-                }
-            }
 
             if (ImGui_ImplSDL2_ProcessEvent(&events[nevents]))
             {
@@ -527,7 +435,7 @@ void GameDriver::mainLoop()
         for (int i = 0; i < nevents; i++)
         {
             const SDL_Event& event = events[i];
-            ImGuiIO*         io    = mImGuiHelper ? &ImGui::GetIO() : nullptr;
+            ImGuiIO*         io    =   nullptr;
 
             
             switch (event.type)
@@ -598,8 +506,8 @@ void GameDriver::mainLoop()
 
          ImGui_ImplSDL2_NewFrame();
          ImGui::NewFrame();
-
-         ImGui::ShowDemoWindow(0);
+         
+         updateUserInterface();
 
          ImGui::Render();
 
@@ -609,9 +517,7 @@ void GameDriver::mainLoop()
             ImGui::RenderPlatformWindowsDefault();
          }
 
-        ImGuiViewport* main_viewport = ImGui::GetMainViewport();
-
-        ImGuiWindowImpl* vd = (ImGuiWindowImpl*)main_viewport->PlatformUserData;
+        ImGuiWindowImpl* vd = (ImGuiWindowImpl*)ImGui::GetIO().BackendPlatformUserData;
 
         vd->processImGuiCommands(ImGui::GetDrawData());
 
@@ -621,43 +527,6 @@ void GameDriver::mainLoop()
         const float   timeStep  = mTime > 0 ? (float)((double)(now - mTime) / frequency) : (float)(1.0f / 60.0f);
         mTime                   = now;
 
-        // Populate the UI scene, regardless of whether Filament wants to a skip frame. We should
-        // always let ImGui generate a command list; if it skips a frame it'll destroy its widgets.
-        if (mImGuiHelper)
-        {
-
-            // Inform ImGui of the current window size in case it was resized.
-            int windowWidth, windowHeight;
-            int displayWidth, displayHeight;
-            SDL_GetWindowSize(mMainWindow->getWindowHandle(), &windowWidth, &windowHeight);
-            SDL_GL_GetDrawableSize(mMainWindow->getWindowHandle(), &displayWidth, &displayHeight);
-            mImGuiHelper->setDisplaySize(windowWidth, windowHeight,
-                                         windowWidth > 0 ? ((float)displayWidth / windowWidth) : 0,
-                                         windowHeight > 0 ? ((float)displayHeight / windowHeight) : 0);
-
-            
-            // Setup mouse inputs (we already got mouse wheel, keyboard keys & characters
-            // from our event handler)
-            ImGuiIO& io = ImGui::GetIO();
-            int      mx, my;
-            Uint32   buttons = SDL_GetMouseState(&mx, &my);
-            io.MousePos      = ImVec2(-FLT_MAX, -FLT_MAX);
-            io.MouseDown[0]  = mousePressed[0] || (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
-            io.MouseDown[1]  = mousePressed[1] || (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
-            io.MouseDown[2]  = mousePressed[2] || (buttons & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
-            mousePressed[0] = mousePressed[1] = mousePressed[2] = false;
-
-            // TODO: Update to a newer SDL and use SDL_CaptureMouse() to retrieve mouse coordinates
-            // outside of the client area; see the imgui SDL example.
-            if ((SDL_GetWindowFlags(mMainWindow->getWindowHandle()) & SDL_WINDOW_INPUT_FOCUS) != 0)
-            {
-                io.MousePos = ImVec2((float)mx, (float)my);
-            }
-
-            ImGui_ImplSDL2_NewFrame();
-            // Populate the UI Scene.
-            mImGuiHelper->render(timeStep, imguiCallback);
-        }
 
         // Update the camera manipulators for each view.
 

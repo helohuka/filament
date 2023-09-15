@@ -158,34 +158,16 @@ ImGuiWindowImpl::~ImGuiWindowImpl()
     //mImGuiContext = nullptr;
 }
 
-//void ImGuiWindowImpl::setDisplaySize(int width, int height, float scaleX, float scaleY, bool flipVertical)
-//{
-//    ImGuiIO& io                  = ImGui::GetIO();
-//    io.DisplaySize               = ImVec2(width, height);
-//    io.DisplayFramebufferScale.x = scaleX;
-//    io.DisplayFramebufferScale.y = scaleY;
-//    mFlipVertical                = flipVertical;
-//    if (mFlipVertical)
-//    {
-//        mCamera->setProjection(Camera::Projection::ORTHO, 0.0, double(width),
-//                               0.0, double(height), 0.0, 1.0);
-//    }
-//    else
-//    {
-//        mCamera->setProjection(Camera::Projection::ORTHO, 0.0, double(width),
-//                               double(height), 0.0, 0.0, 1.0);
-//    }
-//}
-
-
 void ImGuiWindowImpl::processImGuiCommands(ImDrawData* commands)
 {
     //ImGui::SetCurrentContext(mImGuiContext);
-    int w, h;
-    int x, y;
-    SDL_GetWindowSize(mWindow, &w, &h);
-    SDL_GetWindowPosition(mWindow, &x, &y);
+    int x = commands->DisplayPos.x, y = commands->DisplayPos.y;
+    int w = commands->DisplaySize.x, h = commands->DisplaySize.y;
+
     mCamera->setProjection(Camera::Projection::ORTHO, x, x + w, y + h, y, 0.0, 1.0);
+
+    //mCamera->setProjection(Camera::Projection::ORTHO, 0.0, double(w),double(h), 0.0, 0.0, 1.0);
+
     mView->setViewport({0, 0, (uint32_t)w, (uint32_t)h});
     
     mHasSynced = false;
@@ -256,9 +238,9 @@ void ImGuiWindowImpl::processImGuiCommands(ImDrawData* commands)
                     (int)clip_min.x, (int)((float)fbheight - clip_max.y),
                     (int)(clip_max.x - clip_min.x), (int)(clip_max.y - clip_min.y));
 
-                 /*materialInstance->setScissor(
+               /*  materialInstance->setScissor(
                     pcmd.ClipRect.x,
-                    mFlipVertical ? pcmd.ClipRect.y : (fbheight - pcmd.ClipRect.w),
+                     (fbheight - pcmd.ClipRect.w),
                     (uint16_t)(pcmd.ClipRect.z - pcmd.ClipRect.x),
                     (uint16_t)(pcmd.ClipRect.w - pcmd.ClipRect.y));*/
                 if (pcmd.TextureId)
@@ -507,9 +489,9 @@ ImGuiKey ImGui_ImplSDL2_KeycodeToImGuiKey(int keycode)
 }
 
 
-static Window* ImGui_ImplSDL2_GetBackendData()
+static ImGuiWindowImpl* ImGui_ImplSDL2_GetBackendData()
 {
-    return ImGui::GetCurrentContext() ? (Window*)ImGui::GetIO().BackendPlatformUserData : nullptr;
+    return ImGui::GetCurrentContext() ? (ImGuiWindowImpl*)ImGui::GetIO().BackendPlatformUserData : nullptr;
 }
 // FIXME: Note that doesn't update with DPI/Scaling change only as SDL2 doesn't have an event for it (SDL3 has).
 static void ImGui_ImplSDL2_UpdateMonitors()
@@ -546,7 +528,7 @@ static void ImGui_ImplSDL2_UpdateMonitors()
 
 static void ImGui_ImplSDL2_CreateWindow(ImGuiViewport* viewport)
 {
-    Window* bd    = ImGui_ImplSDL2_GetBackendData();
+    ImGuiWindowImpl* bd        = ImGui_ImplSDL2_GetBackendData();
     ImGuiWindowImpl* vd            = IM_NEW(ImGuiWindowImpl)(utils::Path::getCurrentExecutable().getParent() + "assets/fonts/Roboto-Medium.ttf");
     viewport->PlatformUserData = vd;
 
@@ -554,8 +536,8 @@ static void ImGui_ImplSDL2_CreateWindow(ImGuiViewport* viewport)
     ImGuiWindowImpl*   main_viewport_data = (ImGuiWindowImpl*)main_viewport->PlatformUserData;
 
    Uint32 sdl_flags = 0;
-    sdl_flags |= SDL_GetWindowFlags(bd->getWindowHandle()) & SDL_WINDOW_ALLOW_HIGHDPI;
-    //sdl_flags |= SDL_WINDOW_HIDDEN;
+    sdl_flags |= SDL_GetWindowFlags(bd->mWindow) & SDL_WINDOW_ALLOW_HIGHDPI;
+    sdl_flags |= SDL_WINDOW_HIDDEN;
     sdl_flags |= (viewport->Flags & ImGuiViewportFlags_NoDecoration) ? SDL_WINDOW_BORDERLESS : 0;
     sdl_flags |= (viewport->Flags & ImGuiViewportFlags_NoDecoration) ? 0 : SDL_WINDOW_RESIZABLE;
 
@@ -584,7 +566,6 @@ static void ImGui_ImplSDL2_DestroyWindow(ImGuiViewport* viewport)
 {
     if (ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData)
     {
-        
         if (vd->mWindow && vd->WindowOwned)
             SDL_DestroyWindow(vd->mWindow);
        
@@ -704,34 +685,25 @@ static void ImGui_ImplSDL2_RenderWindow(ImGuiViewport* viewport, void*)
 
 static void ImGui_ImplSDL2_SwapBuffers(ImGuiViewport* viewport, void*)
 {
-    ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
-    /* if (vd->GLContext)
-    {
-        SDL_GL_MakeCurrent(vd->Window, vd->GLContext);
-        SDL_GL_SwapWindow(vd->Window);
-    }*/
+    //ImGuiWindowImpl* vd = (ImGuiWindowImpl*)viewport->PlatformUserData;
 }
-
-
 
 void ImGui_ImplSDL2_NewFrame()
 {
     ImGui_ImplSDL2_UpdateMonitors();
 
-     Window* bd = ImGui_ImplSDL2_GetBackendData();
+     ImGuiWindowImpl* bd = ImGui_ImplSDL2_GetBackendData();
     IM_ASSERT(bd != nullptr && "Did you call ImGui_ImplSDL2_Init()?");
     ImGuiIO& io = ImGui::GetIO();
 
     // Setup display size (every frame to accommodate for window resizing)
     int w, h;
     int display_w, display_h;
-    SDL_GetWindowSize(bd->getWindowHandle(), &w, &h);
-    if (SDL_GetWindowFlags(bd->getWindowHandle()) & SDL_WINDOW_MINIMIZED)
+    SDL_GetWindowSize(bd->mWindow, &w, &h);
+    if (SDL_GetWindowFlags(bd->mWindow) & SDL_WINDOW_MINIMIZED)
         w = h = 0;
-    /*if (bd->Renderer != nullptr)
-        SDL_GetRendererOutputSize(bd->Renderer, &display_w, &display_h);
-    else*/
-    SDL_GL_GetDrawableSize(bd->getWindowHandle(), &display_w, &display_h);
+
+    SDL_GL_GetDrawableSize(bd->mWindow, &display_w, &display_h);
     io.DisplaySize = ImVec2((float)w, (float)h);
     if (w > 0 && h > 0)
         io.DisplayFramebufferScale = ImVec2((float)display_w / w, (float)display_h / h);
@@ -773,13 +745,6 @@ void ImGui_ImplSDL2_InitPlatformInterface(Window* window, Engine* engine)
     ImGuiIO& io = ImGui::GetIO();
     (void)io;
 
-    io.BackendPlatformUserData = window;
-
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-
-    io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
-    io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
 
     Path settingsPath;
     settingsPath.setPath(
@@ -788,6 +753,18 @@ void ImGui_ImplSDL2_InitPlatformInterface(Window* window, Engine* engine)
         Path("imgui_settings.ini"));
     settingsPath.getParent().mkdirRecursive();
     io.IniFilename = settingsPath.c_str();
+
+   ImGuiWindowImpl* vd = IM_NEW(ImGuiWindowImpl)(GameDriver::get().mUiView->getView(), utils::Path::getCurrentExecutable().getParent() + "assets/fonts/Roboto-Medium.ttf");
+    vd->mWindow         = window->getWindowHandle();
+   io.BackendPlatformUserData = vd;
+   // return;
+
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+    io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
+
 
     // Register platform interface (will be coupled with a renderer interface)
     ImGuiPlatformIO& platform_io            = ImGui::GetPlatformIO();
@@ -811,13 +788,14 @@ void ImGui_ImplSDL2_InitPlatformInterface(Window* window, Engine* engine)
     platform_io.Platform_CreateVkSurface = ImGui_ImplSDL2_CreateVkSurface;
 #endif
 
-    // Register main window handle (which is owned by the main application, not by us)
+    
+        // Register main window handle (which is owned by the main application, not by us)
     // This is mostly for simplicity and consistency, so that our code (e.g. mouse handling etc.) can use same logic for main and secondary viewports.
-    ImGuiViewport*               main_viewport = ImGui::GetMainViewport();
-    ImGuiWindowImpl*   vd                          = IM_NEW(ImGuiWindowImpl)(GameDriver::get().mUiView->getView(),utils::Path::getCurrentExecutable().getParent() + "assets/fonts/Roboto-Medium.ttf");
-    vd->mWindow                                              = window->getWindowHandle();
-    main_viewport->PlatformUserData            = vd;
-    main_viewport->PlatformHandle                            = vd->mWindow;
+    ImGuiViewport*   main_viewport  = ImGui::GetMainViewport();
+   // ImGuiWindowImpl* vd             = IM_NEW(ImGuiWindowImpl)(GameDriver::get().mUiView->getView(), utils::Path::getCurrentExecutable().getParent() + "assets/fonts/Roboto-Medium.ttf");
+    vd->mWindow                     = window->getWindowHandle();
+    main_viewport->PlatformUserData = vd;
+    main_viewport->PlatformHandle   = vd->mWindow;
 
 
 }
@@ -825,7 +803,7 @@ void ImGui_ImplSDL2_InitPlatformInterface(Window* window, Engine* engine)
 bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event)
 {
     ImGuiIO&             io = ImGui::GetIO();
-    Window* bd = ImGui_ImplSDL2_GetBackendData();
+    ImGuiWindowImpl* bd = ImGui_ImplSDL2_GetBackendData();
 
     switch (event->type)
     {

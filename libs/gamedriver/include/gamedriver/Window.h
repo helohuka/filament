@@ -46,7 +46,7 @@ public:
     std::string&                 getWindowTitle() { return mWindowTitle; }
 
     void onResize();
-    bool MouseButtonsDown = false;
+    
 
 private:
     void updateWindowInfo();
