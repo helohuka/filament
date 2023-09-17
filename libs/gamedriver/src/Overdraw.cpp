@@ -77,6 +77,16 @@ OverdrawVisualizer::~OverdrawVisualizer()
         em.destroy(e);
     }
 
+    if (mVertexBuffer)
+    {
+        mRenderEngine.destroy(mVertexBuffer);
+    }
+
+    if (mIndexBuffer)
+    {
+        mRenderEngine.destroy(mIndexBuffer);
+    }
+    
     for (auto mi : mMIArray)
     {
         mRenderEngine.destroy(mi);

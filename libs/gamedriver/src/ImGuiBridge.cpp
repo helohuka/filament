@@ -10,81 +10,18 @@ using namespace utils;
 using MinFilter = TextureSampler::MinFilter;
 using MagFilter = TextureSampler::MagFilter;
 
-Engine* gEngine = nullptr;
+
+
 ImGuiContext* gImGuiContext;
 
-ImGuiWindowImpl::ImGuiWindowImpl(filament::View* view, const utils::Path& fontPath) :
+filament::Material* gImGuiMaterial = nullptr;
+filament::TextureSampler gImGuiSampler;
+filament::Texture*       gImGuiTexture = nullptr;
+
+
+ImGuiWindowImpl::ImGuiWindowImpl():
     mScene(gEngine->createScene())
 {
-
-    ImGuiIO& io = ImGui::GetIO();
-
-    // Create a simple alpha-blended 2D blitting material.
-    mMaterial = Material::Builder()
-                    .package(GAMEDRIVER_UIBLIT_DATA, GAMEDRIVER_UIBLIT_SIZE)
-                    .build(*gEngine);
-
-    // If the given font path is invalid, ImGui will silently fall back to proggy, which is a
-    // tiny "pixel art" texture that is compiled into the library.
-    if (fontPath.isFile())
-    {
-        io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 16.0f);
-    }
-    createAtlasTexture();
-
-    // For proggy, switch to NEAREST for pixel-perfect text.
-    if (!fontPath.isFile())
-    {
-        mSampler = TextureSampler(MinFilter::NEAREST, MagFilter::NEAREST);
-        mMaterial->setDefaultParameter("albedo", mTexture, mSampler);
-    }
-
-    utils::EntityManager& em = utils::EntityManager::get();
-    mCameraEntity            = em.create();
-    mCamera                  = gEngine->createCamera(mCameraEntity);
-    mView                    = view;
-    mView->setCamera(mCamera);
-
-    mView->setPostProcessingEnabled(false);
-    mView->setBlendMode(View::BlendMode::TRANSLUCENT);
-    mView->setShadowingEnabled(false);
-
-    // Attach a scene for our one and only Renderable.
-    mView->setScene(mScene);
-
-    mRenderable = em.create();
-    mScene->addEntity(mRenderable);
-
-    ImGui::StyleColorsDark();
-}
-
-
-ImGuiWindowImpl::ImGuiWindowImpl(const Path& fontPath):
-    mScene(gEngine->createScene())
-{
-   
-    ImGuiIO& io = ImGui::GetIO();
-
-    // Create a simple alpha-blended 2D blitting material.
-    mMaterial = Material::Builder()
-                    .package(GAMEDRIVER_UIBLIT_DATA, GAMEDRIVER_UIBLIT_SIZE)
-                    .build(*gEngine);
-
-    // If the given font path is invalid, ImGui will silently fall back to proggy, which is a
-    // tiny "pixel art" texture that is compiled into the library.
-    if (fontPath.isFile())
-    {
-        io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 16.0f);
-    }
-    createAtlasTexture();
-
-    // For proggy, switch to NEAREST for pixel-perfect text.
-    if (!fontPath.isFile())
-    {
-        mSampler = TextureSampler(MinFilter::NEAREST, MagFilter::NEAREST);
-        mMaterial->setDefaultParameter("albedo", mTexture, mSampler);
-    }
-
     utils::EntityManager& em = utils::EntityManager::get();
     mCameraEntity            = em.create();
     mCamera                  = gEngine->createCamera(mCameraEntity);
@@ -100,37 +37,14 @@ ImGuiWindowImpl::ImGuiWindowImpl(const Path& fontPath):
 
     mRenderable = em.create();
     mScene->addEntity(mRenderable);
-
-    ImGui::StyleColorsDark();
 }
 
-void ImGuiWindowImpl::createAtlasTexture()
-{
-    gEngine->destroy(mTexture);
-    ImGuiIO& io = ImGui::GetIO();
-    // Create the grayscale texture that ImGui uses for its glyph atlas.
-    static unsigned char* pixels;
-    int                   width, height;
-    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-    size_t                         size = (size_t)(width * height * 4);
-    Texture::PixelBufferDescriptor pb(
-        pixels, size,
-        Texture::Format::RGBA, Texture::Type::UBYTE);
-    mTexture = Texture::Builder()
-                   .width((uint32_t)width)
-                   .height((uint32_t)height)
-                   .levels((uint8_t)1)
-                   .format(Texture::InternalFormat::RGBA8)
-                   .sampler(Texture::Sampler::SAMPLER_2D)
-                   .build(*gEngine);
-    mTexture->setImage(*gEngine, 0, std::move(pb));
-
-    mSampler = TextureSampler(MinFilter::LINEAR, MagFilter::LINEAR);
-    mMaterial->setDefaultParameter("albedo", mTexture, mSampler);
-}
 
 ImGuiWindowImpl::~ImGuiWindowImpl()
 {
+    gEngine->destroy(mView);
+    gEngine->destroy(mSwapChain);
+    gEngine->destroy(mRenderer);
     gEngine->destroy(mScene);
     gEngine->destroy(mRenderable);
     gEngine->destroyCameraComponent(mCameraEntity);
@@ -139,8 +53,8 @@ ImGuiWindowImpl::~ImGuiWindowImpl()
     {
         gEngine->destroy(mi);
     }
-    gEngine->destroy(mMaterial);
-    gEngine->destroy(mTexture);
+   // gEngine->destroy(mMaterial);
+    //gEngine->destroy(gImGuiTexture);
     for (auto& vb : mVertexBuffers)
     {
         gEngine->destroy(vb);
@@ -153,34 +67,26 @@ ImGuiWindowImpl::~ImGuiWindowImpl()
     EntityManager& em = utils::EntityManager::get();
     em.destroy(mRenderable);
     em.destroy(mCameraEntity);
-
-    //ImGui::DestroyContext(mImGuiContext);
-    //mImGuiContext = nullptr;
 }
 
 void ImGuiWindowImpl::processImGuiCommands(ImDrawData* commands)
 {
-    //ImGui::SetCurrentContext(mImGuiContext);
     int x = commands->DisplayPos.x, y = commands->DisplayPos.y;
-    int w = commands->DisplaySize.x, h = commands->DisplaySize.y;
+
+    // Avoid rendering when minimized and scale coordinates for retina displays.
+    int w  = (int)(commands->DisplaySize.x * commands->FramebufferScale.x);
+    int h = (int)(commands->DisplaySize.y * commands->FramebufferScale.y);
+    if (w == 0 || h == 0)
+        return;
 
     mCamera->setProjection(Camera::Projection::ORTHO, x, x + w, y + h, y, 0.0, 1.0);
-
-    //mCamera->setProjection(Camera::Projection::ORTHO, 0.0, double(w),double(h), 0.0, 0.0, 1.0);
 
     mView->setViewport({0, 0, (uint32_t)w, (uint32_t)h});
     
     mHasSynced = false;
     auto& rcm  = gEngine->getRenderableManager();
 
-    // Avoid rendering when minimized and scale coordinates for retina displays.
-    int fbwidth  = (int)(commands->DisplaySize.x * commands->FramebufferScale.x);
-    int fbheight = (int)(commands->DisplaySize.y * commands->FramebufferScale.y);
-    if (fbwidth == 0 || fbheight == 0)
-        return;
-    //commands->ScaleClipRects(io.DisplayFramebufferScale);
-
-    // Ensure that we have enough vertex buffers and index buffers.
+     // Ensure that we have enough vertex buffers and index buffers.
     createBuffers(commands->CmdListsCount);
 
     // Count how many primitives we'll need, then create a Renderable builder.
@@ -201,10 +107,9 @@ void ImGuiWindowImpl::processImGuiCommands(ImDrawData* commands)
         mMaterialInstances.resize(nPrims);
         for (size_t i = previousSize; i < mMaterialInstances.size(); i++)
         {
-            mMaterialInstances[i] = mMaterial->createInstance();
+            mMaterialInstances[i] = gImGuiMaterial->createInstance();
         }
     }
-
 
      // Will project scissor/clipping rectangles into framebuffer space
     ImVec2 clip_off   = commands->DisplayPos;        // (0,0) unless using multi-viewports
@@ -228,30 +133,23 @@ void ImGuiWindowImpl::processImGuiCommands(ImDrawData* commands)
             }
             else
             {
-
                 ImVec2 clip_min((pcmd.ClipRect.x - clip_off.x) * clip_scale.x, (pcmd.ClipRect.y - clip_off.y) * clip_scale.y);
                 ImVec2 clip_max((pcmd.ClipRect.z - clip_off.x) * clip_scale.x, (pcmd.ClipRect.w - clip_off.y) * clip_scale.y);
                 if (clip_max.x <= clip_min.x || clip_max.y <= clip_min.y)
                     continue;
                 MaterialInstance* materialInstance = mMaterialInstances[primIndex];
                 materialInstance->setScissor(
-                    (int)clip_min.x, (int)((float)fbheight - clip_max.y),
+                    (int)clip_min.x, (int)((float)h - clip_max.y),
                     (int)(clip_max.x - clip_min.x), (int)(clip_max.y - clip_min.y));
 
-               /*  materialInstance->setScissor(
-                    pcmd.ClipRect.x,
-                     (fbheight - pcmd.ClipRect.w),
-                    (uint16_t)(pcmd.ClipRect.z - pcmd.ClipRect.x),
-                    (uint16_t)(pcmd.ClipRect.w - pcmd.ClipRect.y));*/
                 if (pcmd.TextureId)
                 {
                     TextureSampler sampler(MinFilter::LINEAR, MagFilter::LINEAR);
-                    materialInstance->setParameter("albedo",
-                                                   (Texture const*)pcmd.TextureId, sampler);
+                    materialInstance->setParameter("albedo", (Texture const*)pcmd.TextureId, sampler);
                 }
                 else
                 {
-                    materialInstance->setParameter("albedo", mTexture, mSampler);
+                    materialInstance->setParameter("albedo", gImGuiTexture, gImGuiSampler);
                 }
                 rbuilder
                     .geometry(primIndex, RenderableManager::PrimitiveType::TRIANGLES,
@@ -488,7 +386,6 @@ ImGuiKey ImGui_ImplSDL2_KeycodeToImGuiKey(int keycode)
     return ImGuiKey_None;
 }
 
-
 static ImGuiWindowImpl* ImGui_ImplSDL2_GetBackendData()
 {
     return ImGui::GetCurrentContext() ? (ImGuiWindowImpl*)ImGui::GetIO().BackendPlatformUserData : nullptr;
@@ -529,11 +426,8 @@ static void ImGui_ImplSDL2_UpdateMonitors()
 static void ImGui_ImplSDL2_CreateWindow(ImGuiViewport* viewport)
 {
     ImGuiWindowImpl* bd        = ImGui_ImplSDL2_GetBackendData();
-    ImGuiWindowImpl* vd            = IM_NEW(ImGuiWindowImpl)(utils::Path::getCurrentExecutable().getParent() + "assets/fonts/Roboto-Medium.ttf");
+    ImGuiWindowImpl* vd            = IM_NEW(ImGuiWindowImpl)();
     viewport->PlatformUserData = vd;
-
-    ImGuiViewport* main_viewport      = ImGui::GetMainViewport();
-    ImGuiWindowImpl*   main_viewport_data = (ImGuiWindowImpl*)main_viewport->PlatformUserData;
 
    Uint32 sdl_flags = 0;
     sdl_flags |= SDL_GetWindowFlags(bd->mWindow) & SDL_WINDOW_ALLOW_HIGHDPI;
@@ -559,8 +453,6 @@ static void ImGui_ImplSDL2_CreateWindow(ImGuiViewport* viewport)
 
     vd->mSwapChain = gEngine->createSwapChain(viewport->PlatformHandleRaw);
     vd->mRenderer  = gEngine->createRenderer();
-   // vd->mView->setViewport();
-
 }
 static void ImGui_ImplSDL2_DestroyWindow(ImGuiViewport* viewport)
 {
@@ -609,7 +501,6 @@ static ImVec2 ImGui_ImplSDL2_GetWindowPos(ImGuiViewport* viewport)
     int                          x = 0, y = 0;
     SDL_GetWindowPosition(vd->mWindow, &x, &y);
     return ImVec2((float)x, (float)y);
-    return ImVec2(0, 0);
 }
 
 static void ImGui_ImplSDL2_SetWindowPos(ImGuiViewport* viewport, ImVec2 pos)
@@ -624,7 +515,6 @@ static ImVec2 ImGui_ImplSDL2_GetWindowSize(ImGuiViewport* viewport)
     int                          w = 0, h = 0;
     SDL_GetWindowSize(vd->mWindow, &w, &h);
     return ImVec2((float)w, (float)h);
-    //return ImVec2(0, 0);
 }
 
 static void ImGui_ImplSDL2_SetWindowSize(ImGuiViewport* viewport, ImVec2 size)
@@ -679,8 +569,6 @@ static void ImGui_ImplSDL2_RenderWindow(ImGuiViewport* viewport, void*)
 
         vd->mRenderer->endFrame();
     }
-    /*if (vd->GLContext)
-        SDL_GL_MakeCurrent(vd->Window, vd->GLContext);*/
 }
 
 static void ImGui_ImplSDL2_SwapBuffers(ImGuiViewport* viewport, void*)
@@ -737,67 +625,99 @@ void ImGui_ImplSDL2_NewFrame()
         io.BackendFlags &= ~ImGuiBackendFlags_HasMouseHoveredViewport;*/
 }
 
-void ImGui_ImplSDL2_InitPlatformInterface(Window* window, Engine* engine)
+void ImGui_ImplSDL2_InitPlatformInterface(ImGuiWindowImpl* vd, Engine* engine, const Path& fontPath)
 {
-    gEngine = engine;
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    (void)io;
+        gEngine = engine;
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO();
+        (void)io;
+        // Create a simple alpha-blended 2D blitting material.
+        gImGuiMaterial = Material::Builder()
+                             .package(GAMEDRIVER_UIBLIT_DATA, GAMEDRIVER_UIBLIT_SIZE)
+                             .build(*gEngine);
 
+        // If the given font path is invalid, ImGui will silently fall back to proggy, which is a
+        // tiny "pixel art" texture that is compiled into the library.
 
-    Path settingsPath;
-    settingsPath.setPath(
-        Path::getUserSettingsDirectory() +
-        Path(std::string(".") + Path::getCurrentExecutable().getNameWithoutExtension()) +
-        Path("imgui_settings.ini"));
-    settingsPath.getParent().mkdirRecursive();
-    io.IniFilename = settingsPath.c_str();
+        if (fontPath.isFile())
+        {
+            io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 16.0f);
+        }
+        gEngine->destroy(gImGuiTexture);
 
-   ImGuiWindowImpl* vd = IM_NEW(ImGuiWindowImpl)(GameDriver::get().mUiView->getView(), utils::Path::getCurrentExecutable().getParent() + "assets/fonts/Roboto-Medium.ttf");
-    vd->mWindow         = window->getWindowHandle();
-   io.BackendPlatformUserData = vd;
-   // return;
+        // Create the grayscale texture that ImGui uses for its glyph atlas.
+        static unsigned char* pixels;
+        int                   width, height;
 
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        size_t                         size = (size_t)(width * height * 4);
+        Texture::PixelBufferDescriptor pb(
+            pixels, size,
+            Texture::Format::RGBA, Texture::Type::UBYTE);
+        gImGuiTexture = Texture::Builder()
+                            .width((uint32_t)width)
+                            .height((uint32_t)height)
+                            .levels((uint8_t)1)
+                            .format(Texture::InternalFormat::RGBA8)
+                            .sampler(Texture::Sampler::SAMPLER_2D)
+                            .build(*gEngine);
+        gImGuiTexture->setImage(*gEngine, 0, std::move(pb));
 
-    io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
-    io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
+        gImGuiSampler = TextureSampler(MinFilter::LINEAR, MagFilter::LINEAR);
+        gImGuiMaterial->setDefaultParameter("albedo", gImGuiTexture, gImGuiSampler);
+       
+        if (!fontPath.isFile())
+        { // For proggy, switch to NEAREST for pixel-perfect text.
+            gImGuiSampler = TextureSampler(MinFilter::NEAREST, MagFilter::NEAREST);
+            gImGuiMaterial->setDefaultParameter("albedo", gImGuiTexture, gImGuiSampler);
+        }
 
+        ImGui::StyleColorsDark();
 
-    // Register platform interface (will be coupled with a renderer interface)
-    ImGuiPlatformIO& platform_io            = ImGui::GetPlatformIO();
-    platform_io.Platform_CreateWindow       = ImGui_ImplSDL2_CreateWindow;
-    platform_io.Platform_DestroyWindow      = ImGui_ImplSDL2_DestroyWindow;
-    platform_io.Platform_ShowWindow         = ImGui_ImplSDL2_ShowWindow;
-    platform_io.Platform_SetWindowPos       = ImGui_ImplSDL2_SetWindowPos;
-    platform_io.Platform_GetWindowPos       = ImGui_ImplSDL2_GetWindowPos;
-    platform_io.Platform_SetWindowSize      = ImGui_ImplSDL2_SetWindowSize;
-    platform_io.Platform_GetWindowSize      = ImGui_ImplSDL2_GetWindowSize;
-    platform_io.Platform_SetWindowFocus     = ImGui_ImplSDL2_SetWindowFocus;
-    platform_io.Platform_GetWindowFocus     = ImGui_ImplSDL2_GetWindowFocus;
-    platform_io.Platform_GetWindowMinimized = ImGui_ImplSDL2_GetWindowMinimized;
-    platform_io.Platform_SetWindowTitle     = ImGui_ImplSDL2_SetWindowTitle;
-    platform_io.Platform_RenderWindow       = ImGui_ImplSDL2_RenderWindow;
-    platform_io.Platform_SwapBuffers        = ImGui_ImplSDL2_SwapBuffers;
+        Path settingsPath;
+        settingsPath.setPath(
+            Path::getUserSettingsDirectory() +
+            Path(std::string(".") + Path::getCurrentExecutable().getNameWithoutExtension()) +
+            Path("imgui_settings.ini"));
+        settingsPath.getParent().mkdirRecursive();
+        io.IniFilename = settingsPath.c_str();
+
+        io.BackendPlatformUserData = vd;
+        // return;
+
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+        io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
+
+        // Register platform interface (will be coupled with a renderer interface)
+        ImGuiPlatformIO& platform_io            = ImGui::GetPlatformIO();
+        platform_io.Platform_CreateWindow       = ImGui_ImplSDL2_CreateWindow;
+        platform_io.Platform_DestroyWindow      = ImGui_ImplSDL2_DestroyWindow;
+        platform_io.Platform_ShowWindow         = ImGui_ImplSDL2_ShowWindow;
+        platform_io.Platform_SetWindowPos       = ImGui_ImplSDL2_SetWindowPos;
+        platform_io.Platform_GetWindowPos       = ImGui_ImplSDL2_GetWindowPos;
+        platform_io.Platform_SetWindowSize      = ImGui_ImplSDL2_SetWindowSize;
+        platform_io.Platform_GetWindowSize      = ImGui_ImplSDL2_GetWindowSize;
+        platform_io.Platform_SetWindowFocus     = ImGui_ImplSDL2_SetWindowFocus;
+        platform_io.Platform_GetWindowFocus     = ImGui_ImplSDL2_GetWindowFocus;
+        platform_io.Platform_GetWindowMinimized = ImGui_ImplSDL2_GetWindowMinimized;
+        platform_io.Platform_SetWindowTitle     = ImGui_ImplSDL2_SetWindowTitle;
+        platform_io.Platform_RenderWindow       = ImGui_ImplSDL2_RenderWindow;
+        platform_io.Platform_SwapBuffers        = ImGui_ImplSDL2_SwapBuffers;
 #if SDL_HAS_WINDOW_ALPHA
-    platform_io.Platform_SetWindowAlpha = ImGui_ImplSDL2_SetWindowAlpha;
+        platform_io.Platform_SetWindowAlpha = ImGui_ImplSDL2_SetWindowAlpha;
 #endif
 #if SDL_HAS_VULKAN
-    platform_io.Platform_CreateVkSurface = ImGui_ImplSDL2_CreateVkSurface;
+        platform_io.Platform_CreateVkSurface = ImGui_ImplSDL2_CreateVkSurface;
 #endif
 
-    
         // Register main window handle (which is owned by the main application, not by us)
-    // This is mostly for simplicity and consistency, so that our code (e.g. mouse handling etc.) can use same logic for main and secondary viewports.
-    ImGuiViewport*   main_viewport  = ImGui::GetMainViewport();
-   // ImGuiWindowImpl* vd             = IM_NEW(ImGuiWindowImpl)(GameDriver::get().mUiView->getView(), utils::Path::getCurrentExecutable().getParent() + "assets/fonts/Roboto-Medium.ttf");
-    vd->mWindow                     = window->getWindowHandle();
-    main_viewport->PlatformUserData = vd;
-    main_viewport->PlatformHandle   = vd->mWindow;
-
-
+        // This is mostly for simplicity and consistency, so that our code (e.g. mouse handling etc.) can use same logic for main and secondary viewports.
+        ImGuiViewport* main_viewport    = ImGui::GetMainViewport();
+        main_viewport->PlatformUserData = vd;
+        main_viewport->PlatformHandle   = vd->mWindow;
 }
 
 bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event)

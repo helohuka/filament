@@ -23,11 +23,12 @@ class Automation
 {
     SINGLE_INSTANCE_FLAG(Automation);
 
-    public:
-    void setup();
-        void                                tick(filament::View* view, filament::gltfio::FilamentInstance* instance, filament::Renderer* renderer, long long dt);
+public:
+    void                                setup();
+    void                                tick(filament::View* view, filament::gltfio::FilamentInstance* instance, filament::Renderer* renderer, long long dt);
     filament::viewer::AutomationEngine& getAutomationEngine() { return *mAutomationEngine; }
-    private:
+
+private:
     std::string                         mBatchFile;
     filament::viewer::AutomationSpec*   mAutomationSpec   = nullptr;
     filament::viewer::AutomationEngine* mAutomationEngine = nullptr;

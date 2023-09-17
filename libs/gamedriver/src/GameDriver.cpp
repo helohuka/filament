@@ -58,7 +58,7 @@ void GameDriver::configureCamerasForWindow()
     {
         mMainView->setViewport({0, 0, (uint32_t)mainWidth, (uint32_t)mWindowSize.y});
     }
-    mUiView->setViewport({0, 0, (uint32_t)mWindowSize.x, (uint32_t)mWindowSize.y});
+   // mUiView->setViewport({0, 0, (uint32_t)mWindowSize.x, (uint32_t)mWindowSize.y});
 
 
     {
@@ -203,6 +203,8 @@ void GameDriver::initialize()
 
     mMainWindow = std::make_unique<Window>(mRenderEngine);
 
+    gEngine = mRenderEngine; //TODO
+
     mMainWindow->setup();
 
     {
@@ -226,7 +228,7 @@ void GameDriver::initialize()
             mViews.emplace_back(mGodView = new CView(*mRenderEngine, "God View"));
             mViews.emplace_back(mOrthoView = new CView(*mRenderEngine, "Shadow View"));
         }
-        mViews.emplace_back(mUiView = new CView(*mRenderEngine, "UI View"));
+        //mViews.emplace_back(mUiView = new CView(*mRenderEngine, "UI View"));
 
         // set-up the camera manipulators
         mMainCameraMan = CameraManipulator::Builder()
@@ -283,6 +285,8 @@ void GameDriver::initialize()
                              .package(GAMEDRIVER_OVERDRAW_DATA, GAMEDRIVER_OVERDRAW_SIZE)
                              .build(*mRenderEngine);
 
+    mUIWindow = new ImGuiWindowImpl();
+
 }
 
 void GameDriver::release()
@@ -319,7 +323,7 @@ void GameDriver::release()
 
     delete mMainCameraMan;
     delete mDebugCameraMan;
-
+    delete mUIWindow;
     mIBL.reset();
     mRenderEngine->destroy(mDepthMI);
     mRenderEngine->destroy(mDepthMaterial);
@@ -333,10 +337,8 @@ void GameDriver::release()
 }
 
 void GameDriver::mainLoop()
-{
-   
+{   
     initialize();
-
 
     std::unique_ptr<Cube> cameraCube(new Cube(*mRenderEngine, mTransparentMaterial, {1, 0, 0}));
     // we can't cull the light-frustum because it's not applied a rigid transform
@@ -378,7 +380,7 @@ void GameDriver::mainLoop()
 
     for (auto& view : mViews)
     {
-        if (view.get() != mUiView)
+        if (view.get())
         {
             view->getView()->setScene(mScene);
         }
@@ -386,9 +388,10 @@ void GameDriver::mainLoop()
 
     setup();
 
-    ImGui_ImplSDL2_InitPlatformInterface(mMainWindow.get(), mRenderEngine);
+    mUIWindow->mWindow = mMainWindow->getWindowHandle();
 
-   
+    ImGui_ImplSDL2_InitPlatformInterface(mUIWindow, mRenderEngine, utils::Path::getCurrentExecutable().getParent() + "assets/fonts/Roboto-Medium.ttf");
+
     bool mousePressed[3] = {false};
 
     float cameraFocalLength = mCameraFocalLength;
@@ -561,6 +564,11 @@ void GameDriver::mainLoop()
             for (auto const& view : mViews)
             {
                 mMainWindow->getRenderer()->render(view->getView());
+            }
+
+            if (mUIWindow)
+            {
+                mMainWindow->getRenderer()->render(mUIWindow->mView);
             }
 
             postRender(mMainView->getView(), mScene, mMainWindow->getRenderer());

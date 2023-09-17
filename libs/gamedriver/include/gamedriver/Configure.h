@@ -3,7 +3,6 @@
 #define __CONFIGURE_H__ 1
 
 #include "gamedriver/BaseLibs.h"
-#include "Configure_generated.h"
 
 struct Configure
 {

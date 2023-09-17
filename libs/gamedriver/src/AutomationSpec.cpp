@@ -16,7 +16,7 @@
 
 #define JSMN_HEADER
 
-#include <viewer/AutomationSpec.h>
+#include "gamedriver/AutomationSpec.h"
 
 #include "jsonParseUtils.h"
 

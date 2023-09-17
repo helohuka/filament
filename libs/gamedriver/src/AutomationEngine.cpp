@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <viewer/AutomationEngine.h>
+#include "gamedriver/AutomationEngine.h"
 
 #include <filament/Camera.h>
 #include <filament/Engine.h>

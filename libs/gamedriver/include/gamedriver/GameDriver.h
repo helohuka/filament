@@ -82,7 +82,6 @@ private:
     void loadIBL();
     void loadDirt();
 
-  
     void onMouseDown(int button, ssize_t x, ssize_t y);
     void onMouseUp(ssize_t x, ssize_t y);
     void onMouseMoved(ssize_t x, ssize_t y);
@@ -125,10 +124,11 @@ public:
 
     std::vector<std::unique_ptr<CView>> mViews;
     CView*                              mMainView;
-    CView*                              mUiView;
     CView*                              mDepthView;
     CView*                              mGodView;
     CView*                              mOrthoView;
+
+    struct ImGuiWindowImpl* mUIWindow;
 
     ssize_t mLastX = 0;
     ssize_t mLastY = 0;

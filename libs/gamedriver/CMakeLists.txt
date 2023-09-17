@@ -41,9 +41,9 @@ set(PUBLIC_HDRS
         include/gamedriver/Settings.h
 
         include/gamedriver/ImGuiBridge.h
-        include/filagui/ImGuiExtensions.h
-        include/filagui/ImGuiHelper.h
-        include/filagui/ImGuiMath.h
+        include/gui/ImGuiExtensions.h
+        #include/filagui/ImGuiHelper.h
+        include/gui/ImGuiMath.h
 )
 
 set(SRCS
@@ -74,7 +74,7 @@ set(SRCS
         src/Settings_generated.cpp
 
         src/ImGuiBridge.cpp
-        src/ImGuiHelper.cpp
+        #src/ImGuiHelper.cpp
         src/ImGuiExtensions.cpp
 )
 

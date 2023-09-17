@@ -34,8 +34,8 @@
 
 // SDL 库
 #include <SDL.h>
-#if defined(WIN32)
 #    include <SDL_syswm.h>
+#if defined(WIN32)
 #    include <utils/unwindows.h>
 #endif
 
@@ -87,8 +87,7 @@
 
 #include <stb_image.h>
 #include <imgui.h>
-#include "filagui/ImGuiHelper.h"
-#include "filagui/ImGuiExtensions.h"
+#include "gui/ImGuiExtensions.h"
 
 #include <gltfio/AssetLoader.h>
 #include <gltfio/FilamentAsset.h>
@@ -105,8 +104,8 @@
 #include "Settings.h"
 //#include<viewer / ViewerGui.h>
 
-#include <flatbuffers/idl.h>
-#include <flatbuffers/flatbuffers.h>
+//#include<flatbuffers / idl.h>
+//#include <flatbuffers/flatbuffers.h>
 
 //lua
 #include <lua.h>

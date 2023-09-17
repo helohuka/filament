@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <filagui/ImGuiExtensions.h>
+#include <gui/ImGuiExtensions.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>
