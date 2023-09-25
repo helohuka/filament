@@ -63,7 +63,6 @@ private:
     void release();
 
     void loadAsset(utils::Path filename);
-    void loadResources(utils::Path filename);
 
     void close() { mClosed = true; }
     void addOffscreenView(filament::View* view)
@@ -83,15 +82,16 @@ private:
 
     // UI系统 相关功能
     void setupGui();
+    void updateUI();
     void prepareGui();
     void cleanupGui();
     /// 临时存放 TODO
 
     void preRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
     void postRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer);
-
     void animate(double now);
 
+    bool onProcessEvent(const SDL_Event* event);
     void onMouseDown(int button, ssize_t x, ssize_t y);
     void onMouseUp(ssize_t x, ssize_t y);
     void onMouseMoved(ssize_t x, ssize_t y);
@@ -102,12 +102,7 @@ private:
     void setAsset();
     void populateScene();
     void removeAsset();
-    void applyAnimation(double currentTime, filament::gltfio::FilamentInstance* instance = nullptr);
-    void updateUI();
-    void mouseEvent(float mouseX, float mouseY, bool mouseButton, float mouseWheelY, bool control);
-    void keyDownEvent(int keyCode);
-    void keyUpEvent(int keyCode);
-    void keyPressEvent(int charCode);
+    void applyAnimation(double currentTime);
 
     void enableWireframe(bool b) { mEnableWireframe = b; }
     void enableSunlight(bool b) { gSettings.lighting.enableSunlight = b; }
@@ -156,30 +151,20 @@ private:
     float                 mDpiScaleY         = 1.0f;
     ssize_t               mLastX             = 0;
     ssize_t               mLastY             = 0;
-    bool                  mIsSplitView       = false;
     float                 mCameraFocalLength = 28.0f;
     std::unique_ptr<Cube> mCameraCube        = nullptr;
     std::unique_ptr<Cube> mLightmapCube      = nullptr;
     CameraManipulator*    mMainCameraMan     = nullptr;
     CameraManipulator*    mDebugCameraMan    = nullptr;
 
-    utils::Entity     mCameraEntities[3];
-    filament::Camera* mCameras[3]  = {nullptr};
-    filament::Camera* mMainCamera  = nullptr;
-    filament::Camera* mDebugCamera = nullptr;
-    filament::Camera* mOrthoCamera = nullptr;
-
-    std::vector<std::unique_ptr<CView>> mViews; // 这个
-    CView*                              mMainView  = nullptr;
-    CView*                              mDepthView = nullptr;
-    CView*                              mGodView   = nullptr;
-    CView*                              mOrthoView = nullptr;
+    utils::Entity     mMainCameraEntity;
+    filament::Camera* mMainCamera = nullptr;
+    CView*            mMainView   = nullptr;
 
     filament::Material*      mImGuiMaterial = nullptr;
     filament::TextureSampler mImGuiSampler;
     filament::Texture*       mImGuiTexture = nullptr;
     class CViewUI*           mMainUI       = nullptr;
-
 
     CView* mMouseEventTarget = nullptr;
     // Keep track of which view should receive a key's keyUp event.

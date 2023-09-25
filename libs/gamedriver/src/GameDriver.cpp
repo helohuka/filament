@@ -27,32 +27,21 @@ void GameDriver::configureCamerasForWindow()
 {
     const filament::math::float3 at(0, 0, -4);
     const double                 ratio = double(mHeight) / double(mWidth);
-
-    const bool splitview = mViews.size() > 2;
+     
 
     // To trigger a floating-point exception, users could shrink the window to be smaller than
     // the sidebar. To prevent this we simply clamp the width of the main viewport.
-    const uint32_t mainWidth = splitview ? mWidth : std::max(1, (int)mWidth);
+    const uint32_t mainWidth = std::max(1, (int)mWidth);
 
     double near = 0.1;
     double far  = 100;
     mMainCamera->setLensProjection(mCameraFocalLength, double(mainWidth) / mHeight, near, far);
-    mDebugCamera->setProjection(45.0, double(mainWidth) / mHeight, 0.0625, 4096, filament::Camera::Fov::VERTICAL);
+    
 
     // We're in split view when there are more views than just the Main and UI views.
-    if (splitview)
-    {
-        uint32_t vpw = mainWidth / 2;
-        uint32_t vph = mHeight / 2;
-        mMainView->setViewport({0, 0, vpw, vph});
-        mDepthView->setViewport({int32_t(vpw), 0, vpw, vph});
-        mGodView->setViewport({int32_t(vpw), int32_t(vph), vpw, mHeight - vph});
-        mOrthoView->setViewport({0, int32_t(vph), vpw, mHeight - vph});
-    }
-    else
-    {
+    
         mMainView->setViewport({0, 0, (uint32_t)mainWidth, (uint32_t)mHeight});
-    }
+     
    // mUiView->setViewport({0, 0, (uint32_t)mWindowSize.x, (uint32_t)mWindowSize.y});
 
 
@@ -76,22 +65,25 @@ void GameDriver::onMouseDown(int button, ssize_t x, ssize_t y)
     fixupCoordinatesForHdpi(x, y);
     y = mHeight - y;
 
-    //if (mMainUI->intersects(x, y))
-    //{
-
-    //}
-    
-    for (auto const& view : mViews)
+    if (mMainView->intersects(x, y))
     {
-        if (view->intersects(x, y))
-        {
-            mMouseEventTarget = view.get();
-            view->mouseDown(button, x, y);
-            break;
-        }
+        mMouseEventTarget = mMainView;
+        mMainView->mouseDown(button, x, y);
     }
-}
 
+    auto view = mMainView->getView();
+
+    view->pick(x, y, [this](filament::View::PickingQueryResult const& result) {
+        if (const char* name = mAsset->getName(result.renderable); name)
+        {
+            mNotificationText = name;
+        }
+        else
+        {
+            mNotificationText.clear();
+        }
+    });
+}
 void GameDriver::onMouseWheel(ssize_t x)
 {
     if (mMouseEventTarget)
@@ -100,13 +92,9 @@ void GameDriver::onMouseWheel(ssize_t x)
     }
     else
     {
-        for (auto const& view : mViews)
+        if (mMainView->intersects(mLastX, mLastY))
         {
-            if (view->intersects(mLastX, mLastY))
-            {
-                view->mouseWheel(x);
-                break;
-            }
+            mMainView->mouseWheel(x);
         }
     }
 }
@@ -155,13 +143,9 @@ void GameDriver::onKeyDown(SDL_Scancode key)
     }
     else
     {
-        for (auto const& view : mViews)
+        if (mMainView->intersects(mLastX, mLastY))
         {
-            if (view->intersects(mLastX, mLastY))
-            {
-                targetView = view.get();
-                break;
-            }
+            targetView = mMainView;
         }
     }
 
@@ -206,27 +190,13 @@ void GameDriver::initialize()
 
     {
         utils::EntityManager& em = utils::EntityManager::get();
-        em.create(3, mCameraEntities);
-        mCameras[0] = mMainCamera = mRenderEngine->createCamera(mCameraEntities[0]);
-        mCameras[1] = mDebugCamera = mRenderEngine->createCamera(mCameraEntities[1]);
-        mCameras[2] = mOrthoCamera = mRenderEngine->createCamera(mCameraEntities[2]);
+        mMainCameraEntity        = em.create();
+        mMainCamera              = mRenderEngine->createCamera(mMainCameraEntity);
 
         // set exposure
-        for (auto camera : mCameras)
-        {
-            camera->setExposure(16.0f, 1 / 125.0f, 100.0f);
-        }
-
+        mMainCamera->setExposure(16.0f, 1 / 125.0f, 100.0f);
         // create views
-        mViews.emplace_back(mMainView = new CView(*mRenderEngine, "Main View"));
-        if (mIsSplitView)
-        {
-            mViews.emplace_back(mDepthView = new CView(*mRenderEngine, "Depth View"));
-            mViews.emplace_back(mGodView = new CView(*mRenderEngine, "God View"));
-            mViews.emplace_back(mOrthoView = new CView(*mRenderEngine, "Shadow View"));
-        }
-        
-
+        mMainView = new CView(*mRenderEngine, "Main View");
         // set-up the camera manipulators
         mMainCameraMan = CameraManipulator::Builder()
                              .targetPosition(0, 0, -4)
@@ -239,20 +209,6 @@ void GameDriver::initialize()
 
         mMainView->setCamera(mMainCamera);
         mMainView->setCameraManipulator(mMainCameraMan);
-        if (mIsSplitView)
-        {
-            // Depth view always uses the main camera
-            mDepthView->setCamera(mMainCamera);
-            mDepthView->setCameraManipulator(mMainCameraMan);
-
-            // The god view uses the main camera for culling, but the debug camera for viewing
-            mGodView->setCamera(mMainCamera);
-            mGodView->setGodCamera(mDebugCamera);
-            mGodView->setCameraManipulator(mDebugCameraMan);
-
-            // Ortho view obviously uses an ortho camera
-            mOrthoView->setCamera((filament::Camera*)mMainView->getView()->getDirectionalLightCamera());
-        }
 
         configureCamerasForWindow();
 
@@ -275,57 +231,25 @@ void GameDriver::initialize()
                                .build(*mRenderEngine);
 
     mShadowMaterial = filament::Material::Builder()
-                                   .package(GAMEDRIVER_GROUNDSHADOW_DATA, GAMEDRIVER_GROUNDSHADOW_SIZE)
-                                   .build(*mRenderEngine);
+                          .package(GAMEDRIVER_GROUNDSHADOW_DATA, GAMEDRIVER_GROUNDSHADOW_SIZE)
+                          .build(*mRenderEngine);
 
     mOverdrawMaterial = filament::Material::Builder()
-                             .package(GAMEDRIVER_OVERDRAW_DATA, GAMEDRIVER_OVERDRAW_SIZE)
-                             .build(*mRenderEngine);
+                            .package(GAMEDRIVER_OVERDRAW_DATA, GAMEDRIVER_OVERDRAW_SIZE)
+                            .build(*mRenderEngine);
 
     mCameraCube = std::make_unique<Cube>(*mRenderEngine, mTransparentMaterial, filament::math::float3{1, 0, 0});
     // we can't cull the light-frustum because it's not applied a rigid transform
     // and currently, filament assumes that for culling
     mLightmapCube = std::make_unique<Cube>(*mRenderEngine, mTransparentMaterial, filament::math::float3{0, 1, 0}, false);
-    mScene = mRenderEngine->createScene();
+    mScene        = mRenderEngine->createScene();
 
     mMainView->getView()->setVisibleLayers(0x4, 0x4);
-    if (gConfigure.splitView)
-    {
-        auto& rcm = mRenderEngine->getRenderableManager();
-
-        rcm.setLayerMask(rcm.getInstance(mCameraCube->getSolidRenderable()), 0x3, 0x2);
-        rcm.setLayerMask(rcm.getInstance(mCameraCube->getWireFrameRenderable()), 0x3, 0x2);
-
-        rcm.setLayerMask(rcm.getInstance(mLightmapCube->getSolidRenderable()), 0x3, 0x2);
-        rcm.setLayerMask(rcm.getInstance(mLightmapCube->getWireFrameRenderable()), 0x3, 0x2);
-
-        // Create the camera mesh
-        mScene->addEntity(mCameraCube->getWireFrameRenderable());
-        mScene->addEntity(mCameraCube->getSolidRenderable());
-
-        mScene->addEntity(mLightmapCube->getWireFrameRenderable());
-        mScene->addEntity(mLightmapCube->getSolidRenderable());
-
-        mDepthView->getView()->setVisibleLayers(0x4, 0x4);
-        mGodView->getView()->setVisibleLayers(0x6, 0x6);
-        mOrthoView->getView()->setVisibleLayers(0x6, 0x6);
-
-        // only preserve the color buffer for additional views; depth and stencil can be discarded.
-        mDepthView->getView()->setShadowingEnabled(false);
-        mGodView->getView()->setShadowingEnabled(false);
-        mOrthoView->getView()->setShadowingEnabled(false);
-    }
-
+ 
     loadDirt();
     loadIBL();
 
-    for (auto& view : mViews)
-    {
-        if (view.get())
-        {
-            view->getView()->setScene(mScene);
-        }
-    }
+    mMainView->getView()->setScene(mScene);
 
     setup();
     setupGui();
@@ -384,7 +308,6 @@ void GameDriver::setup()
     auto filename = utils::Path(gConfigure.filename.c_str());
 
     loadAsset(filename);
-    loadResources(filename);
 
     setAsset();
 
@@ -421,14 +344,12 @@ void GameDriver::release()
     cleanupGui();
     cleanupWindow();
 
-    mViews.clear();
+    delete mMainView;
     utils::EntityManager& em = utils::EntityManager::get();
-    for (auto e : mCameraEntities)
-    {
-        mRenderEngine->destroyCameraComponent(e);
-        em.destroy(e);
-    }
-
+     
+    mRenderEngine->destroyCameraComponent(mMainCameraEntity);
+    em.destroy(mMainCameraEntity);
+    
     delete mMainCameraMan;
     delete mDebugCameraMan;
 
@@ -445,7 +366,7 @@ void GameDriver::release()
 }
 
 void GameDriver::mainLoop()
-{   
+{
     initialize();
 
     bool mousePressed[3] = {false};
@@ -481,21 +402,21 @@ void GameDriver::mainLoop()
         while (nevents < kMaxEvents && SDL_PollEvent(&events[nevents]) != 0)
         {
 
-            if (ImGui_ImplSDL2_ProcessEvent(&events[nevents]))
+            if (onProcessEvent(&events[nevents]))
             {
-             //   continue;
+                //   continue;
             }
 
             nevents++;
         }
 
         // Now, loop over the events a second time for app-side processing.
+        ImGuiIO& io = ImGui::GetIO();
         for (int i = 0; i < nevents; i++)
         {
             const SDL_Event& event = events[i];
-            ImGuiIO*         io    =   nullptr;
+          
 
-            
             switch (event.type)
             {
                 case SDL_QUIT:
@@ -510,7 +431,7 @@ void GameDriver::mainLoop()
                     if (event.key.keysym.scancode == SDL_SCANCODE_PRINTSCREEN)
                     {
                         filament::DebugRegistry& debug = mRenderEngine->getDebugRegistry();
-                        bool*          captureFrame =
+                        bool*                    captureFrame =
                             debug.getPropertyAddress<bool>("d.renderer.doFrameCapture");
                         *captureFrame = true;
                     }
@@ -521,19 +442,19 @@ void GameDriver::mainLoop()
                     onKeyUp(event.key.keysym.scancode);
                     break;
                 case SDL_MOUSEWHEEL:
-                    if (!io || !io->WantCaptureMouse)
-                       onMouseWheel(event.wheel.y);
+                    if (!io.WantCaptureMouse)
+                        onMouseWheel(event.wheel.y);
                     break;
                 case SDL_MOUSEBUTTONDOWN:
-                    if (!io || !io->WantCaptureMouse)
+                    if (!io.WantCaptureMouse)
                         onMouseDown(event.button.button, event.button.x, event.button.y);
                     break;
                 case SDL_MOUSEBUTTONUP:
-                    if (!io || !io->WantCaptureMouse)
-                       onMouseUp(event.button.x, event.button.y);
+                    if (!io.WantCaptureMouse)
+                        onMouseUp(event.button.x, event.button.y);
                     break;
                 case SDL_MOUSEMOTION:
-                    if (!io || !io->WantCaptureMouse)
+                    if (!io.WantCaptureMouse)
                         onMouseMoved(event.motion.x, event.motion.y);
                     break;
                 case SDL_WINDOWEVENT:
@@ -553,12 +474,10 @@ void GameDriver::mainLoop()
                     mRenderEngine->setActiveFeatureLevel(mFeatureLevel);
                     resetSwapChain();
                     break;
-                   
+
                 default:
                     break;
             }
-
-           
         }
 
         prepareGui();
@@ -569,13 +488,8 @@ void GameDriver::mainLoop()
         const float   timeStep  = mTime > 0 ? (float)((double)(now - mTime) / frequency) : (float)(1.0f / 60.0f);
         mTime                   = now;
 
-
         // Update the camera manipulators for each view.
-
-         for (auto const& view : mViews)
-        {
-            view->tick(timeStep);
-        }
+        mMainView->tick(timeStep);
 
         // Update the cube distortion matrix used for frustum visualization.
         const filament::Camera* lightmapCamera = mMainView->getView()->getDirectionalLightCamera();
@@ -600,10 +514,9 @@ void GameDriver::mainLoop()
             {
                 mRenderer->render(offscreenView);
             }
-            for (auto const& view : mViews)
-            {
-                mRenderer->render(view->getView());
-            }
+
+            mRenderer->render(mMainView->getView());
+
 
             if (mMainUI)
             {
@@ -739,9 +652,7 @@ void GameDriver::loadAsset(utils::Path filename)
         std::cerr << "Unable to parse " << filename << std::endl;
         exit(1);
     }
-};
-void GameDriver::loadResources(utils::Path filename)
-{
+ 
     // Load external textures and buffers.
     std::string                             gltfPath      = filename.getAbsolutePath();
     filament::gltfio::ResourceConfiguration configuration = {};
@@ -780,7 +691,6 @@ void GameDriver::loadResources(utils::Path filename)
         instances[mi]->setStencilWrite(true);
         instances[mi]->setStencilOpDepthStencilPass(filament::MaterialInstance::StencilOperation::INCR);
     }
- 
 }
 void GameDriver::preRender(filament::View* view, filament::Scene* scene, filament::Renderer* renderer)
 {
@@ -846,12 +756,9 @@ void GameDriver::postRender(filament::View* view, filament::Scene* scene, filame
 void GameDriver::animate(double now)
 {
     mResourceLoader->asyncUpdateLoad();
-
     // Optionally fit the model into a unit cube at the origin.
     updateRootTransform();
-
     // Gradually add renderables to the scene as their textures become ready.
     populateScene();
-
     applyAnimation(now);
 }

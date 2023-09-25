@@ -27,14 +27,12 @@ void GameDriver::setupWindow()
 
     setupRendererAndSwapchain();
 }
-
 void GameDriver::cleanupWindow()
 {
     mRenderEngine->destroy(mRenderer);
     mRenderEngine->destroy(mSwapChain);
     SDL_DestroyWindow(mWindow);
 }
-
 void GameDriver::setupRendererAndSwapchain()
 {
     resetSwapChain();
@@ -67,14 +65,11 @@ void GameDriver::resetSwapChain()
 #endif
     mSwapChain = mRenderEngine->createSwapChain(nativeWindow);
 }
-
 void GameDriver::fixupCoordinatesForHdpi(ssize_t& x, ssize_t& y)
 {
     x = x * mDpiScaleX;
     y = y * mDpiScaleY;
 }
-
-
 void GameDriver::onWindowResize()
 {
     void* nativeWindow = getNativeWindow(mWindow);

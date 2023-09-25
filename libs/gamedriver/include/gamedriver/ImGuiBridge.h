@@ -43,15 +43,17 @@ public:
     filament::TextureSampler mImGuiSampler;
     filament::Texture*       mImGuiTexture = nullptr;
 
-    bool mHasSynced = false;
-
-    bool   WindowOwned   = false;
-    bool   mNeedsDraw    = true;
-    double mTime         = 0.0;
-    double mLastDrawTime = 0.0;
-    int    MouseWindowID;
-    int    MouseButtonsDown;
-    bool   MouseCanUseGlobalState;
+    bool   mHasSynced       = false;
+    bool   WindowOwned      = false;
+    bool   mNeedsDraw       = true;
+    double mTime            = 0.0;
+    double mLastDrawTime    = 0.0;
+    int    MouseWindowID    = 0;
+    int    MouseButtonsDown = 0;
+    int    PendingMouseLeaveFrame;
+    bool   MouseCanUseGlobalState        = false;
+    bool   MouseCanReportHoveredViewport = false;
+    bool   WantUpdateMonitors            = false;
 
     bool intersects(ssize_t x, ssize_t y);
     void processImGuiCommands(ImDrawData* commands);
@@ -64,7 +66,6 @@ private:
     void syncThreads();
 };
 
-bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event);
 
 
 #endif // __IMGUIBRIDGE_H__

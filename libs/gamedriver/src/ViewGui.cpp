@@ -19,22 +19,26 @@ static void computeRangePlot(filament::viewer::Settings& settings, float* rangeP
     }
 }
 
-static void rangePlotSeriesStart(int series) {
-    switch (series) {
+static void rangePlotSeriesStart(int series)
+{
+    switch (series)
+    {
         case 0:
-            ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4) ImColor::HSV(0.4f, 0.25f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor::HSV(0.4f, 0.25f, 1.0f));
             break;
         case 1:
-            ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4) ImColor::HSV(0.8f, 0.25f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor::HSV(0.8f, 0.25f, 1.0f));
             break;
         case 2:
-            ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4) ImColor::HSV(0.17f, 0.21f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor::HSV(0.17f, 0.21f, 1.0f));
             break;
     }
 }
 
-static void rangePlotSeriesEnd(int series) {
-    if (series < 3) {
+static void rangePlotSeriesEnd(int series)
+{
+    if (series < 3)
+    {
         ImGui::PopStyleColor();
     }
 }
@@ -113,17 +117,20 @@ static void computeToneMapPlot(filament::viewer::ColorGradingSettings& settings,
     delete mapper;
 }
 
-static void tooltipFloat(float value) {
-    if (ImGui::IsItemActive() || ImGui::IsItemHovered()) {
+static void tooltipFloat(float value)
+{
+    if (ImGui::IsItemActive() || ImGui::IsItemHovered())
+    {
         ImGui::SetTooltip("%.2f", value);
     }
 }
 
-static void pushSliderColors(float hue) {
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, (ImVec4) ImColor::HSV(hue, 0.5f, 0.5f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, (ImVec4) ImColor::HSV(hue, 0.6f, 0.5f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, (ImVec4) ImColor::HSV(hue, 0.7f, 0.5f));
-    ImGui::PushStyleColor(ImGuiCol_SliderGrab, (ImVec4) ImColor::HSV(hue, 0.9f, 0.9f));
+static void pushSliderColors(float hue)
+{
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, (ImVec4)ImColor::HSV(hue, 0.5f, 0.5f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, (ImVec4)ImColor::HSV(hue, 0.6f, 0.5f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, (ImVec4)ImColor::HSV(hue, 0.7f, 0.5f));
+    ImGui::PushStyleColor(ImGuiCol_SliderGrab, (ImVec4)ImColor::HSV(hue, 0.9f, 0.9f));
 }
 
 static void popSliderColors() { ImGui::PopStyleColor(4); }
@@ -135,27 +142,28 @@ static void colorGradingUI(filament::viewer::Settings& settings, float* rangePlo
     const static ImVec2 plotLinesSize(0.0f, 160.0f);
     const static ImVec2 plotLinesWideSize(0.0f, 120.0f);
 
-    if (ImGui::CollapsingHeader("Color grading")) {
+    if (ImGui::CollapsingHeader("Color grading"))
+    {
         filament::viewer::ColorGradingSettings& colorGrading = settings.view.colorGrading;
 
         ImGui::Indent();
         ImGui::Checkbox("Enabled##colorGrading", &colorGrading.enabled);
 
-        int quality = (int) colorGrading.quality;
+        int quality = (int)colorGrading.quality;
         ImGui::Combo("Quality##colorGradingQuality", &quality, "Low\0Medium\0High\0Ultra\0\0");
-        colorGrading.quality = (decltype(colorGrading.quality)) quality;
+        colorGrading.quality = (decltype(colorGrading.quality))quality;
 
         int colorspace = (colorGrading.colorspace == filament::Rec709 - filament::Linear - filament::D65) ? 0 : 1;
         ImGui::Combo("Output color space", &colorspace, "Rec709-Linear-D65\0Rec709-sRGB-D65\0\0");
         colorGrading.colorspace = (colorspace == 0) ? filament::Rec709 - filament::Linear - filament::D65 : filament::Rec709 - filament::sRGB - filament::D65;
 
-        int toneMapping = (int) colorGrading.toneMapping;
-        ImGui::Combo("Tone-mapping", &toneMapping,
-                "Linear\0ACES (legacy)\0ACES\0Filmic\0Generic\0Display Range\0\0");
-        colorGrading.toneMapping = (decltype(colorGrading.toneMapping)) toneMapping;
+        int toneMapping = (int)colorGrading.toneMapping;
+        ImGui::Combo("Tone-mapping", &toneMapping, "Linear\0ACES (legacy)\0ACES\0Filmic\0Generic\0Display Range\0\0");
+        colorGrading.toneMapping = (decltype(colorGrading.toneMapping))toneMapping;
         if (colorGrading.toneMapping == filament::viewer::ToneMapping::GENERIC)
         {
-            if (ImGui::CollapsingHeader("Tonemap parameters")) {
+            if (ImGui::CollapsingHeader("Tonemap parameters"))
+            {
                 filament::viewer::GenericToneMapperSettings& generic = colorGrading.genericToneMapper;
                 ImGui::SliderFloat("Contrast##genericToneMapper", &generic.contrast, 1e-5f, 3.0f);
                 ImGui::SliderFloat("Mid-gray in##genericToneMapper", &generic.midGrayIn, 0.0f, 1.0f);
@@ -166,7 +174,7 @@ static void colorGradingUI(filament::viewer::Settings& settings, float* rangePlo
 
         computeToneMapPlot(colorGrading, toneMapPlot);
 
-        ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4) ImColor::HSV(0.17f, 0.21f, 0.9f));
+        ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor::HSV(0.17f, 0.21f, 0.9f));
         ImGui::PlotLines("", toneMapPlot, 1024, 0, "Tone map", 0.0f, 1.05f, ImVec2(0, 160));
         ImGui::PopStyleColor();
 
@@ -176,16 +184,18 @@ static void colorGradingUI(filament::viewer::Settings& settings, float* rangePlo
         ImGui::SliderFloat("Exposure", &colorGrading.exposure, -10.0f, 10.0f);
         ImGui::SliderFloat("Night adaptation", &colorGrading.nightAdaptation, 0.0f, 1.0f);
 
-        if (ImGui::CollapsingHeader("White balance")) {
+        if (ImGui::CollapsingHeader("White balance"))
+        {
             int temperature = colorGrading.temperature * 100.0f;
-            int tint = colorGrading.tint * 100.0f;
+            int tint        = colorGrading.tint * 100.0f;
             ImGui::SliderInt("Temperature", &temperature, -100, 100);
             ImGui::SliderInt("Tint", &tint, -100, 100);
             colorGrading.temperature = temperature / 100.0f;
-            colorGrading.tint = tint / 100.0f;
+            colorGrading.tint        = tint / 100.0f;
         }
 
-        if (ImGui::CollapsingHeader("Channel mixer")) {
+        if (ImGui::CollapsingHeader("Channel mixer"))
+        {
             pushSliderColors(0.0f / 7.0f);
             ImGui::VSliderFloat("##outRed.r", verticalSliderSize, &colorGrading.outRed.r, -2.0f, 2.0f, "");
             tooltipFloat(colorGrading.outRed.r);
@@ -221,7 +231,8 @@ static void colorGradingUI(filament::viewer::Settings& settings, float* rangePlo
             tooltipFloat(colorGrading.outBlue.b);
             popSliderColors();
         }
-        if (ImGui::CollapsingHeader("Tonal ranges")) {
+        if (ImGui::CollapsingHeader("Tonal ranges"))
+        {
             ImGui::ColorEdit3("Shadows", &colorGrading.shadows.x);
             ImGui::SliderFloat("Weight##shadowsWeight", &colorGrading.shadows.w, -2.0f, 2.0f);
             ImGui::ColorEdit3("Mid-tones", &colorGrading.midtones.x);
@@ -231,25 +242,29 @@ static void colorGradingUI(filament::viewer::Settings& settings, float* rangePlo
             ImGui::SliderFloat4("Ranges", &colorGrading.ranges.x, 0.0f, 1.0f);
             computeRangePlot(settings, rangePlot);
             ImGuiExt::PlotLinesSeries("", 3,
-                    rangePlotSeriesStart, getRangePlotValue, rangePlotSeriesEnd,
-                    rangePlot, 1024, 0, "", 0.0f, 1.0f, plotLinesWideSize);
+                                      rangePlotSeriesStart, getRangePlotValue, rangePlotSeriesEnd,
+                                      rangePlot, 1024, 0, "", 0.0f, 1.0f, plotLinesWideSize);
         }
-        if (ImGui::CollapsingHeader("Color decision list")) {
+        if (ImGui::CollapsingHeader("Color decision list"))
+        {
             ImGui::SliderFloat3("Slope", &colorGrading.slope.x, 0.0f, 2.0f);
             ImGui::SliderFloat3("Offset", &colorGrading.offset.x, -0.5f, 0.5f);
             ImGui::SliderFloat3("Power", &colorGrading.power.x, 0.0f, 2.0f);
         }
-        if (ImGui::CollapsingHeader("Adjustments")) {
+        if (ImGui::CollapsingHeader("Adjustments"))
+        {
             ImGui::SliderFloat("Contrast", &colorGrading.contrast, 0.0f, 2.0f);
             ImGui::SliderFloat("Vibrance", &colorGrading.vibrance, 0.0f, 2.0f);
             ImGui::SliderFloat("Saturation", &colorGrading.saturation, 0.0f, 2.0f);
         }
-        if (ImGui::CollapsingHeader("Curves")) {
+        if (ImGui::CollapsingHeader("Curves"))
+        {
             ImGui::Checkbox("Linked curves", &colorGrading.linkedCurves);
 
             computeCurvePlot(settings, curvePlot);
 
-            if (!colorGrading.linkedCurves) {
+            if (!colorGrading.linkedCurves)
+            {
                 pushSliderColors(0.0f / 7.0f);
                 ImGui::VSliderFloat("##curveGamma.r", verticalSliderSize, &colorGrading.gamma.r, 0.0f, 4.0f, "");
                 tooltipFloat(colorGrading.gamma.r);
@@ -262,7 +277,7 @@ static void colorGradingUI(filament::viewer::Settings& settings, float* rangePlo
                 ImGui::SameLine(0.0f, 18.0f);
                 popSliderColors();
 
-                ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4) ImColor::HSV(0.0f, 0.7f, 0.8f));
+                ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor::HSV(0.0f, 0.7f, 0.8f));
                 ImGui::PlotLines("", curvePlot, 1024, 0, "Red", 0.0f, 2.0f, plotLinesSize);
                 ImGui::PopStyleColor();
 
@@ -278,7 +293,7 @@ static void colorGradingUI(filament::viewer::Settings& settings, float* rangePlo
                 ImGui::SameLine(0.0f, 18.0f);
                 popSliderColors();
 
-                ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4) ImColor::HSV(0.3f, 0.7f, 0.8f));
+                ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor::HSV(0.3f, 0.7f, 0.8f));
                 ImGui::PlotLines("", curvePlot + 1024, 1024, 0, "Green", 0.0f, 2.0f, plotLinesSize);
                 ImGui::PopStyleColor();
 
@@ -294,10 +309,12 @@ static void colorGradingUI(filament::viewer::Settings& settings, float* rangePlo
                 ImGui::SameLine(0.0f, 18.0f);
                 popSliderColors();
 
-                ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4) ImColor::HSV(0.6f, 0.7f, 0.8f));
+                ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor::HSV(0.6f, 0.7f, 0.8f));
                 ImGui::PlotLines("", curvePlot + 2048, 1024, 0, "Blue", 0.0f, 2.0f, plotLinesSize);
                 ImGui::PopStyleColor();
-            } else {
+            }
+            else
+            {
                 ImGui::VSliderFloat("##curveGamma", verticalSliderSize, &colorGrading.gamma.r, 0.0f, 4.0f, "");
                 tooltipFloat(colorGrading.gamma.r);
                 ImGui::SameLine();
@@ -308,11 +325,11 @@ static void colorGradingUI(filament::viewer::Settings& settings, float* rangePlo
                 tooltipFloat(colorGrading.scale.r);
                 ImGui::SameLine(0.0f, 18.0f);
 
-                colorGrading.gamma = float3{colorGrading.gamma.r};
+                colorGrading.gamma    = float3{colorGrading.gamma.r};
                 colorGrading.midPoint = float3{colorGrading.midPoint.r};
-                colorGrading.scale = float3{colorGrading.scale.r};
+                colorGrading.scale    = float3{colorGrading.scale.r};
 
-                ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4) ImColor::HSV(0.17f, 0.21f, 0.9f));
+                ImGui::PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor::HSV(0.17f, 0.21f, 0.9f));
                 ImGui::PlotLines("", curvePlot, 1024, 0, "RGB", 0.0f, 2.0f, plotLinesSize);
                 ImGui::PopStyleColor();
             }
@@ -345,15 +362,17 @@ void GameDriver::setAsset( )
 void GameDriver::populateScene()
 {
     static constexpr int kNumAvailable = 128;
-    utils::Entity renderables[kNumAvailable];
-    while (size_t numWritten = mAsset->popRenderables(renderables, kNumAvailable)) {
+    utils::Entity        renderables[kNumAvailable];
+    while (size_t numWritten = mAsset->popRenderables(renderables, kNumAvailable))
+    {
         mAsset->addEntitiesToScene(*mScene, renderables, numWritten, mVisibleScenes);
     }
 }
 
 void GameDriver::removeAsset()
 {
-    if (!isRemoteMode()) {
+    if (!isRemoteMode())
+    {
         mScene->removeEntities(mAsset->getEntities(), mAsset->getEntityCount());
         mAsset = nullptr;
     }
@@ -361,16 +380,18 @@ void GameDriver::removeAsset()
 
 void GameDriver::updateRootTransform()
 {
-    if (isRemoteMode()) {
+    if (isRemoteMode())
+    {
         return;
     }
-    auto& tcm = mRenderEngine->getTransformManager();
-    auto root = tcm.getInstance(mAsset->getRoot());
+    auto&                 tcm  = mRenderEngine->getTransformManager();
+    auto                  root = tcm.getInstance(mAsset->getRoot());
     filament::math::mat4f transform;
-    if (gSettings.viewer.autoScaleEnabled) {
+    if (gSettings.viewer.autoScaleEnabled)
+    {
         filament::gltfio::FilamentInstance* instance = mAsset->getInstance();
-        filament::Aabb    aabb     = instance ? instance->getBoundingBox() : mAsset->getBoundingBox();
-        transform = fitIntoUnitCube(aabb, 4);
+        filament::Aabb                      aabb     = instance ? instance->getBoundingBox() : mAsset->getBoundingBox();
+        transform                                    = fitIntoUnitCube(aabb, 4);
     }
     tcm.setTransform(root, transform);
 }
@@ -379,39 +400,47 @@ void GameDriver::sceneSelectionUI()
 {
     // Build a list of checkboxes, one for each glTF scene.
     bool changed = false;
-    for (size_t i = 0, n = mAsset->getSceneCount(); i < n; ++i) {
-        bool isVisible = mVisibleScenes.test(i);
-        const char* name = mAsset->getSceneName(i);
-        if (name) {
+    for (size_t i = 0, n = mAsset->getSceneCount(); i < n; ++i)
+    {
+        bool        isVisible = mVisibleScenes.test(i);
+        const char* name      = mAsset->getSceneName(i);
+        if (name)
+        {
             changed = ImGui::Checkbox(name, &isVisible) || changed;
-        } else {
+        }
+        else
+        {
             char label[16];
             snprintf(label, 16, "Scene %zu", i);
             changed = ImGui::Checkbox(label, &isVisible) || changed;
         }
-        if (isVisible) {
+        if (isVisible)
+        {
             mVisibleScenes.set(i);
-        } else {
+        }
+        else
+        {
             mVisibleScenes.unset(i);
         }
     }
     // If any checkboxes have been toggled, rebuild the scene list.
-    if (changed) {
-        const utils::Entity* entities = mAsset->getRenderableEntities();
-        const size_t entityCount = mAsset->getRenderableEntityCount();
+    if (changed)
+    {
+        const utils::Entity* entities    = mAsset->getRenderableEntities();
+        const size_t         entityCount = mAsset->getRenderableEntityCount();
         mScene->removeEntities(entities, entityCount);
         mAsset->addEntitiesToScene(*mScene, entities, entityCount, mVisibleScenes);
     }
 }
 
-void GameDriver::applyAnimation(double currentTime, filament::gltfio::FilamentInstance* instance)
-{
-    instance = instance ? instance : mInstance;
+void GameDriver::applyAnimation(double currentTime )
+{ 
     assert_invariant(!isRemoteMode());
-    if (instance == nullptr) {
+    if (mInstance == nullptr)
+    {
         return;
     }
-    filament::gltfio::Animator& animator      = *instance->getAnimator();
+    filament::gltfio::Animator& animator      = *mInstance->getAnimator();
     const size_t numAnimations = animator.getAnimationCount();
     if (mResetAnimation) {
         mPreviousStartTime = mCurrentStartTime;
@@ -434,65 +463,13 @@ void GameDriver::applyAnimation(double currentTime, filament::gltfio::FilamentIn
     }
 }
 
-void GameDriver::mouseEvent(float mouseX, float mouseY, bool mouseButton, float mouseWheelY,
-        bool control) {
-   
-        ImGuiIO& io = ImGui::GetIO();
-        io.MousePos.x = mouseX;
-        io.MousePos.y = mouseY;
-        io.MouseWheel += mouseWheelY;
-        io.MouseDown[0] = mouseButton != 0;
-        io.MouseDown[1] = false;
-        io.MouseDown[2] = false;
-        io.KeyCtrl = control;
-     
-}
-
-void GameDriver::keyDownEvent(int keyCode)
-{
-    if (  keyCode < IM_ARRAYSIZE(ImGui::GetIO().KeysDown)) {
-        ImGui::GetIO().KeysDown[keyCode] = true;
-    }
-}
-
-void GameDriver::keyUpEvent(int keyCode)
-{
-    if (  keyCode < IM_ARRAYSIZE(ImGui::GetIO().KeysDown)) {
-        ImGui::GetIO().KeysDown[keyCode] = false;
-    }
-}
-
-void GameDriver::keyPressEvent(int charCode)
-{
-    ImGui::GetIO().AddInputCharacter(charCode);
-}
+ 
 
 void GameDriver::customUI()
 {
     auto& automation = Automation::get().getAutomationEngine();
     auto  view       = mMainView->getView();
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-    {
-        ImVec2 pos = ImGui::GetMousePos();
-        pos.x *= ImGui::GetIO().DisplayFramebufferScale.x;
-        pos.y *= ImGui::GetIO().DisplayFramebufferScale.y;
-        if (pos.x > 0)
-        {
-            pos.y = view->getViewport().height - 1 - pos.y;
-
-            view->pick(pos.x, pos.y, [this](filament::View::PickingQueryResult const& result) {
-                if (const char* name = mAsset->getName(result.renderable); name)
-                {
-                    mNotificationText = name;
-                }
-                else
-                {
-                    mNotificationText.clear();
-                }
-            });
-        }
-    }
-
+ 
     const ImVec4 yellow(1.0f, 1.0f, 0.0f, 1.0f);
 
     if (!mNotificationText.empty())
@@ -522,8 +499,7 @@ void GameDriver::customUI()
 
         if (automation.isRunning())
         {
-            ImGui::TextColored(yellow, "Test case %zu / %zu", automation.currentTest(),
-                               automation.testCount());
+            ImGui::TextColored(yellow, "Test case %zu / %zu", automation.currentTest(), automation.testCount());
         }
         else
         {
@@ -585,8 +561,7 @@ void GameDriver::customUI()
             bool* captureFrame = debug.getPropertyAddress<bool>("d.renderer.doFrameCapture");
             *captureFrame      = true;
         }
-        ImGui::Checkbox("Disable buffer padding",
-                        debug.getPropertyAddress<bool>("d.renderer.disable_buffer_padding"));
+        ImGui::Checkbox("Disable buffer padding", debug.getPropertyAddress<bool>("d.renderer.disable_buffer_padding"));
         ImGui::Checkbox("Camera at origin", debug.getPropertyAddress<bool>("d.view.camera_at_origin"));
         auto dataSource = debug.getDataSource("d.view.frame_info");
         if (dataSource.data)
@@ -629,8 +604,7 @@ void GameDriver::customUI()
                     if (series < 6)
                         ImGui::PopStyleColor();
                 },
-                const_cast<void*>(dataSource.data), int(dataSource.count), 0, nullptr, 0.0f, 1.0f,
-                {0, 100});
+                const_cast<void*>(dataSource.data), int(dataSource.count), 0, nullptr, 0.0f, 1.0f,  {0, 100});
         }
 #ifndef NDEBUG
         ImGui::SliderFloat("Kp", debug.getPropertyAddress<float>("d.view.pid.kp"), 0, 2);
@@ -642,11 +616,9 @@ void GameDriver::customUI()
         // TODO: enable after stencil buffer supported is added for Vulkan.
         const bool overdrawDisabled = mRenderEngine->getBackend() == filament::backend::Backend::VULKAN;
         ImGui::BeginDisabled(overdrawDisabled);
-        ImGui::Checkbox(!overdrawDisabled ? "Visualize overdraw" : "Visualize overdraw (disabled for Vulkan)",
-                        &visualizeOverdraw);
+        ImGui::Checkbox(!overdrawDisabled ? "Visualize overdraw" : "Visualize overdraw (disabled for Vulkan)", &visualizeOverdraw);
         ImGui::EndDisabled();
-        view->setVisibleLayers(overdrawVisibilityBit,
-                               (uint8_t)visualizeOverdraw << OverdrawVisualizer::OVERDRAW_VISIBILITY_LAYER);
+        view->setVisibleLayers(overdrawVisibilityBit, (uint8_t)visualizeOverdraw << OverdrawVisualizer::OVERDRAW_VISIBILITY_LAYER);
         view->setStencilBufferEnabled(visualizeOverdraw);
     }
 
@@ -805,12 +777,12 @@ void GameDriver::updateUI()
         window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
         window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
     }
-  
+
     // When using ImGuiDockNodeFlags_PassthruCentralNode, DockSpace() will render our background
     // and handle the pass-thru hole, so we ask Begin() to not render a background.
     if (dockspace_flags & ImGuiDockNodeFlags_PassthruCentralNode)
         window_flags |= ImGuiWindowFlags_NoBackground;
-    
+
     // Important: note that we proceed even if Begin() returns false (aka window is collapsed).
     // This is because we want to keep our DockSpace() active. If a DockSpace() is inactive,
     // all active windows docked into it will lose their parent and become undocked.
@@ -863,10 +835,10 @@ void GameDriver::updateUI()
         ImGui::EndMenuBar();
     }
 
-    ImGui::End(); 
+    ImGui::End();
 
     window_flags = 0;
-   
+
 
     if (*p_open)
     {
@@ -1148,9 +1120,7 @@ void GameDriver::updateUI()
                 ImGui::SliderInt("Max CoC", &dofMaxCoC, 1, 32);
                 ImGui::Checkbox("Native Resolution", &gSettings.view.dof.nativeResolution);
                 ImGui::Checkbox("Median Filter", &dofMedian);
-                gSettings.view.dof.filter              = dofMedian ?
-                                 View::DepthOfFieldOptions::Filter::MEDIAN :
-                                 View::DepthOfFieldOptions::Filter::NONE;
+                gSettings.view.dof.filter              = dofMedian ? View::DepthOfFieldOptions::Filter::MEDIAN : View::DepthOfFieldOptions::Filter::NONE;
                 gSettings.view.dof.backgroundRingCount = dofRingCount;
                 gSettings.view.dof.foregroundRingCount = dofRingCount;
                 gSettings.view.dof.fastGatherRingCount = dofRingCount;
@@ -1171,10 +1141,8 @@ void GameDriver::updateUI()
             // would need to send a message from DebugServer to the WebSockets client.
             if (!isRemoteMode())
             {
-
-                const utils::Entity* cameras     = mAsset->getCameraEntities();
-                const size_t         cameraCount = mAsset->getCameraEntityCount();
-
+                const utils::Entity*     cameras     = mAsset->getCameraEntities();
+                const size_t             cameraCount = mAsset->getCameraEntityCount();
                 std::vector<std::string> names;
                 names.reserve(cameraCount + 1);
                 names.push_back("Free camera");
@@ -1220,8 +1188,7 @@ void GameDriver::updateUI()
         // At this point, all View settings have been modified,
         //  so we can now push them into the Filament View.
         applySettings(mRenderEngine, gSettings.view, mMainView->getView());
-        applySettings(mRenderEngine, gSettings.lighting, mIndirectLight, mSunlight,
-                      lm.getEntities(), lm.getComponentCount(), &lm, mScene, mMainView->getView());
+        applySettings(mRenderEngine, gSettings.lighting, mIndirectLight, mSunlight, lm.getEntities(), lm.getComponentCount(), &lm, mScene, mMainView->getView());
 
         // TODO(prideout): add support for hierarchy, animation and variant selection in remote mode. To
         // support these features, we will need to send a message (list of strings) from DebugServer to
@@ -1259,8 +1226,7 @@ void GameDriver::updateUI()
                 ImGui::Indent();
                 int selectedAnimation = mCurrentAnimation;
                 ImGui::RadioButton("Disable", &selectedAnimation, 0);
-                ImGui::SliderFloat("Cross fade", &mCrossFadeDuration, 0.0f, 2.0f,
-                                   "%4.2f seconds", ImGuiSliderFlags_AlwaysClamp);
+                ImGui::SliderFloat("Cross fade", &mCrossFadeDuration, 0.0f, 2.0f, "%4.2f seconds", ImGuiSliderFlags_AlwaysClamp);
                 for (size_t i = 0, count = animator.getAnimationCount(); i < count; ++i)
                 {
                     std::string label = animator.getAnimationName(i);
@@ -1297,7 +1263,7 @@ void GameDriver::updateUI()
                 {
                     ImGui::EndDisabled();
                 }
-                if (!isAnimating)
+                else
                 {
                     auto instance = rm.getInstance(mCurrentMorphingEntity);
                     rm.setMorphWeights(instance, mMorphWeights.data(), mMorphWeights.size());
