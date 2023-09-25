@@ -321,31 +321,25 @@ static void colorGradingUI(filament::viewer::Settings& settings, float* rangePlo
     }
 }
 
-void GameDriver::setAsset(filament::gltfio::FilamentAsset* asset, filament::gltfio::FilamentInstance* instance)
+void GameDriver::setAsset( )
 {
-    //if (mInstance != instance || mAsset != asset) {
-    //    removeAsset();
-
-        // We keep a non-const reference to the asset for popRenderables and getWireframe.
-        mAsset = asset;
-        mInstance = instance;
-
-        mVisibleScenes.reset();
-        mVisibleScenes.set(0);
-        mCurrentCamera = 0;
-        if (!mAsset) {
-            mAsset = nullptr;
-            mInstance = nullptr;
-            return;
-        }
-        updateRootTransform();
-        mScene->addEntities(asset->getLightEntities(), asset->getLightEntityCount());
-        auto& rcm = mRenderEngine->getRenderableManager();
-        for (size_t i = 0, n = asset->getRenderableEntityCount(); i < n; i++) {
-            auto ri = rcm.getInstance(asset->getRenderableEntities()[i]);
-            rcm.setScreenSpaceContactShadows(ri, true);
-        }
-    //}
+    mVisibleScenes.reset();
+    mVisibleScenes.set(0);
+    mCurrentCamera = 0;
+    if (!mAsset)
+    {
+        mAsset    = nullptr;
+        mInstance = nullptr;
+        return;
+    }
+    updateRootTransform();
+    mScene->addEntities(mAsset->getLightEntities(), mAsset->getLightEntityCount());
+    auto& rcm = mRenderEngine->getRenderableManager();
+    for (size_t i = 0, n = mAsset->getRenderableEntityCount(); i < n; i++)
+    {
+        auto ri = rcm.getInstance(mAsset->getRenderableEntities()[i]);
+        rcm.setScreenSpaceContactShadows(ri, true);
+    }
 }
 
 void GameDriver::populateScene()
@@ -485,7 +479,6 @@ void GameDriver::customUI()
         if (pos.x > 0)
         {
             pos.y = view->getViewport().height - 1 - pos.y;
-
 
             view->pick(pos.x, pos.y, [this](filament::View::PickingQueryResult const& result) {
                 if (const char* name = mAsset->getName(result.renderable); name)
@@ -668,7 +661,7 @@ void GameDriver::customUI()
     }
 }
 
-void GameDriver::updateUserInterface()
+void GameDriver::updateUI()
 {
     using namespace filament;
 
@@ -796,7 +789,7 @@ void GameDriver::updateUserInterface()
     static bool*              p_open          = &opt_open;
     static bool               opt_fullscreen  = true;
     static bool               opt_padding     = false;
-    static ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_None;
+    static ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_None | ImGuiDockNodeFlags_PassthruCentralNode;
 
     // We are using the ImGuiWindowFlags_NoDocking flag to make the parent window not dockable into,
     // because it would be confusing to have two docking targets within each others.
@@ -812,16 +805,12 @@ void GameDriver::updateUserInterface()
         window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
         window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
     }
-    else
-    {
-        dockspace_flags &= ~ImGuiDockNodeFlags_PassthruCentralNode;
-    }
-
+  
     // When using ImGuiDockNodeFlags_PassthruCentralNode, DockSpace() will render our background
     // and handle the pass-thru hole, so we ask Begin() to not render a background.
     if (dockspace_flags & ImGuiDockNodeFlags_PassthruCentralNode)
         window_flags |= ImGuiWindowFlags_NoBackground;
-
+    
     // Important: note that we proceed even if Begin() returns false (aka window is collapsed).
     // This is because we want to keep our DockSpace() active. If a DockSpace() is inactive,
     // all active windows docked into it will lose their parent and become undocked.
@@ -845,11 +834,6 @@ void GameDriver::updateUserInterface()
         ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
     }
 
-    //const float width = ImGui::GetIO().DisplaySize.x;
-    //const float height = ImGui::GetIO().DisplaySize.y;
-    //ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_FirstUseEver);
-    //ImGui::SetNextWindowSizeConstraints(ImVec2(width, height), ImVec2(width, height));
-
     if (ImGui::BeginMenuBar())
     {
         if (ImGui::BeginMenu("Options"))
@@ -859,12 +843,15 @@ void GameDriver::updateUserInterface()
             ImGui::MenuItem("Fullscreen", NULL, &opt_fullscreen);
             ImGui::MenuItem("Padding", NULL, &opt_padding);
             ImGui::Separator();
-
-            if (ImGui::MenuItem("Flag: NoSplit", "", (dockspace_flags & ImGuiDockNodeFlags_NoSplit) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoSplit; }
-            if (ImGui::MenuItem("Flag: NoResize", "", (dockspace_flags & ImGuiDockNodeFlags_NoResize) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoResize; }
-            if (ImGui::MenuItem("Flag: NoDockingInCentralNode", "", (dockspace_flags & ImGuiDockNodeFlags_NoDockingInCentralNode) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoDockingInCentralNode; }
-            if (ImGui::MenuItem("Flag: AutoHideTabBar", "", (dockspace_flags & ImGuiDockNodeFlags_AutoHideTabBar) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_AutoHideTabBar; }
-            if (ImGui::MenuItem("Flag: PassthruCentralNode", "", (dockspace_flags & ImGuiDockNodeFlags_PassthruCentralNode) != 0, opt_fullscreen)) { dockspace_flags ^= ImGuiDockNodeFlags_PassthruCentralNode; }
+            if (ImGui::MenuItem("Test", "", *p_open))
+            {
+                *p_open = !(*p_open);
+            }
+            //if (ImGui::MenuItem("Flag: NoSplit", "", (dockspace_flags & ImGuiDockNodeFlags_NoSplit) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoSplit; }
+            //if (ImGui::MenuItem("Flag: NoResize", "", (dockspace_flags & ImGuiDockNodeFlags_NoResize) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoResize; }
+            //if (ImGui::MenuItem("Flag: NoDockingInCentralNode", "", (dockspace_flags & ImGuiDockNodeFlags_NoDockingInCentralNode) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_NoDockingInCentralNode; }
+            //if (ImGui::MenuItem("Flag: AutoHideTabBar", "", (dockspace_flags & ImGuiDockNodeFlags_AutoHideTabBar) != 0)) { dockspace_flags ^= ImGuiDockNodeFlags_AutoHideTabBar; }
+            //if (ImGui::MenuItem("Flag: PassthruCentralNode", "", (dockspace_flags & ImGuiDockNodeFlags_PassthruCentralNode) != 0, opt_fullscreen)) { dockspace_flags ^= ImGuiDockNodeFlags_PassthruCentralNode; }
             ImGui::Separator();
 
             if (ImGui::MenuItem("Close", NULL, false, p_open != NULL))
@@ -879,450 +866,454 @@ void GameDriver::updateUserInterface()
     ImGui::End(); 
 
     window_flags = 0;
+   
 
-    ImGui::Begin("Configure", p_open, window_flags);
-
-    customUI();
-
-    DebugRegistry& debug = mRenderEngine->getDebugRegistry();
-
-    if (ImGui::CollapsingHeader("View"))
+    if (*p_open)
     {
-        ImGui::Indent();
+        ImGui::Begin("Configure", p_open, window_flags);
 
-        ImGui::Checkbox("Post-processing", &gSettings.view.postProcessingEnabled);
-        ImGui::Indent();
-        bool dither = gSettings.view.dithering == Dithering::TEMPORAL;
-        ImGui::Checkbox("Dithering", &dither);
-        enableDithering(dither);
-        ImGui::Checkbox("Bloom", &gSettings.view.bloom.enabled);
-        ImGui::Checkbox("Flare", &gSettings.view.bloom.lensFlare);
+        customUI();
 
-        ImGui::Checkbox("TAA", &gSettings.view.taa.enabled);
-        // this clutters the UI and isn't that useful (except when working on TAA)
-        ImGui::Indent();
-        ImGui::SliderFloat("feedback", &gSettings.view.taa.feedback, 0.0f, 1.0f);
-        ImGui::SliderFloat("filter", &gSettings.view.taa.filterWidth, 0.0f, 2.0f);
-        ImGui::Unindent();
+        DebugRegistry& debug = mRenderEngine->getDebugRegistry();
 
-        bool fxaa = gSettings.view.antiAliasing == AntiAliasing::FXAA;
-        ImGui::Checkbox("FXAA", &fxaa);
-        enableFxaa(fxaa);
-        ImGui::Unindent();
-
-        ImGui::Checkbox("MSAA 4x", &gSettings.view.msaa.enabled);
-        ImGui::Indent();
-        ImGui::Checkbox("Custom resolve", &gSettings.view.msaa.customResolve);
-        ImGui::Unindent();
-
-        ImGui::Checkbox("SSAO", &gSettings.view.ssao.enabled);
-        if (ImGui::CollapsingHeader("SSAO Options"))
+        if (ImGui::CollapsingHeader("View"))
         {
-            auto& ssao = gSettings.view.ssao;
+            ImGui::Indent();
 
-            int  quality    = (int)ssao.quality;
-            int  lowpass    = (int)ssao.lowPassFilter;
-            bool upsampling = ssao.upsampling != View::QualityLevel::LOW;
+            ImGui::Checkbox("Post-processing", &gSettings.view.postProcessingEnabled);
+            ImGui::Indent();
+            bool dither = gSettings.view.dithering == Dithering::TEMPORAL;
+            ImGui::Checkbox("Dithering", &dither);
+            enableDithering(dither);
+            ImGui::Checkbox("Bloom", &gSettings.view.bloom.enabled);
+            ImGui::Checkbox("Flare", &gSettings.view.bloom.lensFlare);
 
-            bool halfRes = ssao.resolution != 1.0f;
-            ImGui::SliderInt("Quality", &quality, 0, 3);
-            ImGui::SliderInt("Low Pass", &lowpass, 0, 2);
-            ImGui::Checkbox("Bent Normals", &ssao.bentNormals);
-            ImGui::Checkbox("High quality upsampling", &upsampling);
-            ImGui::SliderFloat("Min Horizon angle", &ssao.minHorizonAngleRad, 0.0f, (float)M_PI_4);
-            ImGui::SliderFloat("Bilateral Threshold", &ssao.bilateralThreshold, 0.0f, 0.1f);
-            ImGui::Checkbox("Half resolution", &halfRes);
-            ssao.resolution = halfRes ? 0.5f : 1.0f;
+            ImGui::Checkbox("TAA", &gSettings.view.taa.enabled);
+            // this clutters the UI and isn't that useful (except when working on TAA)
+            ImGui::Indent();
+            ImGui::SliderFloat("feedback", &gSettings.view.taa.feedback, 0.0f, 1.0f);
+            ImGui::SliderFloat("filter", &gSettings.view.taa.filterWidth, 0.0f, 2.0f);
+            ImGui::Unindent();
 
+            bool fxaa = gSettings.view.antiAliasing == AntiAliasing::FXAA;
+            ImGui::Checkbox("FXAA", &fxaa);
+            enableFxaa(fxaa);
+            ImGui::Unindent();
 
-            ssao.upsampling    = upsampling ? View::QualityLevel::HIGH : View::QualityLevel::LOW;
-            ssao.lowPassFilter = (View::QualityLevel)lowpass;
-            ssao.quality       = (View::QualityLevel)quality;
+            ImGui::Checkbox("MSAA 4x", &gSettings.view.msaa.enabled);
+            ImGui::Indent();
+            ImGui::Checkbox("Custom resolve", &gSettings.view.msaa.customResolve);
+            ImGui::Unindent();
 
-            if (ImGui::CollapsingHeader("Dominant Light Shadows (experimental)"))
+            ImGui::Checkbox("SSAO", &gSettings.view.ssao.enabled);
+            if (ImGui::CollapsingHeader("SSAO Options"))
             {
-                int sampleCount = ssao.ssct.sampleCount;
-                ImGui::Checkbox("Enabled##dls", &ssao.ssct.enabled);
-                ImGui::SliderFloat("Cone angle", &ssao.ssct.lightConeRad, 0.0f, (float)M_PI_2);
-                ImGui::SliderFloat("Shadow Distance", &ssao.ssct.shadowDistance, 0.0f, 10.0f);
-                ImGui::SliderFloat("Contact dist max", &ssao.ssct.contactDistanceMax, 0.0f, 100.0f);
-                ImGui::SliderFloat("Intensity##dls", &ssao.ssct.intensity, 0.0f, 10.0f);
-                ImGui::SliderFloat("Depth bias", &ssao.ssct.depthBias, 0.0f, 1.0f);
-                ImGui::SliderFloat("Depth slope bias", &ssao.ssct.depthSlopeBias, 0.0f, 1.0f);
-                ImGui::SliderInt("Sample Count", &sampleCount, 1, 32);
-                ImGuiExt::DirectionWidget("Direction##dls", ssao.ssct.lightDirection.v);
-                ssao.ssct.sampleCount = sampleCount;
+                auto& ssao = gSettings.view.ssao;
+
+                int  quality    = (int)ssao.quality;
+                int  lowpass    = (int)ssao.lowPassFilter;
+                bool upsampling = ssao.upsampling != View::QualityLevel::LOW;
+
+                bool halfRes = ssao.resolution != 1.0f;
+                ImGui::SliderInt("Quality", &quality, 0, 3);
+                ImGui::SliderInt("Low Pass", &lowpass, 0, 2);
+                ImGui::Checkbox("Bent Normals", &ssao.bentNormals);
+                ImGui::Checkbox("High quality upsampling", &upsampling);
+                ImGui::SliderFloat("Min Horizon angle", &ssao.minHorizonAngleRad, 0.0f, (float)M_PI_4);
+                ImGui::SliderFloat("Bilateral Threshold", &ssao.bilateralThreshold, 0.0f, 0.1f);
+                ImGui::Checkbox("Half resolution", &halfRes);
+                ssao.resolution = halfRes ? 0.5f : 1.0f;
+
+
+                ssao.upsampling    = upsampling ? View::QualityLevel::HIGH : View::QualityLevel::LOW;
+                ssao.lowPassFilter = (View::QualityLevel)lowpass;
+                ssao.quality       = (View::QualityLevel)quality;
+
+                if (ImGui::CollapsingHeader("Dominant Light Shadows (experimental)"))
+                {
+                    int sampleCount = ssao.ssct.sampleCount;
+                    ImGui::Checkbox("Enabled##dls", &ssao.ssct.enabled);
+                    ImGui::SliderFloat("Cone angle", &ssao.ssct.lightConeRad, 0.0f, (float)M_PI_2);
+                    ImGui::SliderFloat("Shadow Distance", &ssao.ssct.shadowDistance, 0.0f, 10.0f);
+                    ImGui::SliderFloat("Contact dist max", &ssao.ssct.contactDistanceMax, 0.0f, 100.0f);
+                    ImGui::SliderFloat("Intensity##dls", &ssao.ssct.intensity, 0.0f, 10.0f);
+                    ImGui::SliderFloat("Depth bias", &ssao.ssct.depthBias, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Depth slope bias", &ssao.ssct.depthSlopeBias, 0.0f, 1.0f);
+                    ImGui::SliderInt("Sample Count", &sampleCount, 1, 32);
+                    ImGuiExt::DirectionWidget("Direction##dls", ssao.ssct.lightDirection.v);
+                    ssao.ssct.sampleCount = sampleCount;
+                }
+            }
+
+            ImGui::Checkbox("Screen-space reflections", &gSettings.view.screenSpaceReflections.enabled);
+            if (ImGui::CollapsingHeader("Screen-space reflections Options"))
+            {
+                auto& ssrefl = gSettings.view.screenSpaceReflections;
+                ImGui::SliderFloat("Ray thickness", &ssrefl.thickness, 0.001f, 0.2f);
+                ImGui::SliderFloat("Bias", &ssrefl.bias, 0.001f, 0.5f);
+                ImGui::SliderFloat("Max distance", &ssrefl.maxDistance, 0.1, 10.0f);
+                ImGui::SliderFloat("Stride", &ssrefl.stride, 1.0, 10.0f);
+            }
+            ImGui::Unindent();
+
+            ImGui::Checkbox("Screen-space Guard Band", &gSettings.view.guardBand.enabled);
+        }
+
+        if (ImGui::CollapsingHeader("Dynamic Resolution"))
+        {
+            auto& dsr     = gSettings.view.dsr;
+            int   quality = (int)dsr.quality;
+            ImGui::Checkbox("enabled", &dsr.enabled);
+            ImGui::Checkbox("homogeneous", &dsr.homogeneousScaling);
+            ImGui::SliderFloat("min. scale", &dsr.minScale.x, 0.25f, 1.0f);
+            ImGui::SliderFloat("max. scale", &dsr.maxScale.x, 0.25f, 1.0f);
+            ImGui::SliderInt("quality", &quality, 0, 3);
+            ImGui::SliderFloat("sharpness", &dsr.sharpness, 0.0f, 1.0f);
+            dsr.minScale.x = std::min(dsr.minScale.x, dsr.maxScale.x);
+            dsr.minScale.y = dsr.minScale.x;
+            dsr.maxScale.y = dsr.maxScale.x;
+            dsr.quality    = (QualityLevel)quality;
+        }
+
+        auto& light = gSettings.lighting;
+        if (ImGui::CollapsingHeader("Light"))
+        {
+            ImGui::Indent();
+            if (ImGui::CollapsingHeader("Indirect light"))
+            {
+                ImGui::SliderFloat("IBL intensity", &light.iblIntensity, 0.0f, 100000.0f);
+                ImGui::SliderAngle("IBL rotation", &light.iblRotation);
+            }
+            if (ImGui::CollapsingHeader("Sunlight"))
+            {
+                ImGui::Checkbox("Enable sunlight", &light.enableSunlight);
+                ImGui::SliderFloat("Sun intensity", &light.sunlightIntensity, 50000.0f, 150000.0f);
+                ImGui::SliderFloat("Halo size", &light.sunlightHaloSize, 1.01f, 40.0f);
+                ImGui::SliderFloat("Halo falloff", &light.sunlightHaloFalloff, 4.0f, 1024.0f);
+                ImGui::SliderFloat("Sun radius", &light.sunlightAngularRadius, 0.1f, 10.0f);
+                ImGuiExt::DirectionWidget("Sun direction", light.sunlightDirection.v);
+            }
+            if (ImGui::CollapsingHeader("All lights"))
+            {
+                ImGui::Checkbox("Enable shadows", &light.enableShadows);
+                int mapSize = light.shadowOptions.mapSize;
+                ImGui::SliderInt("Shadow map size", &mapSize, 32, 1024);
+                light.shadowOptions.mapSize = mapSize;
+                ImGui::Checkbox("Stable Shadows", &light.shadowOptions.stable);
+                ImGui::Checkbox("Enable LiSPSM", &light.shadowOptions.lispsm);
+
+                int shadowType = (int)gSettings.view.shadowType;
+                ImGui::Combo("Shadow type", &shadowType, "PCF\0VSM\0DPCF\0PCSS\0\0");
+                gSettings.view.shadowType = (ShadowType)shadowType;
+
+                if (gSettings.view.shadowType == ShadowType::VSM)
+                {
+                    ImGui::Checkbox("High precision", &gSettings.view.vsmShadowOptions.highPrecision);
+                    ImGui::Checkbox("ELVSM", &gSettings.lighting.shadowOptions.vsm.elvsm);
+                    char label[32];
+                    snprintf(label, 32, "%d", 1 << mVsmMsaaSamplesLog2);
+                    ImGui::SliderInt("VSM MSAA samples", &mVsmMsaaSamplesLog2, 0, 3, label);
+                    gSettings.view.vsmShadowOptions.msaaSamples =
+                        static_cast<uint8_t>(1u << mVsmMsaaSamplesLog2);
+
+                    int vsmAnisotropy = gSettings.view.vsmShadowOptions.anisotropy;
+                    snprintf(label, 32, "%d", 1 << vsmAnisotropy);
+                    ImGui::SliderInt("VSM anisotropy", &vsmAnisotropy, 0, 3, label);
+                    gSettings.view.vsmShadowOptions.anisotropy = vsmAnisotropy;
+                    ImGui::Checkbox("VSM mipmapping", &gSettings.view.vsmShadowOptions.mipmapping);
+                    ImGui::SliderFloat("VSM blur", &light.shadowOptions.vsm.blurWidth, 0.0f, 125.0f);
+
+                    // These are not very useful in practice (defaults are good), but we keep them here for debugging
+                    //ImGui::SliderFloat("VSM exponent", &gSettings.view.vsmShadowOptions.exponent, 0.0, 6.0f);
+                    ImGui::SliderFloat("VSM Light bleed", &gSettings.view.vsmShadowOptions.lightBleedReduction, 0.0, 1.0f);
+                    ImGui::SliderFloat("VSM min variance scale", &gSettings.view.vsmShadowOptions.minVarianceScale, 0.0, 10.0f);
+                }
+                else if (gSettings.view.shadowType == ShadowType::DPCF || gSettings.view.shadowType == ShadowType::PCSS)
+                {
+                    ImGui::SliderFloat("Penumbra scale", &light.softShadowOptions.penumbraScale, 0.0f, 100.0f);
+                    ImGui::SliderFloat("Penumbra Ratio scale", &light.softShadowOptions.penumbraRatioScale, 1.0f, 100.0f);
+                }
+
+                int shadowCascades = light.shadowOptions.shadowCascades;
+                ImGui::SliderInt("Cascades", &shadowCascades, 1, 4);
+                ImGui::Checkbox("Debug cascades",
+                                debug.getPropertyAddress<bool>("d.shadowmap.visualize_cascades"));
+                ImGui::Checkbox("Enable contact shadows", &light.shadowOptions.screenSpaceContactShadows);
+                ImGui::SliderFloat("Split pos 0", &light.shadowOptions.cascadeSplitPositions[0], 0.0f, 1.0f);
+                ImGui::SliderFloat("Split pos 1", &light.shadowOptions.cascadeSplitPositions[1], 0.0f, 1.0f);
+                ImGui::SliderFloat("Split pos 2", &light.shadowOptions.cascadeSplitPositions[2], 0.0f, 1.0f);
+                light.shadowOptions.shadowCascades = shadowCascades;
+            }
+            ImGui::Unindent();
+        }
+
+        if (ImGui::CollapsingHeader("Fog"))
+        {
+            int fogColorSource = 0;
+            if (gSettings.view.fog.skyColor)
+            {
+                fogColorSource = 2;
+            }
+            else if (gSettings.view.fog.fogColorFromIbl)
+            {
+                fogColorSource = 1;
+            }
+
+            bool excludeSkybox = !std::isinf(gSettings.view.fog.cutOffDistance);
+            ImGui::Indent();
+            ImGui::Checkbox("Enable large-scale fog", &gSettings.view.fog.enabled);
+            ImGui::SliderFloat("Start [m]", &gSettings.view.fog.distance, 0.0f, 100.0f);
+            ImGui::SliderFloat("Extinction [1/m]", &gSettings.view.fog.density, 0.0f, 1.0f);
+            ImGui::SliderFloat("Floor [m]", &gSettings.view.fog.height, 0.0f, 100.0f);
+            ImGui::SliderFloat("Height falloff [1/m]", &gSettings.view.fog.heightFalloff, 0.0f, 4.0f);
+            ImGui::SliderFloat("Sun Scattering start [m]", &gSettings.view.fog.inScatteringStart, 0.0f, 100.0f);
+            ImGui::SliderFloat("Sun Scattering size", &gSettings.view.fog.inScatteringSize, 0.1f, 100.0f);
+            ImGui::Checkbox("Exclude Skybox", &excludeSkybox);
+            ImGui::Combo("Color##fogColor", &fogColorSource, "Constant\0IBL\0Skybox\0\0");
+            ImGui::ColorPicker3("Color", gSettings.view.fog.color.v);
+            ImGui::Unindent();
+            gSettings.view.fog.cutOffDistance =
+                excludeSkybox ? 1e6f : std::numeric_limits<float>::infinity();
+            switch (fogColorSource)
+            {
+                case 0:
+                    gSettings.view.fog.skyColor        = nullptr;
+                    gSettings.view.fog.fogColorFromIbl = false;
+                    break;
+                case 1:
+                    gSettings.view.fog.skyColor        = nullptr;
+                    gSettings.view.fog.fogColorFromIbl = true;
+                    break;
+                case 2:
+                    gSettings.view.fog.skyColor        = gSettings.view.fogSettings.fogColorTexture;
+                    gSettings.view.fog.fogColorFromIbl = false;
+                    break;
             }
         }
 
-        ImGui::Checkbox("Screen-space reflections", &gSettings.view.screenSpaceReflections.enabled);
-        if (ImGui::CollapsingHeader("Screen-space reflections Options"))
+        if (ImGui::CollapsingHeader("Scene"))
         {
-            auto& ssrefl = gSettings.view.screenSpaceReflections;
-            ImGui::SliderFloat("Ray thickness", &ssrefl.thickness, 0.001f, 0.2f);
-            ImGui::SliderFloat("Bias", &ssrefl.bias, 0.001f, 0.5f);
-            ImGui::SliderFloat("Max distance", &ssrefl.maxDistance, 0.1, 10.0f);
-            ImGui::SliderFloat("Stride", &ssrefl.stride, 1.0, 10.0f);
-        }
-        ImGui::Unindent();
+            ImGui::Indent();
 
-        ImGui::Checkbox("Screen-space Guard Band", &gSettings.view.guardBand.enabled);
-    }
-
-    if (ImGui::CollapsingHeader("Dynamic Resolution"))
-    {
-        auto& dsr     = gSettings.view.dsr;
-        int   quality = (int)dsr.quality;
-        ImGui::Checkbox("enabled", &dsr.enabled);
-        ImGui::Checkbox("homogeneous", &dsr.homogeneousScaling);
-        ImGui::SliderFloat("min. scale", &dsr.minScale.x, 0.25f, 1.0f);
-        ImGui::SliderFloat("max. scale", &dsr.maxScale.x, 0.25f, 1.0f);
-        ImGui::SliderInt("quality", &quality, 0, 3);
-        ImGui::SliderFloat("sharpness", &dsr.sharpness, 0.0f, 1.0f);
-        dsr.minScale.x = std::min(dsr.minScale.x, dsr.maxScale.x);
-        dsr.minScale.y = dsr.minScale.x;
-        dsr.maxScale.y = dsr.maxScale.x;
-        dsr.quality    = (QualityLevel)quality;
-    }
-
-    auto& light = gSettings.lighting;
-    if (ImGui::CollapsingHeader("Light"))
-    {
-        ImGui::Indent();
-        if (ImGui::CollapsingHeader("Indirect light"))
-        {
-            ImGui::SliderFloat("IBL intensity", &light.iblIntensity, 0.0f, 100000.0f);
-            ImGui::SliderAngle("IBL rotation", &light.iblRotation);
-        }
-        if (ImGui::CollapsingHeader("Sunlight"))
-        {
-            ImGui::Checkbox("Enable sunlight", &light.enableSunlight);
-            ImGui::SliderFloat("Sun intensity", &light.sunlightIntensity, 50000.0f, 150000.0f);
-            ImGui::SliderFloat("Halo size", &light.sunlightHaloSize, 1.01f, 40.0f);
-            ImGui::SliderFloat("Halo falloff", &light.sunlightHaloFalloff, 4.0f, 1024.0f);
-            ImGui::SliderFloat("Sun radius", &light.sunlightAngularRadius, 0.1f, 10.0f);
-            ImGuiExt::DirectionWidget("Sun direction", light.sunlightDirection.v);
-        }
-        if (ImGui::CollapsingHeader("All lights"))
-        {
-            ImGui::Checkbox("Enable shadows", &light.enableShadows);
-            int mapSize = light.shadowOptions.mapSize;
-            ImGui::SliderInt("Shadow map size", &mapSize, 32, 1024);
-            light.shadowOptions.mapSize = mapSize;
-            ImGui::Checkbox("Stable Shadows", &light.shadowOptions.stable);
-            ImGui::Checkbox("Enable LiSPSM", &light.shadowOptions.lispsm);
-
-            int shadowType = (int)gSettings.view.shadowType;
-            ImGui::Combo("Shadow type", &shadowType, "PCF\0VSM\0DPCF\0PCSS\0\0");
-            gSettings.view.shadowType = (ShadowType)shadowType;
-
-            if (gSettings.view.shadowType == ShadowType::VSM)
+            if (ImGui::Checkbox("Scale to unit cube", &gSettings.viewer.autoScaleEnabled))
             {
-                ImGui::Checkbox("High precision", &gSettings.view.vsmShadowOptions.highPrecision);
-                ImGui::Checkbox("ELVSM", &gSettings.lighting.shadowOptions.vsm.elvsm);
-                char label[32];
-                snprintf(label, 32, "%d", 1 << mVsmMsaaSamplesLog2);
-                ImGui::SliderInt("VSM MSAA samples", &mVsmMsaaSamplesLog2, 0, 3, label);
-                gSettings.view.vsmShadowOptions.msaaSamples =
-                    static_cast<uint8_t>(1u << mVsmMsaaSamplesLog2);
-
-                int vsmAnisotropy = gSettings.view.vsmShadowOptions.anisotropy;
-                snprintf(label, 32, "%d", 1 << vsmAnisotropy);
-                ImGui::SliderInt("VSM anisotropy", &vsmAnisotropy, 0, 3, label);
-                gSettings.view.vsmShadowOptions.anisotropy = vsmAnisotropy;
-                ImGui::Checkbox("VSM mipmapping", &gSettings.view.vsmShadowOptions.mipmapping);
-                ImGui::SliderFloat("VSM blur", &light.shadowOptions.vsm.blurWidth, 0.0f, 125.0f);
-
-                // These are not very useful in practice (defaults are good), but we keep them here for debugging
-                //ImGui::SliderFloat("VSM exponent", &gSettings.view.vsmShadowOptions.exponent, 0.0, 6.0f);
-                ImGui::SliderFloat("VSM Light bleed", &gSettings.view.vsmShadowOptions.lightBleedReduction, 0.0, 1.0f);
-                ImGui::SliderFloat("VSM min variance scale", &gSettings.view.vsmShadowOptions.minVarianceScale, 0.0, 10.0f);
-            }
-            else if (gSettings.view.shadowType == ShadowType::DPCF || gSettings.view.shadowType == ShadowType::PCSS)
-            {
-                ImGui::SliderFloat("Penumbra scale", &light.softShadowOptions.penumbraScale, 0.0f, 100.0f);
-                ImGui::SliderFloat("Penumbra Ratio scale", &light.softShadowOptions.penumbraRatioScale, 1.0f, 100.0f);
+                updateRootTransform();
             }
 
-            int shadowCascades = light.shadowOptions.shadowCascades;
-            ImGui::SliderInt("Cascades", &shadowCascades, 1, 4);
-            ImGui::Checkbox("Debug cascades",
-                            debug.getPropertyAddress<bool>("d.shadowmap.visualize_cascades"));
-            ImGui::Checkbox("Enable contact shadows", &light.shadowOptions.screenSpaceContactShadows);
-            ImGui::SliderFloat("Split pos 0", &light.shadowOptions.cascadeSplitPositions[0], 0.0f, 1.0f);
-            ImGui::SliderFloat("Split pos 1", &light.shadowOptions.cascadeSplitPositions[1], 0.0f, 1.0f);
-            ImGui::SliderFloat("Split pos 2", &light.shadowOptions.cascadeSplitPositions[2], 0.0f, 1.0f);
-            light.shadowOptions.shadowCascades = shadowCascades;
-        }
-        ImGui::Unindent();
-    }
+            ImGui::Checkbox("Automatic instancing", &gSettings.viewer.autoInstancingEnabled);
 
-    if (ImGui::CollapsingHeader("Fog"))
-    {
-        int fogColorSource = 0;
-        if (gSettings.view.fog.skyColor)
+            ImGui::Checkbox("Show skybox", &gSettings.viewer.skyboxEnabled);
+            ImGui::ColorEdit3("Background color", &gSettings.viewer.backgroundColor.r);
+
+            // We do not yet support ground shadow or scene selection in remote mode.
+            if (!isRemoteMode())
+            {
+                ImGui::Checkbox("Ground shadow", &gSettings.viewer.groundPlaneEnabled);
+                ImGui::Indent();
+                ImGui::SliderFloat("Strength", &gSettings.viewer.groundShadowStrength, 0.0f, 1.0f);
+                ImGui::Unindent();
+
+                if (mAsset->getSceneCount() > 1)
+                {
+                    ImGui::Separator();
+                    sceneSelectionUI();
+                }
+            }
+
+            ImGui::Unindent();
+        }
+
+        if (ImGui::CollapsingHeader("Camera"))
         {
-            fogColorSource = 2;
+            ImGui::Indent();
+
+            ImGui::SliderFloat("Focal length (mm)", &gSettings.viewer.cameraFocalLength, 16.0f, 90.0f);
+            ImGui::SliderFloat("Aperture", &gSettings.viewer.cameraAperture, 1.0f, 32.0f);
+            ImGui::SliderFloat("Speed (1/s)", &gSettings.viewer.cameraSpeed, 1000.0f, 1.0f);
+            ImGui::SliderFloat("ISO", &gSettings.viewer.cameraISO, 25.0f, 6400.0f);
+            ImGui::SliderFloat("Near", &gSettings.viewer.cameraNear, 0.001f, 1.0f);
+            ImGui::SliderFloat("Far", &gSettings.viewer.cameraFar, 1.0f, 10000.0f);
+
+            if (ImGui::CollapsingHeader("DoF"))
+            {
+                bool dofMedian    = gSettings.view.dof.filter == View::DepthOfFieldOptions::Filter::MEDIAN;
+                int  dofRingCount = gSettings.view.dof.fastGatherRingCount;
+                int  dofMaxCoC    = gSettings.view.dof.maxForegroundCOC;
+                if (!dofRingCount) dofRingCount = 5;
+                if (!dofMaxCoC) dofMaxCoC = 32;
+                ImGui::Checkbox("Enabled##dofEnabled", &gSettings.view.dof.enabled);
+                ImGui::SliderFloat("Focus distance", &gSettings.viewer.cameraFocusDistance, 0.0f, 30.0f);
+                ImGui::SliderFloat("Blur scale", &gSettings.view.dof.cocScale, 0.1f, 10.0f);
+                ImGui::SliderInt("Ring count", &dofRingCount, 1, 17);
+                ImGui::SliderInt("Max CoC", &dofMaxCoC, 1, 32);
+                ImGui::Checkbox("Native Resolution", &gSettings.view.dof.nativeResolution);
+                ImGui::Checkbox("Median Filter", &dofMedian);
+                gSettings.view.dof.filter              = dofMedian ?
+                                 View::DepthOfFieldOptions::Filter::MEDIAN :
+                                 View::DepthOfFieldOptions::Filter::NONE;
+                gSettings.view.dof.backgroundRingCount = dofRingCount;
+                gSettings.view.dof.foregroundRingCount = dofRingCount;
+                gSettings.view.dof.fastGatherRingCount = dofRingCount;
+                gSettings.view.dof.maxForegroundCOC    = dofMaxCoC;
+                gSettings.view.dof.maxBackgroundCOC    = dofMaxCoC;
+            }
+
+            if (ImGui::CollapsingHeader("Vignette"))
+            {
+                ImGui::Checkbox("Enabled##vignetteEnabled", &gSettings.view.vignette.enabled);
+                ImGui::SliderFloat("Mid point", &gSettings.view.vignette.midPoint, 0.0f, 1.0f);
+                ImGui::SliderFloat("Roundness", &gSettings.view.vignette.roundness, 0.0f, 1.0f);
+                ImGui::SliderFloat("Feather", &gSettings.view.vignette.feather, 0.0f, 1.0f);
+                ImGui::ColorEdit3("Color##vignetteColor", &gSettings.view.vignette.color.r);
+            }
+
+            // We do not yet support camera selection in the remote UI. To support this feature, we
+            // would need to send a message from DebugServer to the WebSockets client.
+            if (!isRemoteMode())
+            {
+
+                const utils::Entity* cameras     = mAsset->getCameraEntities();
+                const size_t         cameraCount = mAsset->getCameraEntityCount();
+
+                std::vector<std::string> names;
+                names.reserve(cameraCount + 1);
+                names.push_back("Free camera");
+                int c = 0;
+                for (size_t i = 0; i < cameraCount; i++)
+                {
+                    const char* n = mAsset->getName(cameras[i]);
+                    if (n)
+                    {
+                        names.emplace_back(n);
+                    }
+                    else
+                    {
+                        char buf[32];
+                        sprintf(buf, "Unnamed camera %d", c++);
+                        names.emplace_back(buf);
+                    }
+                }
+
+                std::vector<const char*> cstrings;
+                cstrings.reserve(names.size());
+                for (size_t i = 0; i < names.size(); i++)
+                {
+                    cstrings.push_back(names[i].c_str());
+                }
+
+                ImGui::ListBox("Cameras", &mCurrentCamera, cstrings.data(), cstrings.size());
+            }
+
+            StereoscopicOptions stereoOptions = mMainView->getView()->getStereoscopicOptions();
+            ImGui::Checkbox("Instanced stereo", &stereoOptions.enabled);
+            if (stereoOptions.enabled)
+            {
+                ImGui::SliderFloat("Ocular distance", &mOcularDistance, 0.0f, 10.0f);
+            }
+            mMainView->getView()->setStereoscopicOptions(stereoOptions);
+
+            ImGui::Unindent();
         }
-        else if (gSettings.view.fog.fogColorFromIbl)
-        {
-            fogColorSource = 1;
-        }
 
-        bool excludeSkybox = !std::isinf(gSettings.view.fog.cutOffDistance);
-        ImGui::Indent();
-        ImGui::Checkbox("Enable large-scale fog", &gSettings.view.fog.enabled);
-        ImGui::SliderFloat("Start [m]", &gSettings.view.fog.distance, 0.0f, 100.0f);
-        ImGui::SliderFloat("Extinction [1/m]", &gSettings.view.fog.density, 0.0f, 1.0f);
-        ImGui::SliderFloat("Floor [m]", &gSettings.view.fog.height, 0.0f, 100.0f);
-        ImGui::SliderFloat("Height falloff [1/m]", &gSettings.view.fog.heightFalloff, 0.0f, 4.0f);
-        ImGui::SliderFloat("Sun Scattering start [m]", &gSettings.view.fog.inScatteringStart, 0.0f, 100.0f);
-        ImGui::SliderFloat("Sun Scattering size", &gSettings.view.fog.inScatteringSize, 0.1f, 100.0f);
-        ImGui::Checkbox("Exclude Skybox", &excludeSkybox);
-        ImGui::Combo("Color##fogColor", &fogColorSource, "Constant\0IBL\0Skybox\0\0");
-        ImGui::ColorPicker3("Color", gSettings.view.fog.color.v);
-        ImGui::Unindent();
-        gSettings.view.fog.cutOffDistance =
-            excludeSkybox ? 1e6f : std::numeric_limits<float>::infinity();
-        switch (fogColorSource)
-        {
-            case 0:
-                gSettings.view.fog.skyColor        = nullptr;
-                gSettings.view.fog.fogColorFromIbl = false;
-                break;
-            case 1:
-                gSettings.view.fog.skyColor        = nullptr;
-                gSettings.view.fog.fogColorFromIbl = true;
-                break;
-            case 2:
-                gSettings.view.fog.skyColor        = gSettings.view.fogSettings.fogColorTexture;
-                gSettings.view.fog.fogColorFromIbl = false;
-                break;
-        }
-    }
+        colorGradingUI(gSettings, mRangePlot, mCurvePlot, mToneMapPlot);
 
-    if (ImGui::CollapsingHeader("Scene"))
-    {
-        ImGui::Indent();
+        // At this point, all View settings have been modified,
+        //  so we can now push them into the Filament View.
+        applySettings(mRenderEngine, gSettings.view, mMainView->getView());
+        applySettings(mRenderEngine, gSettings.lighting, mIndirectLight, mSunlight,
+                      lm.getEntities(), lm.getComponentCount(), &lm, mScene, mMainView->getView());
 
-        if (ImGui::Checkbox("Scale to unit cube", &gSettings.viewer.autoScaleEnabled))
-        {
-            updateRootTransform();
-        }
-
-        ImGui::Checkbox("Automatic instancing", &gSettings.viewer.autoInstancingEnabled);
-
-        ImGui::Checkbox("Show skybox", &gSettings.viewer.skyboxEnabled);
-        ImGui::ColorEdit3("Background color", &gSettings.viewer.backgroundColor.r);
-
-        // We do not yet support ground shadow or scene selection in remote mode.
+        // TODO(prideout): add support for hierarchy, animation and variant selection in remote mode. To
+        // support these features, we will need to send a message (list of strings) from DebugServer to
+        // the WebSockets client.
         if (!isRemoteMode())
         {
-            ImGui::Checkbox("Ground shadow", &gSettings.viewer.groundPlaneEnabled);
-            ImGui::Indent();
-            ImGui::SliderFloat("Strength", &gSettings.viewer.groundShadowStrength, 0.0f, 1.0f);
-            ImGui::Unindent();
-
-            if (mAsset->getSceneCount() > 1)
+            if (ImGui::CollapsingHeader("Hierarchy"))
             {
-                ImGui::Separator();
-                sceneSelectionUI();
+                ImGui::Indent();
+                ImGui::Checkbox("Show bounds", &mEnableWireframe);
+                treeNode(mAsset->getRoot());
+                ImGui::Unindent();
             }
-        }
 
-        ImGui::Unindent();
-    }
-
-    if (ImGui::CollapsingHeader("Camera"))
-    {
-        ImGui::Indent();
-
-        ImGui::SliderFloat("Focal length (mm)", &gSettings.viewer.cameraFocalLength, 16.0f, 90.0f);
-        ImGui::SliderFloat("Aperture", &gSettings.viewer.cameraAperture, 1.0f, 32.0f);
-        ImGui::SliderFloat("Speed (1/s)", &gSettings.viewer.cameraSpeed, 1000.0f, 1.0f);
-        ImGui::SliderFloat("ISO", &gSettings.viewer.cameraISO, 25.0f, 6400.0f);
-        ImGui::SliderFloat("Near", &gSettings.viewer.cameraNear, 0.001f, 1.0f);
-        ImGui::SliderFloat("Far", &gSettings.viewer.cameraFar, 1.0f, 10000.0f);
-
-        if (ImGui::CollapsingHeader("DoF"))
-        {
-            bool dofMedian    = gSettings.view.dof.filter == View::DepthOfFieldOptions::Filter::MEDIAN;
-            int  dofRingCount = gSettings.view.dof.fastGatherRingCount;
-            int  dofMaxCoC    = gSettings.view.dof.maxForegroundCOC;
-            if (!dofRingCount) dofRingCount = 5;
-            if (!dofMaxCoC) dofMaxCoC = 32;
-            ImGui::Checkbox("Enabled##dofEnabled", &gSettings.view.dof.enabled);
-            ImGui::SliderFloat("Focus distance", &gSettings.viewer.cameraFocusDistance, 0.0f, 30.0f);
-            ImGui::SliderFloat("Blur scale", &gSettings.view.dof.cocScale, 0.1f, 10.0f);
-            ImGui::SliderInt("Ring count", &dofRingCount, 1, 17);
-            ImGui::SliderInt("Max CoC", &dofMaxCoC, 1, 32);
-            ImGui::Checkbox("Native Resolution", &gSettings.view.dof.nativeResolution);
-            ImGui::Checkbox("Median Filter", &dofMedian);
-            gSettings.view.dof.filter              = dofMedian ?
-                             View::DepthOfFieldOptions::Filter::MEDIAN :
-                             View::DepthOfFieldOptions::Filter::NONE;
-            gSettings.view.dof.backgroundRingCount = dofRingCount;
-            gSettings.view.dof.foregroundRingCount = dofRingCount;
-            gSettings.view.dof.fastGatherRingCount = dofRingCount;
-            gSettings.view.dof.maxForegroundCOC    = dofMaxCoC;
-            gSettings.view.dof.maxBackgroundCOC    = dofMaxCoC;
-        }
-
-        if (ImGui::CollapsingHeader("Vignette"))
-        {
-            ImGui::Checkbox("Enabled##vignetteEnabled", &gSettings.view.vignette.enabled);
-            ImGui::SliderFloat("Mid point", &gSettings.view.vignette.midPoint, 0.0f, 1.0f);
-            ImGui::SliderFloat("Roundness", &gSettings.view.vignette.roundness, 0.0f, 1.0f);
-            ImGui::SliderFloat("Feather", &gSettings.view.vignette.feather, 0.0f, 1.0f);
-            ImGui::ColorEdit3("Color##vignetteColor", &gSettings.view.vignette.color.r);
-        }
-
-        // We do not yet support camera selection in the remote UI. To support this feature, we
-        // would need to send a message from DebugServer to the WebSockets client.
-        if (!isRemoteMode())
-        {
-
-            const utils::Entity* cameras     = mAsset->getCameraEntities();
-            const size_t         cameraCount = mAsset->getCameraEntityCount();
-
-            std::vector<std::string> names;
-            names.reserve(cameraCount + 1);
-            names.push_back("Free camera");
-            int c = 0;
-            for (size_t i = 0; i < cameraCount; i++)
+            if (mInstance->getMaterialVariantCount() > 0 && ImGui::CollapsingHeader("Variants"))
             {
-                const char* n = mAsset->getName(cameras[i]);
-                if (n)
+                ImGui::Indent();
+                int selectedVariant = mCurrentVariant;
+                for (size_t i = 0, count = mInstance->getMaterialVariantCount(); i < count; ++i)
                 {
-                    names.emplace_back(n);
+                    const char* label = mInstance->getMaterialVariantName(i);
+                    ImGui::RadioButton(label, &selectedVariant, i);
                 }
-                else
+                if (selectedVariant != mCurrentVariant)
                 {
-                    char buf[32];
-                    sprintf(buf, "Unnamed camera %d", c++);
-                    names.emplace_back(buf);
+                    mCurrentVariant = selectedVariant;
+                    mInstance->applyMaterialVariant(mCurrentVariant);
+                }
+                ImGui::Unindent();
+            }
+
+            filament::gltfio::Animator& animator = *mInstance->getAnimator();
+            if (animator.getAnimationCount() > 0 && ImGui::CollapsingHeader("Animation"))
+            {
+                ImGui::Indent();
+                int selectedAnimation = mCurrentAnimation;
+                ImGui::RadioButton("Disable", &selectedAnimation, 0);
+                ImGui::SliderFloat("Cross fade", &mCrossFadeDuration, 0.0f, 2.0f,
+                                   "%4.2f seconds", ImGuiSliderFlags_AlwaysClamp);
+                for (size_t i = 0, count = animator.getAnimationCount(); i < count; ++i)
+                {
+                    std::string label = animator.getAnimationName(i);
+                    if (label.empty())
+                    {
+                        label = "Unnamed " + std::to_string(i);
+                    }
+                    ImGui::RadioButton(label.c_str(), &selectedAnimation, i + 1);
+                }
+                if (selectedAnimation != mCurrentAnimation)
+                {
+                    mPreviousAnimation = mCurrentAnimation;
+                    mCurrentAnimation  = selectedAnimation;
+                    mResetAnimation    = true;
+                }
+                ImGui::Checkbox("Show rest pose", &mShowingRestPose);
+                ImGui::Unindent();
+            }
+
+            if (mCurrentMorphingEntity && ImGui::CollapsingHeader("Morphing"))
+            {
+                const bool isAnimating = mCurrentAnimation > 0 && animator.getAnimationCount() > 0;
+                if (isAnimating)
+                {
+                    ImGui::BeginDisabled();
+                }
+                for (int i = 0; i != mMorphWeights.size(); ++i)
+                {
+                    const char* name  = mAsset->getMorphTargetNameAt(mCurrentMorphingEntity, i);
+                    std::string label = name ? name : "Unnamed target " + std::to_string(i);
+                    ImGui::SliderFloat(label.c_str(), &mMorphWeights[i], 0.0f, 1.0);
+                }
+                if (isAnimating)
+                {
+                    ImGui::EndDisabled();
+                }
+                if (!isAnimating)
+                {
+                    auto instance = rm.getInstance(mCurrentMorphingEntity);
+                    rm.setMorphWeights(instance, mMorphWeights.data(), mMorphWeights.size());
                 }
             }
 
-            std::vector<const char*> cstrings;
-            cstrings.reserve(names.size());
-            for (size_t i = 0; i < names.size(); i++)
+            if (mEnableWireframe)
             {
-                cstrings.push_back(names[i].c_str());
+                mScene->addEntity(mAsset->getWireframe());
             }
-
-            ImGui::ListBox("Cameras", &mCurrentCamera, cstrings.data(), cstrings.size());
+            else
+            {
+                mScene->remove(mAsset->getWireframe());
+            }
         }
 
-        StereoscopicOptions stereoOptions = mMainView->getView()->getStereoscopicOptions();
-        ImGui::Checkbox("Instanced stereo", &stereoOptions.enabled);
-        if (stereoOptions.enabled)
-        {
-            ImGui::SliderFloat("Ocular distance", &mOcularDistance, 0.0f, 10.0f);
-        }
-        mMainView->getView()->setStereoscopicOptions(stereoOptions);
-
-        ImGui::Unindent();
+        ImGui::End();
     }
-
-    colorGradingUI(gSettings, mRangePlot, mCurvePlot, mToneMapPlot);
-
-    // At this point, all View settings have been modified,
-    //  so we can now push them into the Filament View.
-    applySettings(mRenderEngine, gSettings.view, mMainView->getView());
-    applySettings(mRenderEngine, gSettings.lighting, mIndirectLight, mSunlight,
-                  lm.getEntities(), lm.getComponentCount(), &lm, mScene, mMainView->getView());
-
-    // TODO(prideout): add support for hierarchy, animation and variant selection in remote mode. To
-    // support these features, we will need to send a message (list of strings) from DebugServer to
-    // the WebSockets client.
-    if (!isRemoteMode())
-    {
-        if (ImGui::CollapsingHeader("Hierarchy"))
-        {
-            ImGui::Indent();
-            ImGui::Checkbox("Show bounds", &mEnableWireframe);
-            treeNode(mAsset->getRoot());
-            ImGui::Unindent();
-        }
-
-        if (mInstance->getMaterialVariantCount() > 0 && ImGui::CollapsingHeader("Variants"))
-        {
-            ImGui::Indent();
-            int selectedVariant = mCurrentVariant;
-            for (size_t i = 0, count = mInstance->getMaterialVariantCount(); i < count; ++i)
-            {
-                const char* label = mInstance->getMaterialVariantName(i);
-                ImGui::RadioButton(label, &selectedVariant, i);
-            }
-            if (selectedVariant != mCurrentVariant)
-            {
-                mCurrentVariant = selectedVariant;
-                mInstance->applyMaterialVariant(mCurrentVariant);
-            }
-            ImGui::Unindent();
-        }
-
-        filament::gltfio::Animator& animator = *mInstance->getAnimator();
-        if (animator.getAnimationCount() > 0 && ImGui::CollapsingHeader("Animation"))
-        {
-            ImGui::Indent();
-            int selectedAnimation = mCurrentAnimation;
-            ImGui::RadioButton("Disable", &selectedAnimation, 0);
-            ImGui::SliderFloat("Cross fade", &mCrossFadeDuration, 0.0f, 2.0f,
-                               "%4.2f seconds", ImGuiSliderFlags_AlwaysClamp);
-            for (size_t i = 0, count = animator.getAnimationCount(); i < count; ++i)
-            {
-                std::string label = animator.getAnimationName(i);
-                if (label.empty())
-                {
-                    label = "Unnamed " + std::to_string(i);
-                }
-                ImGui::RadioButton(label.c_str(), &selectedAnimation, i + 1);
-            }
-            if (selectedAnimation != mCurrentAnimation)
-            {
-                mPreviousAnimation = mCurrentAnimation;
-                mCurrentAnimation  = selectedAnimation;
-                mResetAnimation    = true;
-            }
-            ImGui::Checkbox("Show rest pose", &mShowingRestPose);
-            ImGui::Unindent();
-        }
-
-        if (mCurrentMorphingEntity && ImGui::CollapsingHeader("Morphing"))
-        {
-            const bool isAnimating = mCurrentAnimation > 0 && animator.getAnimationCount() > 0;
-            if (isAnimating)
-            {
-                ImGui::BeginDisabled();
-            }
-            for (int i = 0; i != mMorphWeights.size(); ++i)
-            {
-                const char* name  = mAsset->getMorphTargetNameAt(mCurrentMorphingEntity, i);
-                std::string label = name ? name : "Unnamed target " + std::to_string(i);
-                ImGui::SliderFloat(label.c_str(), &mMorphWeights[i], 0.0f, 1.0);
-            }
-            if (isAnimating)
-            {
-                ImGui::EndDisabled();
-            }
-            if (!isAnimating)
-            {
-                auto instance = rm.getInstance(mCurrentMorphingEntity);
-                rm.setMorphWeights(instance, mMorphWeights.data(), mMorphWeights.size());
-            }
-        }
-
-        if (mEnableWireframe)
-        {
-            mScene->addEntity(mAsset->getWireframe());
-        }
-        else
-        {
-            mScene->remove(mAsset->getWireframe());
-        }
-    }
-
-    ImGui::End();   
 }

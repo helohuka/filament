@@ -23,20 +23,25 @@
 
 #include <filament/MaterialChunkType.h>
 
-namespace filamat {
+namespace filamat
+{
 
-class Chunk{
+class Chunk
+{
 public:
     virtual ~Chunk();
 
-    ChunkType getType() const noexcept {
+    ChunkType getType() const noexcept
+    {
         return mType;
     }
 
-    virtual void flatten(Flattener &f) = 0;
+    virtual void flatten(Flattener& f) = 0;
 
 protected:
-    explicit Chunk(ChunkType type) : mType(type) {
+    explicit Chunk(ChunkType type) :
+        mType(type)
+    {
     }
 
 private:

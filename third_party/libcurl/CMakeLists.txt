@@ -379,7 +379,7 @@ cmake_dependent_option(CURL_USE_BEARSSL "Enable BearSSL for SSL/TLS" OFF CURL_EN
 cmake_dependent_option(CURL_USE_NSS "Enable NSS for SSL/TLS" OFF CURL_ENABLE_SSL OFF)
 cmake_dependent_option(CURL_USE_WOLFSSL "enable wolfSSL for SSL/TLS" OFF CURL_ENABLE_SSL OFF)
 
-set(openssl_default ON)
+set(openssl_default OFF)
 if(WIN32 OR CURL_USE_SECTRANSP OR CURL_USE_SCHANNEL OR CURL_USE_MBEDTLS OR CURL_USE_NSS OR CURL_USE_WOLFSSL)
   set(openssl_default OFF)
 endif()

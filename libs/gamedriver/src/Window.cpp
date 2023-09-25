@@ -1,61 +1,52 @@
 
 #include "gamedriver/BaseLibs.h"
-#include "gamedriver/Window.h"
 #include "gamedriver/GameDriver.h"
 #include "gamedriver/NativeWindowHelper.h"
 
 
-Window::Window(filament::Engine* engine) :
-    mRenderEngine(engine)
+void GameDriver::setupWindow()
 {
-    mIsResizeable         = gConfigure.resizeable;
-    mWindowTitle          = gConfigure.title;
-    mWindowSize.x           = gConfigure.width;
-    mWindowSize.y         = gConfigure.height;
-    const int x             = SDL_WINDOWPOS_CENTERED;
-    const int y =  SDL_WINDOWPOS_CENTERED;
+
+    const int x           = SDL_WINDOWPOS_CENTERED;
+    const int y           = SDL_WINDOWPOS_CENTERED;
     uint32_t  windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
-    if (mIsResizeable)
+    if (gConfigure.resizeable)
     {
         windowFlags |= SDL_WINDOW_RESIZABLE;
     }
 
     // Even if we're in headless mode, we still need to create a window, otherwise SDL will not poll
     // events.
-    mWindowHandle = SDL_CreateWindow(mWindowTitle.c_str(), x, y, mWindowSize.x, mWindowSize.y, windowFlags);
-    mWindowID = SDL_GetWindowID(mWindowHandle);
+    mWindow = SDL_CreateWindow(gConfigure.title.c_str(), x, y, gConfigure.width, gConfigure.height, windowFlags);
 
-    SDL_VERSION(&mSystemInfo.version);
-    ASSERT_POSTCONDITION(SDL_GetWindowWMInfo(mWindowHandle, &mSystemInfo), "SDL version unsupported!");
+    SDL_GL_GetDrawableSize(mWindow, &mWidth, &mHeight);
+    int virtualWidth, virtualHeight;
+    SDL_GetWindowSize(mWindow, &virtualWidth, &virtualHeight);
+    mDpiScaleX = (float)mWidth / virtualWidth;
+    mDpiScaleY = (float)mHeight / virtualHeight;
 
-    updateWindowInfo();
+    setupRendererAndSwapchain();
 }
-Window::~Window()
+
+void GameDriver::cleanupWindow()
 {
-    SDL_DestroyWindow(mWindowHandle);
+    mRenderEngine->destroy(mRenderer);
+    mRenderEngine->destroy(mSwapChain);
+    SDL_DestroyWindow(mWindow);
 }
 
-void Window::setup()
+void GameDriver::setupRendererAndSwapchain()
 {
     resetSwapChain();
 
     mRenderer = mRenderEngine->createRenderer();
-    // create cameras
-    
+
 }
-
-void Window::cleanup()
+void GameDriver::resetSwapChain()
 {
-
-    mRenderEngine->destroy(mRenderer);
-    mRenderEngine->destroy(mSwapChain);
-}
-
-void Window::resetSwapChain()
-{
-    void* nativeWindow = getNativeWindow();
+    void* nativeWindow = getNativeWindow(mWindow);
 #if defined(__APPLE__)
-    ::prepareNativeWindow(mWindowHandle);
+    ::prepareNativeWindow(mWindow);
 
     void* metalLayer = nullptr;
     if (mBackend == filament::Engine::Backend::METAL)
@@ -77,21 +68,16 @@ void Window::resetSwapChain()
     mSwapChain = mRenderEngine->createSwapChain(nativeWindow);
 }
 
-void Window::fixupCoordinatesForHdpi(ssize_t& x, ssize_t& y)
+void GameDriver::fixupCoordinatesForHdpi(ssize_t& x, ssize_t& y)
 {
-    x = mDpiScale.x * x;
-    y = mDpiScale.y * y;
+    x = x * mDpiScaleX;
+    y = y * mDpiScaleY;
 }
 
-void Window::fixupCoordinatesForHdpi(filament::math::vec2<ssize_t>& coordinate)
-{
-    coordinate.x = mDpiScale.x * coordinate.x;
-    coordinate.y = mDpiScale.y * coordinate.y;
-}
 
-void Window::onResize()
+void GameDriver::onWindowResize()
 {
-    void* nativeWindow = getNativeWindow();
+    void* nativeWindow = getNativeWindow(mWindow);
 
 #if defined(__APPLE__)
 
@@ -109,16 +95,13 @@ void Window::onResize()
 
 #endif
 
-    updateWindowInfo();
+    SDL_GL_GetDrawableSize(mWindow, &mWidth, &mHeight);
+    int virtualWidth, virtualHeight;
+    SDL_GetWindowSize(mWindow, &virtualWidth, &virtualHeight);
+    mDpiScaleX = (float)mWidth / virtualWidth;
+    mDpiScaleY = (float)mHeight / virtualHeight;
+
+    configureCamerasForWindow();
 }
 
-
-void Window::updateWindowInfo()
-{
-    SDL_GL_GetDrawableSize(mWindowHandle, &mDrawableSize.x, &mDrawableSize.y);
-    SDL_GetWindowSize(mWindowHandle, &mWindowSize.x, &mWindowSize.y);
-
-    mDpiScale.x = (float)mDrawableSize.x / mWindowSize.x;
-    mDpiScale.y = (float)mDrawableSize.y / mWindowSize.y;
-}
 

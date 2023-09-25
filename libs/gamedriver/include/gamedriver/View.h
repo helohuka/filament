@@ -68,7 +68,7 @@ public:
     filament::View*       getView() { return mView; }
     CameraManipulator*    getCameraManipulator() { return mCameraManipulator; }
 
-private:
+protected:
     enum class Mode : uint8_t
     {
         NONE,

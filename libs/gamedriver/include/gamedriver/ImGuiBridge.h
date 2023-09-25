@@ -18,38 +18,45 @@
 
 #include "gamedriver/BaseLibs.h"
 
-struct ImGuiWindowImpl
+class CViewUI
 {
-    ImGuiWindowImpl();
-    ~ImGuiWindowImpl();
+public:
+    CViewUI(filament::Engine& engine, SDL_Window* window, filament::Material* imGuiMaterial, filament::TextureSampler imGuiSampler, filament::Texture* imGuiTexture);
+    CViewUI(CViewUI* bd, ImGuiViewport* viewport);
+    ~CViewUI();
 
-    std::function<void(ImGuiWindowImpl&, double)> mOnNewFrame;
+    filament::Engine&    mRenderEngine;
+    SDL_Window*          mWindow    = nullptr;
+    filament::Renderer*  mRenderer  = nullptr;
+    filament::SwapChain* mSwapChain = nullptr;
+    utils::Entity        mCameraEntity;
+    filament::Camera*    mCamera = nullptr;
+    filament::View*      mView   = nullptr;
+    filament::Scene*     mScene  = nullptr;
 
-    SDL_Window*                              mWindow    = nullptr;
-    filament::Renderer*                      mRenderer  = nullptr;
-    filament::SwapChain*                     mSwapChain = nullptr;
-    utils::Entity                            mCameraEntity;
-    filament::Camera*                        mCamera   = nullptr;
-    filament::View*                          mView     = nullptr;
-    filament::Scene*                         mScene    = nullptr;
-    
     std::vector<filament::VertexBuffer*>     mVertexBuffers;
     std::vector<filament::IndexBuffer*>      mIndexBuffers;
     std::vector<filament::MaterialInstance*> mMaterialInstances;
     utils::Entity                            mRenderable;
-    
-    bool                                     mHasSynced = false;
-  
-    bool                                     WindowOwned      = false;
-    bool                                     mNeedsDraw       = true;
-    double                                   mTime            = 0.0;
-    double                                   mLastDrawTime    = 0.0;
-    bool                                     MouseButtonsDown = false;
 
+    filament::Material*      mImGuiMaterial = nullptr;
+    filament::TextureSampler mImGuiSampler;
+    filament::Texture*       mImGuiTexture = nullptr;
+
+    bool mHasSynced = false;
+
+    bool   WindowOwned   = false;
+    bool   mNeedsDraw    = true;
+    double mTime         = 0.0;
+    double mLastDrawTime = 0.0;
+    int    MouseWindowID;
+    int    MouseButtonsDown;
+    bool   MouseCanUseGlobalState;
+
+    bool intersects(ssize_t x, ssize_t y);
     void processImGuiCommands(ImDrawData* commands);
 
 private:
-  
     void createBuffers(int numRequiredBuffers);
     void populateVertexData(size_t bufferIndex, size_t vbSizeInBytes, void* vbData, size_t ibSizeInBytes, void* ibData);
     void createVertexBuffer(size_t bufferIndex, size_t capacity);
@@ -57,9 +64,6 @@ private:
     void syncThreads();
 };
 
-ImGuiKey ImGui_ImplSDL2_KeycodeToImGuiKey(int keycode);
-void     ImGui_ImplSDL2_InitPlatformInterface(ImGuiWindowImpl* window, filament::Engine* engine, const utils::Path& fontPath);
-void ImGui_ImplSDL2_NewFrame();
 bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event);
 
 

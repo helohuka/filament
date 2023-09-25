@@ -27,7 +27,7 @@ struct Configure
 
 extern Configure                  gConfigure;
 extern filament::viewer::Settings gSettings;
-extern filament::Engine*          gEngine;
+
 
 
 

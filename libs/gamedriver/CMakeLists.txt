@@ -22,13 +22,10 @@ set(PUBLIC_HDRS
         include/gamedriver/IBL.h
         include/gamedriver/IcoSphere.h
         include/gamedriver/MeshAssimp.h
-        include/gamedriver/NativeWindowHelper.h
         include/gamedriver/Sphere.h
         
         include/gamedriver/Resource.h
         include/gamedriver/LuauVM.h
-        include/gamedriver/ViewGui.h
-        include/gamedriver/Window.h
         include/gamedriver/View.h
 
         include/gamedriver/Automation.h
@@ -42,7 +39,6 @@ set(PUBLIC_HDRS
 
         include/gamedriver/ImGuiBridge.h
         include/gui/ImGuiExtensions.h
-        #include/filagui/ImGuiHelper.h
         include/gui/ImGuiMath.h
 )
 
@@ -74,7 +70,6 @@ set(SRCS
         src/Settings_generated.cpp
 
         src/ImGuiBridge.cpp
-        #src/ImGuiHelper.cpp
         src/ImGuiExtensions.cpp
 )
 
@@ -235,6 +230,8 @@ include_directories(${PUBLIC_HDR_DIR})
 include_directories(${FLATBUFFERS_DIR})
 
 add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS} ${MATERIAL_SRCS} ${SCHEMA_SRCS} ${FLATBUFFERS_SRC})
+source_group(Hdr ${PUBLIC_HDRS})
+source_group(Src ${SRCS})
 source_group(Materials ${MATERIAL_SRCS})
 source_group(Schemas ${SCHEMA_SRCS})
 target_link_libraries(${TARGET} PUBLIC ${LIBS} )
