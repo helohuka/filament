@@ -32,7 +32,7 @@ set(PUBLIC_HDRS
 
         include/gamedriver/Overdraw.h
         include/gamedriver/Ground.h
-
+		include/gamedriver/Model.h
         include/gamedriver/AutomationEngine.h
         include/gamedriver/AutomationSpec.h
         include/gamedriver/Settings.h
@@ -40,6 +40,8 @@ set(PUBLIC_HDRS
         include/gamedriver/ImGuiBridge.h
         include/gui/ImGuiExtensions.h
         include/gui/ImGuiMath.h
+		
+		
 )
 
 set(SRCS
@@ -63,7 +65,8 @@ set(SRCS
 
         src/Overdraw.cpp
         src/Ground.cpp
-
+		src/Model.cpp
+		
         src/AutomationEngine.cpp
         src/AutomationSpec.cpp
         src/Settings.cpp

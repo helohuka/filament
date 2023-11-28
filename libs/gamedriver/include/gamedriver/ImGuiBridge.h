@@ -43,14 +43,15 @@ public:
     filament::TextureSampler mImGuiSampler;
     filament::Texture*       mImGuiTexture = nullptr;
 
-    bool   mHasSynced       = false;
-    bool   WindowOwned      = false;
-    bool   mNeedsDraw       = true;
-    double mTime            = 0.0;
-    double mLastDrawTime    = 0.0;
-    int    MouseWindowID    = 0;
-    int    MouseButtonsDown = 0;
-    int    PendingMouseLeaveFrame;
+    bool   mHasSynced                    = false;
+    bool   WindowOwned                   = false;
+    bool   mNeedsDraw                    = true;
+    double mTime                         = 0.0;
+    double mLastDrawTime                 = 0.0;
+    int    MouseWindowID                 = 0;
+    int    MouseButtonsDown              = 0;
+    int    PendingMouseLeaveFrame        = 0;
+    char*  ClipboardTextData             = nullptr;
     bool   MouseCanUseGlobalState        = false;
     bool   MouseCanReportHoveredViewport = false;
     bool   WantUpdateMonitors            = false;
@@ -65,7 +66,5 @@ private:
     void createIndexBuffer(size_t bufferIndex, size_t capacity);
     void syncThreads();
 };
-
-
 
 #endif // __IMGUIBRIDGE_H__

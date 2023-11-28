@@ -5,8 +5,15 @@ void* getNativeWindow(SDL_Window* sdlWindow)
     SDL_SysWMinfo wmi;
     SDL_VERSION(&wmi.version);
     ASSERT_POSTCONDITION(SDL_GetWindowWMInfo(sdlWindow, &wmi), "SDL version unsupported!");
-    HWND win = (HWND)wmi.info.win.window;
-    return (void*)win;
+
+#ifdef __ANDROID__
+    return wmi.info.android.window;
+#endif
+
+#ifdef __WINDOWS__
+    return wmi.info.win.window;
+#endif
+    
 }
 
 filament::math::mat4f fitIntoUnitCube(const filament::Aabb& bounds, float zoffset)

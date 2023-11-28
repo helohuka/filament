@@ -39,12 +39,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set_option(FLATBUFFERS_CODE_COVERAGE "Enable the code coverage build option." OFF)
 set_option(FLATBUFFERS_BUILD_TESTS "Enable the build of tests and samples." OFF)
 set_option(FLATBUFFERS_INSTALL "Enable the installation of targets." ON)
-set_option(FLATBUFFERS_BUILD_FLATLIB "Enable the build of the flatbuffers library"
-       ON)
-set_option(FLATBUFFERS_BUILD_FLATC "Enable the build of the flatbuffers compiler"
-       IS_HOST_PLATFORM)
-set_option(FLATBUFFERS_STATIC_FLATC "Build flatbuffers compiler with -static flag"
-       OFF)
+set_option(FLATBUFFERS_BUILD_FLATLIB "Enable the build of the flatbuffers library" ON)
+set_option(FLATBUFFERS_BUILD_FLATC "Enable the build of the flatbuffers compiler" OFF)
+set_option(FLATBUFFERS_STATIC_FLATC "Build flatbuffers compiler with -static flag" OFF)
 set_option(FLATBUFFERS_BUILD_FLATHASH "Enable the build of flathash" IS_HOST_PLATFORM)
 set_option(FLATBUFFERS_BUILD_BENCHMARKS "Enable the build of flatbenchmark."
        OFF)

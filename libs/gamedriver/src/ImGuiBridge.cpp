@@ -16,18 +16,13 @@
 #define SDL_HAS_DISPLAY_EVENT         SDL_VERSION_ATLEAST(2, 0, 9)
 
 using namespace filament::math;
-
-
 using MinFilter = filament::TextureSampler::MinFilter;
 using MagFilter = filament::TextureSampler::MagFilter;
-
-static std::vector<CViewUI*> gViews;  
 
 static CViewUI* ImGui_ImplSDL2_GetBackendData()
 {
     return ImGui::GetCurrentContext() ? (CViewUI*)ImGui::GetIO().BackendPlatformUserData : nullptr;
 }
-
 
 CViewUI::CViewUI(filament::Engine& engine, SDL_Window* window,
                                  filament::Material*       imGuiMaterial,
@@ -116,9 +111,7 @@ CViewUI::~CViewUI()
     for (auto& mi : mMaterialInstances)
     {
         mRenderEngine.destroy(mi);
-    }
-   // gEngine->destroy(mMaterial);
-    //gEngine->destroy(gImGuiTexture);
+    } 
     for (auto& vb : mVertexBuffers)
     {
         mRenderEngine.destroy(vb);
@@ -468,14 +461,13 @@ ImGuiKey ImGui_ImplSDL2_KeycodeToImGuiKey(int keycode)
     return ImGuiKey_None;
 }
 
-
 // FIXME: Note that doesn't update with DPI/Scaling change only as SDL2 doesn't have an event for it (SDL3 has).
 static void ImGui_ImplSDL2_UpdateMonitors()
 {
     CViewUI* bd          = ImGui_ImplSDL2_GetBackendData();
     ImGuiPlatformIO&     platform_io = ImGui::GetPlatformIO();
     platform_io.Monitors.resize(0);
-    //bd->WantUpdateMonitors = false;
+    bd->WantUpdateMonitors = false;
     int display_count      = SDL_GetNumVideoDisplays();
     for (int n = 0; n < display_count; n++)
     {
@@ -507,21 +499,12 @@ static void ImGui_ImplSDL2_CreateWindow(ImGuiViewport* viewport)
     CViewUI* bd                 = ImGui_ImplSDL2_GetBackendData();
     CViewUI* vd        = IM_NEW(CViewUI)(bd,viewport);
     viewport->PlatformUserData = vd;
-    gViews.push_back(vd);
 }
 
 static void ImGui_ImplSDL2_DestroyWindow(ImGuiViewport* viewport)
 {
     if (CViewUI* vd = (CViewUI*)viewport->PlatformUserData)
-    {
-        for (ssize_t i = 0; i < gViews.size(); ++i)
-        {
-            if (gViews[i] == vd)
-            {
-                gViews.erase(gViews.begin() + i);
-                break;
-            }
-        }
+    { 
         IM_DELETE(vd); 
     }
     viewport->PlatformUserData = viewport->PlatformHandle = nullptr;
@@ -676,7 +659,7 @@ static void ImGui_ImplSDL2_UpdateMouseData()
                 mouse_x -= window_x;
                 mouse_y -= window_y;
             }
-            io.AddMousePosEvent((float)mouse_x, (float)mouse_y);
+            //io.AddMousePosEvent((float)mouse_x, (float)mouse_y);
         }
     }
 
@@ -714,7 +697,6 @@ static void ImGui_ImplSDL2_NewFrame()
     if (w > 0 && h > 0)
         io.DisplayFramebufferScale = ImVec2((float)display_w / w, (float)display_h / h);
 
-
     // Update monitors
     if (bd->WantUpdateMonitors)
         ImGui_ImplSDL2_UpdateMonitors();
@@ -745,13 +727,51 @@ static void ImGui_ImplSDL2_NewFrame()
     ImGui_ImplSDL2_UpdateMouseData();
 }
 
+// Functions
+static const char* ImGui_ImplSDL2_GetClipboardText(void*)
+{
+    CViewUI* bd = ImGui_ImplSDL2_GetBackendData();
+    if (bd->ClipboardTextData)
+        SDL_free(bd->ClipboardTextData);
+    bd->ClipboardTextData = SDL_GetClipboardText();
+    return bd->ClipboardTextData;
+}
+
+static void ImGui_ImplSDL2_SetClipboardText(void*, const char* text)
+{
+    SDL_SetClipboardText(text);
+}
+
+// Note: native IME will only display if user calls SDL_SetHint(SDL_HINT_IME_SHOW_UI, "1") _before_ SDL_CreateWindow().
+static void ImGui_ImplSDL2_SetPlatformImeData(ImGuiViewport* viewport, ImGuiPlatformImeData* data)
+{
+    if (data->WantVisible)
+    {
+        SDL_Rect r;
+        r.x = (int)(data->InputPos.x - viewport->Pos.x);
+        r.y = (int)(data->InputPos.y - viewport->Pos.y + data->InputLineHeight);
+        r.w = 1;
+        r.h = (int)data->InputLineHeight;
+        SDL_SetTextInputRect(&r);
+    }
+}
+
+static void ImGui_ImplSDL2_UpdateKeyModifiers(SDL_Keymod sdl_key_mods)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    io.AddKeyEvent(ImGuiMod_Ctrl, (sdl_key_mods & KMOD_CTRL) != 0);
+    io.AddKeyEvent(ImGuiMod_Shift, (sdl_key_mods & KMOD_SHIFT) != 0);
+    io.AddKeyEvent(ImGuiMod_Alt, (sdl_key_mods & KMOD_ALT) != 0);
+    io.AddKeyEvent(ImGuiMod_Super, (sdl_key_mods & KMOD_GUI) != 0);
+}
+
 bool GameDriver::onProcessEvent(const SDL_Event* event)
 {
-        ImGuiIO& io = ImGui::GetIO();
-        CViewUI*  bd = ImGui_ImplSDL2_GetBackendData();
+    ImGuiIO& io = ImGui::GetIO();
+    CViewUI*  bd = ImGui_ImplSDL2_GetBackendData();
 
-        switch (event->type)
-        {
+    switch (event->type)
+    {
         case SDL_MOUSEMOTION:
         {
             ImVec2 mouse_pos((float)event->motion.x, (float)event->motion.y);
@@ -762,8 +782,10 @@ bool GameDriver::onProcessEvent(const SDL_Event* event)
                 mouse_pos.x += window_x;
                 mouse_pos.y += window_y;
             }
-            io.AddMouseSourceEvent(event->motion.which == SDL_TOUCH_MOUSEID ? ImGuiMouseSource_TouchScreen : ImGuiMouseSource_Mouse);
-            io.AddMousePosEvent(mouse_pos.x, mouse_pos.y);
+            //io.AddMouseSourceEvent(event->motion.which == SDL_TOUCH_MOUSEID ? ImGuiMouseSource_TouchScreen : ImGuiMouseSource_Mouse);
+            //io.AddMousePosEvent(mouse_pos.x, mouse_pos.y);
+            io.MousePos.x = mouse_pos.x;
+            io.MousePos.y = mouse_pos.y;
             return true;
         }
         case SDL_MOUSEWHEEL:
@@ -794,8 +816,10 @@ bool GameDriver::onProcessEvent(const SDL_Event* event)
             if (event->button.button == SDL_BUTTON_X2) { mouse_button = 4; }
             if (mouse_button == -1)
                 break;
-            io.AddMouseSourceEvent(event->button.which == SDL_TOUCH_MOUSEID ? ImGuiMouseSource_TouchScreen : ImGuiMouseSource_Mouse);
-            io.AddMouseButtonEvent(mouse_button, (event->type == SDL_MOUSEBUTTONDOWN));
+
+            io.MouseDown[mouse_button] = event->type == SDL_MOUSEBUTTONDOWN;
+            //io.AddMouseSourceEvent(event->button.which == SDL_TOUCH_MOUSEID ? ImGuiMouseSource_TouchScreen : ImGuiMouseSource_Mouse);
+            //io.AddMouseButtonEvent(mouse_button, (event->type == SDL_MOUSEBUTTONDOWN));
             bd->MouseButtonsDown = (event->type == SDL_MOUSEBUTTONDOWN) ? (bd->MouseButtonsDown | (1 << mouse_button)) : (bd->MouseButtonsDown & ~(1 << mouse_button));
             return true;
         }
@@ -807,8 +831,8 @@ bool GameDriver::onProcessEvent(const SDL_Event* event)
         case SDL_KEYDOWN:
         case SDL_KEYUP:
         {
-            //ImGui_ImplSDL2_UpdateKeyModifiers((SDL_Keymod)event->key.keysym.mod);
-             ImGuiKey key = ImGui_ImplSDL2_KeycodeToImGuiKey(event->key.keysym.sym);
+            ImGui_ImplSDL2_UpdateKeyModifiers((SDL_Keymod)event->key.keysym.mod);
+            ImGuiKey key = ImGui_ImplSDL2_KeycodeToImGuiKey(event->key.keysym.sym);
             io.AddKeyEvent(key, (event->type == SDL_KEYDOWN));
             io.SetKeyEventNativeData(key, event->key.keysym.sym, event->key.keysym.scancode, event->key.keysym.scancode); // To support legacy indexing (<1.87 user code). Legacy backend uses SDLK_*** as indices to IsKeyXXX() functions.
             return true;
@@ -854,75 +878,103 @@ bool GameDriver::onProcessEvent(const SDL_Event* event)
                 }
             return true;
         }
-        }
-        return false;
+    }
+    return false;
 }
 
 //////////////////////////////////////////////////////////////////////////
 
 void GameDriver::setupGui()
 {
-        IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
-        ImGuiIO& io = ImGui::GetIO();
-        (void)io;
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    (void)io;
 
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+    io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
 
-        // Create a simple alpha-blended 2D blitting material.
-        mImGuiMaterial = filament::Material::Builder().package(GAMEDRIVER_UIBLIT_DATA, GAMEDRIVER_UIBLIT_SIZE).build(*mRenderEngine);
+    // Create a simple alpha-blended 2D blitting material.
+    mImGuiMaterial = filament::Material::Builder().package(GAMEDRIVER_UIBLIT_DATA, GAMEDRIVER_UIBLIT_SIZE).build(*mRenderEngine);
 
-        // If the given font path is invalid, ImGui will silently fall back to proggy, which is a
-        // tiny "pixel art" texture that is compiled into the library.
-
-        if (mFontPath.isFile())
-        {
+    // If the given font path is invalid, ImGui will silently fall back to proggy, which is a
+    // tiny "pixel art" texture that is compiled into the library.
+    if (mFontPath.isFile())
+    {
         io.Fonts->AddFontFromFileTTF(mFontPath.c_str(), 16.0f);
-        }
-        mRenderEngine->destroy(mImGuiTexture);
+    }
+    mRenderEngine->destroy(mImGuiTexture);
 
-        // Create the grayscale texture that ImGui uses for its glyph atlas.
-        static unsigned char* pixels;
-        int                   width, height;
+    // Create the grayscale texture that ImGui uses for its glyph atlas.
+    static unsigned char* pixels;
+    int                   width, height;
 
-        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        size_t                                   size = (size_t)(width * height * 4);
-        filament::Texture::PixelBufferDescriptor pb(
-            pixels, size,
-            filament::Texture::Format::RGBA, filament::Texture::Type::UBYTE);
-        mImGuiTexture = filament::Texture::Builder()
-                            .width((uint32_t)width)
-                            .height((uint32_t)height)
-                            .levels((uint8_t)1)
-                            .format(filament::Texture::InternalFormat::RGBA8)
-                            .sampler(filament::Texture::Sampler::SAMPLER_2D)
-                            .build(*mRenderEngine);
-        mImGuiTexture->setImage(*mRenderEngine, 0, std::move(pb));
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    size_t                                   size = (size_t)(width * height * 4);
+    filament::Texture::PixelBufferDescriptor pb(
+        pixels, size,
+        filament::Texture::Format::RGBA, filament::Texture::Type::UBYTE);
+    mImGuiTexture = filament::Texture::Builder()
+                        .width((uint32_t)width)
+                        .height((uint32_t)height)
+                        .levels((uint8_t)1)
+                        .format(filament::Texture::InternalFormat::RGBA8)
+                        .sampler(filament::Texture::Sampler::SAMPLER_2D)
+                        .build(*mRenderEngine);
+    mImGuiTexture->setImage(*mRenderEngine, 0, std::move(pb));
 
-        mImGuiSampler = filament::TextureSampler(MinFilter::LINEAR, MagFilter::LINEAR);
-        mImGuiMaterial->setDefaultParameter("albedo", mImGuiTexture, mImGuiSampler);
+    mImGuiSampler = filament::TextureSampler(MinFilter::LINEAR, MagFilter::LINEAR);
+    mImGuiMaterial->setDefaultParameter("albedo", mImGuiTexture, mImGuiSampler);
 
-        if (!mFontPath.isFile())
-        { // For proggy, switch to NEAREST for pixel-perfect text.
+    if (!mFontPath.isFile())
+    { // For proggy, switch to NEAREST for pixel-perfect text.
         mImGuiSampler = filament::TextureSampler(MinFilter::NEAREST, MagFilter::NEAREST);
         mImGuiMaterial->setDefaultParameter("albedo", mImGuiTexture, mImGuiSampler);
-        }
+    }
 
-        ImGui::StyleColorsDark();
+    ImGui::StyleColorsDark();
 
-        utils::Path settingsPath;
-        settingsPath.setPath(
-            utils::Path::getUserSettingsDirectory() +
-            utils::Path(std::string(".") + utils::Path::getCurrentExecutable().getNameWithoutExtension()) +
-            utils::Path("imgui_settings.ini"));
-        settingsPath.getParent().mkdirRecursive();
-        io.IniFilename = settingsPath.c_str();
+    utils::Path settingsPath;
+    settingsPath.setPath(
+        utils::Path::getUserSettingsDirectory() +
+        utils::Path(std::string(".") + utils::Path::getCurrentExecutable().getNameWithoutExtension()) +
+        utils::Path("imgui_settings.ini"));
+    settingsPath.getParent().mkdirRecursive();
+    io.IniFilename = settingsPath.c_str();
+
+    bool mouse_can_use_global_state = false;
+#if SDL_HAS_CAPTURE_AND_GLOBAL_MOUSE
+    const char* sdl_backend              = SDL_GetCurrentVideoDriver();
+    const char* global_mouse_whitelist[] = {"windows", "cocoa", "x11", "DIVE", "VMAN"};
+    for (int n = 0; n < IM_ARRAYSIZE(global_mouse_whitelist); n++)
+        if (strncmp(sdl_backend, global_mouse_whitelist[n], strlen(global_mouse_whitelist[n])) == 0)
+            mouse_can_use_global_state = true;
+#endif
+    io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors; // We can honor GetMouseCursor() values (optional)
+    io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;  // We can honor io.WantSetMousePos requests (optional, rarely used)
+    if (mouse_can_use_global_state)
+        io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports; // We can create multi-viewports on the Platform side (optional)
 
 
-        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-        io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
-        io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
+    // Register main window handle (which is owned by the main application, not by us)
+    // This is mostly for simplicity and consistency, so that our code (e.g. mouse handling etc.) can use same logic for main and secondary viewports.
+    mMainUI                         = new CViewUI(*mRenderEngine, mWindow, mImGuiMaterial, mImGuiSampler, mImGuiTexture);
+    mMainUI->MouseCanUseGlobalState = mouse_can_use_global_state;
+#ifndef __APPLE__
+    mMainUI->MouseCanReportHoveredViewport = mMainUI->MouseCanUseGlobalState;
+#else
+    mMainUI->MouseCanReportHoveredViewport = false;
+#endif
+    mMainUI->WantUpdateMonitors = true;
+    io.BackendPlatformUserData  = mMainUI;
+    io.SetClipboardTextFn       = ImGui_ImplSDL2_SetClipboardText;
+    io.GetClipboardTextFn       = ImGui_ImplSDL2_GetClipboardText;
+    io.SetPlatformImeDataFn     = ImGui_ImplSDL2_SetPlatformImeData;
 
+    if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) && (io.BackendFlags & ImGuiBackendFlags_PlatformHasViewports))
+    {
         // Register platform interface (will be coupled with a renderer interface)
         ImGuiPlatformIO& platform_io            = ImGui::GetPlatformIO();
         platform_io.Platform_CreateWindow       = ImGui_ImplSDL2_CreateWindow;
@@ -942,53 +994,21 @@ void GameDriver::setupGui()
         platform_io.Platform_SetWindowAlpha = ImGui_ImplSDL2_SetWindowAlpha;
 #endif
 
-
-        bool mouse_can_use_global_state = false;
-#if SDL_HAS_CAPTURE_AND_GLOBAL_MOUSE
-        const char* sdl_backend              = SDL_GetCurrentVideoDriver();
-        const char* global_mouse_whitelist[] = {"windows", "cocoa", "x11", "DIVE", "VMAN"};
-        for (int n = 0; n < IM_ARRAYSIZE(global_mouse_whitelist); n++)
-        if (strncmp(sdl_backend, global_mouse_whitelist[n], strlen(global_mouse_whitelist[n])) == 0)
-            mouse_can_use_global_state = true;
-#endif
-        io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors; // We can honor GetMouseCursor() values (optional)
-        io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;  // We can honor io.WantSetMousePos requests (optional, rarely used)
-        if (mouse_can_use_global_state)
-        io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports; // We can create multi-viewports on the Platform side (optional)
-
-
-        // Register main window handle (which is owned by the main application, not by us)
-        // This is mostly for simplicity and consistency, so that our code (e.g. mouse handling etc.) can use same logic for main and secondary viewports.
-        mMainUI                         = new CViewUI(*mRenderEngine, mWindow, mImGuiMaterial, mImGuiSampler, mImGuiTexture);
-        mMainUI->MouseCanUseGlobalState = mouse_can_use_global_state;
-#ifndef __APPLE__
-        mMainUI->MouseCanReportHoveredViewport = mMainUI->MouseCanUseGlobalState;
-#else
-        mMainUI->MouseCanReportHoveredViewport = false;
-#endif
-        mMainUI->WantUpdateMonitors = true;
-
-        io.BackendPlatformUserData      = mMainUI;
         ImGuiViewport* main_viewport    = ImGui::GetMainViewport();
         main_viewport->PlatformUserData = mMainUI;
         main_viewport->PlatformHandle   = mWindow;
+    }
 }
 
 void GameDriver::cleanupGui()
 {
     ImGui::DestroyPlatformWindows();
-    //delete mMainUI;
-    for (size_t i = 0; i < gViews.size(); ++i)
-    {
-        delete gViews[i];
-    }
-    gViews.clear();
-
     mRenderEngine->destroy(mImGuiMaterial);
     mRenderEngine->destroy(mImGuiTexture);
 }
 
-void GameDriver::prepareGui() {
+void GameDriver::prepareGui()
+{
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
 

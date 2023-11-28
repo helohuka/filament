@@ -170,6 +170,7 @@ private:
     // Keep track of which view should receive a key's keyUp event.
     std::unordered_map<SDL_Scancode, CView*> mKeyEventTarget;
 
+    class MeshAssimp*                         mAssimp             = nullptr;
     filament::gltfio::AssetLoader*      mAssetLoader        = nullptr;
     filament::gltfio::FilamentAsset*    mAsset              = nullptr;
     filament::gltfio::FilamentInstance* mInstance           = nullptr;

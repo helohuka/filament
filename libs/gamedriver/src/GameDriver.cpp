@@ -5,15 +5,11 @@
 #include "gamedriver/LuauVM.h"
 #include "gamedriver/Resource.h"
 #include "gamedriver/MeshAssimp.h"
-
 #include "gamedriver/NativeWindowHelper.h"
-
 #include "gamedriver/Automation.h"
-
-#include "generated/resources/gamedriver.h"
-
 #include "gamedriver/ImGuiBridge.h"
 
+#include "generated/resources/gamedriver.h"
 
 GameDriver::GameDriver() {
     ASSERT_POSTCONDITION(SDL_Init(SDL_INIT_EVENTS) == 0, "SDL_Init Failure");
@@ -169,6 +165,7 @@ void GameDriver::onKeyUp(SDL_Scancode key)
 
 void GameDriver::initialize()
 {
+    SDL_Log("%s\n", "void GameDriver::initialize() -0");
     mFontPath = utils::Path::getCurrentExecutable().getParent() + "assets/fonts/Roboto-Medium.ttf";
 
     gConfigure.iblDirectory = Resource::get().getRootPath() + "assets/ibl/lightroom_14b";
@@ -187,7 +184,7 @@ void GameDriver::initialize()
     mBackend = mRenderEngine->getBackend();
 
     setupWindow();
-
+    SDL_Log("%s\n", "void GameDriver::initialize() -1");
     {
         utils::EntityManager& em = utils::EntityManager::get();
         mMainCameraEntity        = em.create();
@@ -215,7 +212,7 @@ void GameDriver::initialize()
         mMainCamera->lookAt({4, 0, -4}, {0, 0, -4}, {0, 1, 0});
     }
 
-
+    SDL_Log("%s\n", "void GameDriver::initialize() -2");
     mDepthMaterial = filament::Material::Builder()
                          .package(GAMEDRIVER_DEPTHVISUALIZER_DATA, GAMEDRIVER_DEPTHVISUALIZER_SIZE)
                          .build(*mRenderEngine);
@@ -245,20 +242,24 @@ void GameDriver::initialize()
     mScene        = mRenderEngine->createScene();
 
     mMainView->getView()->setVisibleLayers(0x4, 0x4);
- 
+    SDL_Log("%s\n", "void GameDriver::initialize() -3");
     loadDirt();
     loadIBL();
 
     mMainView->getView()->setScene(mScene);
-
+    SDL_Log("%s\n", "void GameDriver::initialize() -4 ");
     setup();
+    SDL_Log("%s\n", "void GameDriver::initialize() -5 ");
     setupGui();
 
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
+
+   
 }
 
 void GameDriver::setup()
 {
+    SDL_Log("%s\n", "void GameDriver::setup() -0 ");
     mNames                                     = new utils::NameComponentManager(utils::EntityManager::get());
     gSettings.view.shadowType                  = filament::ShadowType::PCF;
     gSettings.view.vsmShadowOptions.anisotropy = 0;
@@ -285,7 +286,7 @@ void GameDriver::setup()
     mMainView->getView()->setAmbientOcclusionOptions({.upsampling = View::QualityLevel::HIGH});
 
     gSettings.viewer.autoScaleEnabled = !mActualSize;
-
+    SDL_Log("%s\n", "void GameDriver::setup() -1 ");
     Automation::get().setup();
 
     if (mSettingsFile.size() > 0)
@@ -304,15 +305,15 @@ void GameDriver::setup()
     mMaterials = (mMaterialSource == JITSHADER) ? filament::gltfio::createJitShaderProvider(mRenderEngine) : filament::gltfio::createUbershaderProvider(mRenderEngine, UBERARCHIVE_DEFAULT_DATA, UBERARCHIVE_DEFAULT_SIZE);
 
     mAssetLoader = filament::gltfio::AssetLoader::create({mRenderEngine, mMaterials, mNames});
-
+    mAssimp       = new MeshAssimp(*mRenderEngine);
     auto filename = utils::Path(gConfigure.filename.c_str());
-
+    SDL_Log("%s\n", "void GameDriver::setup() -2 ");
     loadAsset(filename);
-
+    SDL_Log("%s\n", "void GameDriver::setup() -3 ");
     setAsset();
 
     mGround = std::make_unique<Ground>(*mRenderEngine, mScene, mShadowMaterial);
-
+    SDL_Log("%s\n", "void GameDriver::setup() -4 ");
     mOverdrawVisualizer = std::make_unique<OverdrawVisualizer>(*mRenderEngine, mScene, mOverdrawMaterial);
 }
 
@@ -622,13 +623,22 @@ void GameDriver::loadDirt()
         mDirt->setImage(*mRenderEngine, 0, {data, size_t(w * h * 3), filament::Texture::Format::RGB, filament::Texture::Type::UBYTE, (filament::Texture::PixelBufferDescriptor::Callback)&stbi_image_free});
     }
 }
+std::map<std::string, filament::MaterialInstance*> materials;
 void GameDriver::loadAsset(utils::Path filename)
 {
+    //utils::Path                                        filename1("E:/1/filament/assets/models/camera/camera.obj");
+    
+    //mAssimp->addFromFile(filename1, materials, true);
+
+    
+    //mScene->addEntities(mAssimp->getRenderables().data(), mAssimp->getRenderables().size());
+     
+
     // Peek at the file size to allow pre-allocation.
     long contentSize = static_cast<long>(getFileSize(filename.c_str()));
     if (contentSize <= 0)
     {
-        std::cerr << "Unable to open " << filename << std::endl;
+        SDL_Log("Unable to open %s\n", filename.c_str());
         exit(1);
     }
    
@@ -637,7 +647,7 @@ void GameDriver::loadAsset(utils::Path filename)
     std::vector<uint8_t> buffer(static_cast<unsigned long>(contentSize));
     if (!in.read((char*)buffer.data(), contentSize))
     {
-        std::cerr << "Unable to read " << filename << std::endl;
+        SDL_Log("Unable to read %s\n", filename.c_str());
         exit(1);
     }
 
@@ -672,6 +682,7 @@ void GameDriver::loadAsset(utils::Path filename)
 
     if (!mResourceLoader->asyncBeginLoad(mAsset))
     {
+
         std::cerr << "Unable to start loading resources for " << filename << std::endl;
         exit(1);
     }
