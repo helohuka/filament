@@ -38,6 +38,7 @@
 #include <filament/RenderableManager.h>
 #include <filament/Scene.h>
 #include <filament/Skybox.h>
+#include <filament/SwapChain.h>
 #include <filament/View.h>
 
 #ifndef NDEBUG
@@ -69,24 +70,30 @@ using namespace filament::backend;
 #if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
 class FilamentAppVulkanPlatform : public VulkanPlatform {
 public:
-    FilamentAppVulkanPlatform(std::string const& gpuHint) {
+    FilamentAppVulkanPlatform(char const* gpuHintCstr) {
+        utils::CString gpuHint{ gpuHintCstr };
         if (gpuHint.empty()) {
             return;
         }
+        VulkanPlatform::Customization::GPUPreference pref;
         // Check to see if it is an integer, if so turn it into an index.
         if (std::all_of(gpuHint.begin(), gpuHint.end(), ::isdigit)) {
-            mPreference.index = static_cast<int8_t>(std::stoi(gpuHint));
-            return;
+            char* p_end {};
+            pref.index = static_cast<int8_t>(std::strtol(gpuHint.c_str(), &p_end, 10));
+        } else {
+            pref.deviceName = gpuHint;
         }
-        mPreference.deviceName = gpuHint;
+        mCustomization = {
+            .gpu = pref
+        };
     }
 
-    virtual VulkanPlatform::GPUPreference getPreferredGPU() noexcept override {
-        return mPreference;
+    virtual VulkanPlatform::Customization getCustomization() const noexcept override {
+        return mCustomization;
     }
 
 private:
-    VulkanPlatform::GPUPreference mPreference;
+    VulkanPlatform::Customization mCustomization;
 };
 #endif
 
@@ -448,6 +455,11 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
             preRender(mEngine, window->mViews[0]->getView(), mScene, renderer);
         }
 
+        if (mReconfigureCameras) {
+            window->configureCamerasForWindow();
+            mReconfigureCameras = false;
+        }
+
         if (renderer->beginFrame(window->getSwapChain())) {
             for (filament::View* offscreenView : mOffscreenViews) {
                 renderer->render(offscreenView);
@@ -568,7 +580,7 @@ void FilamentApp::initSDL() {
 
 FilamentApp::Window::Window(FilamentApp* filamentApp,
         const Config& config, std::string title, size_t w, size_t h)
-        : mFilamentApp(filamentApp), mIsHeadless(config.headless) {
+        : mFilamentApp(filamentApp), mConfig(config), mIsHeadless(config.headless) {
     const int x = SDL_WINDOWPOS_CENTERED;
     const int y = SDL_WINDOWPOS_CENTERED;
     uint32_t windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
@@ -596,16 +608,26 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
             }
         #endif
 
+        Engine::Config engineConfig = {};
+        engineConfig.stereoscopicEyeCount = config.stereoscopicEyeCount;
+
         if (backend == Engine::Backend::VULKAN) {
             #if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
-                mFilamentApp->mVulkanPlatform = new FilamentAppVulkanPlatform(config.vulkanGPUHint);
+                mFilamentApp->mVulkanPlatform =
+                        new FilamentAppVulkanPlatform(config.vulkanGPUHint.c_str());
                 return Engine::Builder()
                         .backend(backend)
                         .platform(mFilamentApp->mVulkanPlatform)
+                        .featureLevel(config.featureLevel)
+                        .config(&engineConfig)
                         .build();
             #endif
         }
-        return Engine::Builder().backend(backend).build();
+        return Engine::Builder()
+                .backend(backend)
+                .featureLevel(config.featureLevel)
+                .config(&engineConfig)
+                .build();
     };
 
     if (config.headless) {
@@ -646,12 +668,11 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
 
 #endif
 
-        // Select the feature level to use
-        //config.featureLevel = std::min(config.featureLevel,
-        //        mFilamentApp->mEngine->getSupportedFeatureLevel());
-        mFilamentApp->mEngine->setActiveFeatureLevel(config.featureLevel);
+        // Write back the active feature level.
+        config.featureLevel = mFilamentApp->mEngine->getActiveFeatureLevel();
 
-        mSwapChain = mFilamentApp->mEngine->createSwapChain(nativeSwapChain);
+        mSwapChain = mFilamentApp->mEngine->createSwapChain(
+                nativeSwapChain, filament::SwapChain::CONFIG_HAS_STENCIL_BUFFER);
     }
     mRenderer = mFilamentApp->mEngine->createRenderer();
 
@@ -871,12 +892,23 @@ void FilamentApp::Window::configureCamerasForWindow() {
 
     double near = mFilamentApp->mCameraNear;
     double far = mFilamentApp->mCameraFar;
-    mMainCamera->setLensProjection(mFilamentApp->mCameraFocalLength, 1.0, near, far);
+    if (mMainView->getView()->getStereoscopicOptions().enabled) {
+        mat4 projections[4];
+        projections[0] = Camera::projection(mFilamentApp->mCameraFocalLength, 1.0, near, far);
+        projections[1] = projections[0];
+        // simulate foveated rendering
+        projections[2] = Camera::projection(mFilamentApp->mCameraFocalLength * 2.0, 1.0, near, far);
+        projections[3] = projections[2];
+        mMainCamera->setCustomEyeProjection(projections, 4, projections[0], near, far);
+    } else {
+        mMainCamera->setLensProjection(mFilamentApp->mCameraFocalLength, 1.0, near, far);
+    }
     mDebugCamera->setProjection(45.0, double(width) / height, 0.0625, 4096, Camera::Fov::VERTICAL);
 
     auto aspectRatio = double(mainWidth) / height;
     if (mMainView->getView()->getStereoscopicOptions().enabled) {
-        aspectRatio = double(mainWidth) / 2.0 / height;
+        const int ec = mConfig.stereoscopicEyeCount;
+        aspectRatio = double(mainWidth) / ec / height;
     }
     mMainCamera->setScaling({1.0 / aspectRatio, 1.0});
 

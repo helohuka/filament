@@ -27,7 +27,7 @@ set(SRCS
         src/BackendUtils.cpp
         src/BlobCacheKey.cpp
         src/Callable.cpp
-        src/CallbackHandler.cpp
+        src/CallbackManager.cpp
         src/CircularBuffer.cpp
         src/CommandBufferQueue.cpp
         src/CommandStream.cpp
@@ -55,6 +55,7 @@ set(PRIVATE_HDRS
         include/private/backend/HandleAllocator.h
         include/private/backend/PlatformFactory.h
         include/private/backend/SamplerGroup.h
+        src/CallbackManager.h
         src/CommandStreamDispatcher.h
         src/CompilerThreadPool.h
         src/DataReshaper.h
@@ -68,8 +69,6 @@ set(PRIVATE_HDRS
 if (FILAMENT_SUPPORTS_OPENGL AND NOT FILAMENT_USE_EXTERNAL_GLES3 AND NOT FILAMENT_USE_SWIFTSHADER)
     list(APPEND SRCS
             include/backend/platforms/OpenGLPlatform.h
-            src/opengl/CallbackManager.h
-            src/opengl/CallbackManager.cpp
             src/opengl/gl_headers.cpp
             src/opengl/gl_headers.h
             src/opengl/GLUtils.cpp
@@ -134,6 +133,7 @@ if (FILAMENT_SUPPORTS_METAL)
             src/metal/MetalExternalImage.mm
             src/metal/MetalHandles.mm
             src/metal/MetalPlatform.mm
+            src/metal/MetalShaderCompiler.mm
             src/metal/MetalState.mm
             src/metal/MetalTimerQuery.mm
             src/metal/MetalUtils.mm
@@ -178,8 +178,6 @@ if (FILAMENT_SUPPORTS_VULKAN)
             src/vulkan/VulkanConstants.h
             src/vulkan/VulkanContext.cpp
             src/vulkan/VulkanContext.h
-            src/vulkan/VulkanDisposer.cpp
-            src/vulkan/VulkanDisposer.h
             src/vulkan/VulkanDriver.cpp
             src/vulkan/VulkanDriver.h
             src/vulkan/VulkanDriverFactory.h
@@ -201,6 +199,9 @@ if (FILAMENT_SUPPORTS_VULKAN)
             src/vulkan/VulkanSwapChain.h
             src/vulkan/VulkanReadPixels.cpp
             src/vulkan/VulkanReadPixels.h
+            src/vulkan/VulkanResourceAllocator.h
+            src/vulkan/VulkanResources.cpp
+            src/vulkan/VulkanResources.h
             src/vulkan/VulkanTexture.cpp
             src/vulkan/VulkanTexture.h
             src/vulkan/VulkanUtility.cpp
@@ -355,7 +356,7 @@ if (MSVC)
     set(FILAMENT_WARNINGS /W3)
 else()
     set(FILAMENT_WARNINGS
-            -Wall -Wextra -Wno-unused-parameter
+            -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
             -Wextra-semi -Wnewline-eof -Wdeprecated -Wundef
             -Wgnu-conditional-omitted-operand
             -Wweak-vtables -Wnon-virtual-dtor -Wclass-varargs -Wimplicit-fallthrough
@@ -399,8 +400,8 @@ if(FILAMENT_ENABLE_BUILD_TEST)
 
 option(INSTALL_BACKEND_TEST "Install the backend test library so it can be consumed on iOS" OFF)
 
-if (APPLE)
-    add_library(backend_test STATIC
+if (APPLE OR LINUX)
+    set(BACKEND_TEST_SRC
         test/BackendTest.cpp
         test/ShaderGenerator.cpp
         test/TrianglePrimitive.cpp
@@ -412,18 +413,26 @@ if (APPLE)
         test/test_BufferUpdates.cpp
         test/test_MRT.cpp
         test/test_LoadImage.cpp
-        test/test_RenderExternalImage.cpp
         test/test_StencilBuffer.cpp
         test/test_Scissor.cpp
-        )
-
-    target_link_libraries(backend_test PRIVATE
+        test/test_MipLevels.cpp
+    )
+    set(BACKEND_TEST_LIBS
         backend
         getopt
         gtest
+        imageio
         filamat
         SPIRV
         spirv-cross-glsl)
+endif()
+
+if (APPLE)
+    # TODO: we should expand this test to Linux and other platforms.
+    list(APPEND BACKEND_TEST_SRC
+         test/test_RenderExternalImage.cpp)
+    add_library(backend_test STATIC ${BACKEND_TEST_SRC})
+    target_link_libraries(backend_test PRIVATE ${BACKEND_TEST_LIBS})
 
     set(BACKEND_TEST_DEPS
             OGLCompiler
@@ -437,12 +446,11 @@ if (APPLE)
             glslang
             spirv-cross-core
             spirv-cross-glsl
-            spirv-cross-msl
-            )
+            spirv-cross-msl)
 
     if (NOT IOS)
         target_link_libraries(backend_test PRIVATE image imageio)
-        list(APPEND BACKEND_TEST_DEPS image imageio)
+        list(APPEND BACKEND_TEST_DEPS image)
     endif()
 
     set(BACKEND_TEST_COMBINED_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/libbackendtest_combined.a")
@@ -456,15 +464,21 @@ if (APPLE)
     endif()
 
     set_target_properties(backend_test PROPERTIES FOLDER Tests)
+
+    if (APPLE AND NOT IOS)
+       add_executable(backend_test_mac test/mac_runner.mm)
+       target_link_libraries(backend_test_mac PRIVATE "-framework Metal -framework AppKit -framework QuartzCore")
+       # Because each test case is a separate file, the -force_load flag is necessary to prevent the
+       # linker from removing "unused" symbols.
+       target_link_libraries(backend_test_mac PRIVATE -force_load backend_test)
+       set_target_properties(backend_test_mac PROPERTIES FOLDER Tests)
+    endif()
 endif()
 
-if (APPLE AND NOT IOS)
-    add_executable(backend_test_mac test/mac_runner.mm)
-    target_link_libraries(backend_test_mac PRIVATE "-framework Metal -framework AppKit -framework QuartzCore")
-    # Because each test case is a separate file, the -force_load flag is necessary to prevent the
-    # linker from removing "unused" symbols.
-    target_link_libraries(backend_test_mac PRIVATE -force_load backend_test)
-    set_target_properties(backend_test_mac PROPERTIES FOLDER Tests)
+if (LINUX)
+    add_executable(backend_test_linux test/linux_runner.cpp ${BACKEND_TEST_SRC})
+    target_link_libraries(backend_test_linux PRIVATE ${BACKEND_TEST_LIBS})
+    set_target_properties(backend_test_linux PROPERTIES FOLDER Tests)
 endif()
 
 # ==================================================================================================

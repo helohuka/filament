@@ -330,7 +330,9 @@ value_object<LightManager::ShadowOptions>("LightManager$ShadowOptions")
     .field("polygonOffsetSlope", &LightManager::ShadowOptions::polygonOffsetSlope)
     .field("screenSpaceContactShadows", &LightManager::ShadowOptions::screenSpaceContactShadows)
     .field("stepCount", &LightManager::ShadowOptions::stepCount)
-    .field("maxShadowDistance", &LightManager::ShadowOptions::maxShadowDistance);
+    .field("maxShadowDistance", &LightManager::ShadowOptions::maxShadowDistance)
+    .field("shadowBulbRadius", &LightManager::ShadowOptions::shadowBulbRadius)
+    .field("transform", &LightManager::ShadowOptions::transform);
 
 // In JavaScript, a flat contiguous representation is best for matrices (see gl-matrix) so we
 // need to define a small wrapper here.
@@ -397,6 +399,8 @@ class_<Engine>("Engine")
     .function("setActiveFeatureLevel", &Engine::setActiveFeatureLevel)
 
     .function("getActiveFeatureLevel", &Engine::getActiveFeatureLevel)
+
+    .class_function("getMaxStereoscopicEyes", &Engine::getMaxStereoscopicEyes)
 
     .function("_execute", EMBIND_LAMBDA(void, (Engine* engine), {
         EM_ASM_INT({
@@ -610,6 +614,7 @@ class_<Renderer>("Renderer")
         engine->execute();
     }), allow_raw_pointers())
     .function("_setClearOptions", &Renderer::setClearOptions, allow_raw_pointers())
+    .function("getClearOptions", &Renderer::getClearOptions)
     .function("beginFrame", EMBIND_LAMBDA(bool, (Renderer* self, SwapChain* swapChain), {
         return self->beginFrame(swapChain);
     }), allow_raw_pointers())
@@ -651,6 +656,7 @@ class_<View>("View")
     .function("_setFogOptions", &View::setFogOptions)
     .function("_setVignetteOptions", &View::setVignetteOptions)
     .function("_setGuardBandOptions", &View::setGuardBandOptions)
+    .function("_setStereoscopicOptions", &View::setStereoscopicOptions)
     .function("setAmbientOcclusion", &View::setAmbientOcclusion)
     .function("getAmbientOcclusion", &View::getAmbientOcclusion)
     .function("setAntiAliasing", &View::setAntiAliasing)
@@ -685,6 +691,7 @@ class_<Scene>("Scene")
     .function("getSkybox", &Scene::getSkybox, allow_raw_pointers())
     .function("setIndirectLight", &Scene::setIndirectLight, allow_raw_pointers())
     .function("getIndirectLight", &Scene::getIndirectLight, allow_raw_pointers())
+    .function("getEntityCount", &Scene::getEntityCount)
     .function("getRenderableCount", &Scene::getRenderableCount)
     .function("getLightCount", &Scene::getLightCount);
 
@@ -1337,11 +1344,11 @@ class_<MaterialInstance>("MaterialInstance")
             (MaterialInstance* self, std::string name, filament::math::float4 value), {
         self->setParameter(name.c_str(), value); }), allow_raw_pointers())
     .function("setMat3Parameter", EMBIND_LAMBDA(void,
-            (MaterialInstance* self, std::string name, filament::math::mat3f value), {
-        self->setParameter(name.c_str(), value); }), allow_raw_pointers())
+            (MaterialInstance* self, std::string name, flatmat3 value), {
+        self->setParameter(name.c_str(), value.m); }), allow_raw_pointers())
     .function("setMat4Parameter", EMBIND_LAMBDA(void,
-            (MaterialInstance* self, std::string name, filament::math::mat4f value), {
-        self->setParameter(name.c_str(), value); }), allow_raw_pointers())
+            (MaterialInstance* self, std::string name, flatmat4 value), {
+        self->setParameter(name.c_str(), value.m); }), allow_raw_pointers())
     .function("setTextureParameter", EMBIND_LAMBDA(void,
             (MaterialInstance* self, std::string name, Texture* value, TextureSampler sampler), {
         self->setParameter(name.c_str(), value, sampler); }), allow_raw_pointers())

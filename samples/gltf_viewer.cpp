@@ -41,6 +41,8 @@
 
 #include <camutils/Manipulator.h>
 
+#include <private/filament/EngineEnums.h>
+
 #include <getopt/getopt.h>
 
 #include <utils/NameComponentManager.h>
@@ -53,9 +55,12 @@
 #include <imgui.h>
 #include <filagui/ImGuiExtensions.h>
 
+#include <cgltf.h>
+
 #include <array>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <string>
 
 #include "generated/resources/gltf_demo.h"
@@ -101,6 +106,7 @@ struct App {
 
     bool actualSize = false;
     bool originIsFarAway = false;
+    float originDistance = 1.0f;
 
     struct Scene {
         Entity groundPlane;
@@ -134,7 +140,7 @@ struct App {
 static const char* DEFAULT_IBL = "assets/ibl/lightroom_14b";
 
 static void printUsage(char* name) {
-    std::string exec_name(Path(name).getName());
+    std::string const exec_name(Path(name).getName());
     std::string usage(
         "SHOWCASE renders the specified glTF file, or a built-in file if none is specified\n"
         "Usage:\n"
@@ -177,10 +183,13 @@ static void printUsage(char* name) {
         "       Set the camera mode: orbit (default) or flight\n"
         "       Flight mode uses the following controls:\n"
         "           Click and drag the mouse to pan the camera\n"
-        "           Use the scroll weel to adjust movement speed\n"
+        "           Use the scroll wheel to adjust movement speed\n"
         "           W / S: forward / backward\n"
         "           A / D: left / right\n"
         "           E / Q: up / down\n\n"
+        "   --eyes=<stereoscopic eyes>, -y <stereoscopic eyes>\n"
+        "       Sets the number of stereoscopic eyes (default: 2) when stereoscopic rendering is\n"
+        "       enabled.\n\n"
         "   --split-view, -v\n"
         "       Splits the window into 4 views\n\n"
         "   --vulkan-gpu-hint=<hint>, -g\n"
@@ -212,6 +221,7 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
         { "ubershader",      no_argument,          nullptr, 'u' },
         { "actual-size",     no_argument,          nullptr, 's' },
         { "camera",          required_argument,    nullptr, 'c' },
+        { "eyes",            required_argument,    nullptr, 'y' },
         { "recompute-aabb",  no_argument,          nullptr, 'r' },
         { "settings",        required_argument,    nullptr, 't' },
         { "split-view",      no_argument,          nullptr, 'v' },
@@ -221,7 +231,7 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
     int opt;
     int option_index = 0;
     while ((opt = getopt_long(argc, argv, OPTSTR, OPTIONS, &option_index)) >= 0) {
-        std::string arg(optarg ? optarg : "");
+        std::string const arg(optarg ? optarg : "");
         switch (opt) {
             default:
             case 'h':
@@ -258,6 +268,19 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
                     std::cerr << "Unrecognized camera mode. Must be 'flight'|'orbit'.\n";
                 }
                 break;
+            case 'y': {
+                int eyeCount = 0;
+                try {
+                    eyeCount = std::stoi(arg);
+                } catch (std::invalid_argument &e) { }
+                if (eyeCount >= 1 && eyeCount <= CONFIG_MAX_STEREOSCOPIC_EYES) {
+                    app->config.stereoscopicEyeCount = eyeCount;
+                } else {
+                    std::cerr << "Eye count must be between 1 and CONFIG_MAX_STEREOSCOPIC_EYES ("
+                              << (int) CONFIG_MAX_STEREOSCOPIC_EYES << ") (inclusive).\n";
+                }
+                break;
+            }
             case 'e':
                 app->config.headless = true;
                 break;
@@ -325,7 +348,7 @@ static void createGroundPlane(Engine* engine, Scene* scene, App& app) {
 
     Aabb aabb = app.asset->getBoundingBox();
     if (!app.actualSize) {
-        mat4f transform = fitIntoUnitCube(aabb, 4);
+        mat4f const transform = fitIntoUnitCube(aabb, 4);
         aabb = aabb.transform(transform);
     }
 
@@ -338,7 +361,7 @@ static void createGroundPlane(Engine* engine, Scene* scene, App& app) {
             {  planeExtent.x, 0, -planeExtent.z },
     };
 
-    short4 tbn = packSnorm16(
+    short4 const tbn = packSnorm16(
             mat3f::packTangentFrame(
                     mat3f{
                             float3{ 1.0f, 0.0f, 0.0f },
@@ -371,7 +394,7 @@ static void createGroundPlane(Engine* engine, Scene* scene, App& app) {
     indexBuffer->setBuffer(*engine, IndexBuffer::BufferDescriptor(
             indices, indexBuffer->getIndexCount() * sizeof(uint32_t)));
 
-    Entity groundPlane = em.create();
+    Entity const groundPlane = em.create();
     RenderableManager::Builder(1)
             .boundingBox({
                     {}, { planeExtent.x, 1e-4f, planeExtent.z }
@@ -484,40 +507,77 @@ static void onClick(App& app, View* view, ImVec2 pos) {
     });
 }
 
+static utils::Path getPathForAsset(std::string_view string) {
+    utils::Path filename{ string };
+    if (!filename.exists()) {
+        std::cerr << "file " << filename << " not found!" << std::endl;
+        return {};
+    }
+    if (filename.isDirectory()) {
+        auto files = filename.listContents();
+        for (const auto& file: files) {
+            if (file.getExtension() == "gltf" || file.getExtension() == "glb") {
+                filename = file;
+                break;
+            }
+        }
+        if (filename.isDirectory()) {
+            std::cerr << "no glTF file found in " << filename << std::endl;
+            return {};
+        }
+    }
+    return filename;
+}
+
+
+static bool checkAsset(const utils::Path& filename) {
+    // Peek at the file size to allow pre-allocation.
+    long const contentSize = static_cast<long>(getFileSize(filename.c_str()));
+    if (contentSize <= 0) {
+        std::cerr << "Unable to open " << filename << std::endl;
+        return false;
+    }
+
+    // Consume the glTF file.
+    std::ifstream in(filename.c_str(), std::ifstream::binary | std::ifstream::in);
+    std::vector<uint8_t> buffer(static_cast<unsigned long>(contentSize));
+    if (!in.read((char*) buffer.data(), contentSize)) {
+        std::cerr << "Unable to read " << filename << std::endl;
+        return false;
+    }
+
+    // Parse the glTF file and create Filament entities.
+    cgltf_options options{};
+    cgltf_data* sourceAsset;
+    cgltf_result result = cgltf_parse(&options, buffer.data(), contentSize, &sourceAsset);
+    if (result != cgltf_result_success) {
+        slog.e << "Unable to parse glTF file." << io::endl;
+        return false;
+    }
+    return true;
+};
+
+
 int main(int argc, char** argv) {
     App app;
 
     app.config.title = "Filament";
     app.config.iblDirectory = FilamentApp::getRootAssetsPath() + DEFAULT_IBL;
 
-    int optionIndex = handleCommandLineArguments(argc, argv, &app);
+    int const optionIndex = handleCommandLineArguments(argc, argv, &app);
 
     utils::Path filename;
-    int num_args = argc - optionIndex;
+    int const num_args = argc - optionIndex;
     if (num_args >= 1) {
-        filename = argv[optionIndex];
-        if (!filename.exists()) {
-            std::cerr << "file " << filename << " not found!" << std::endl;
+        filename = getPathForAsset(argv[optionIndex]);
+        if (filename.isEmpty()) {
             return 1;
-        }
-        if (filename.isDirectory()) {
-            auto files = filename.listContents();
-            for (auto file : files) {
-                if (file.getExtension() == "gltf" || file.getExtension() == "glb") {
-                    filename = file;
-                    break;
-                }
-            }
-            if (filename.isDirectory()) {
-                std::cerr << "no glTF file found in " << filename << std::endl;
-                return 1;
-            }
         }
     }
 
-    auto loadAsset = [&app](utils::Path filename) {
+    auto loadAsset = [&app](const utils::Path& filename) {
         // Peek at the file size to allow pre-allocation.
-        long contentSize = static_cast<long>(getFileSize(filename.c_str()));
+        long const contentSize = static_cast<long>(getFileSize(filename.c_str()));
         if (contentSize <= 0) {
             std::cerr << "Unable to open " << filename << std::endl;
             exit(1);
@@ -533,19 +593,54 @@ int main(int argc, char** argv) {
 
         // Parse the glTF file and create Filament entities.
         app.asset = app.assetLoader->createAsset(buffer.data(), buffer.size());
-        app.instance = app.asset->getInstance();
-        buffer.clear();
-        buffer.shrink_to_fit();
-
         if (!app.asset) {
             std::cerr << "Unable to parse " << filename << std::endl;
             exit(1);
         }
+
+        // pre-compile all material variants
+        std::set<Material*> materials;
+        RenderableManager const& rcm = app.engine->getRenderableManager();
+        Slice<Entity> const renderables{
+                app.asset->getRenderableEntities(), app.asset->getRenderableEntityCount() };
+        for (Entity const e: renderables) {
+            auto ri = rcm.getInstance(e);
+            size_t const c = rcm.getPrimitiveCount(ri);
+            for (size_t i = 0; i < c; i++) {
+                MaterialInstance* const mi = rcm.getMaterialInstanceAt(ri, i);
+                Material* ma = const_cast<Material *>(mi->getMaterial());
+                materials.insert(ma);
+            }
+        }
+        for (Material* ma : materials) {
+            // Don't attempt to precompile shaders on WebGL.
+            // Chrome already suffers from slow shader compilation:
+            // https://github.com/google/filament/issues/6615
+            // Precompiling shaders exacerbates the problem.
+#if !defined(__EMSCRIPTEN__)
+            // First compile high priority variants
+            ma->compile(Material::CompilerPriorityQueue::HIGH,
+                    UserVariantFilterBit::DIRECTIONAL_LIGHTING |
+                    UserVariantFilterBit::DYNAMIC_LIGHTING |
+                    UserVariantFilterBit::SHADOW_RECEIVER);
+
+            // and then, everything else at low priority, except STE, which is very uncommon.
+            ma->compile(Material::CompilerPriorityQueue::LOW,
+                    UserVariantFilterBit::FOG |
+                    UserVariantFilterBit::SKINNING |
+                    UserVariantFilterBit::SSR |
+                    UserVariantFilterBit::VSM);
+#endif
+        }
+
+        app.instance = app.asset->getInstance();
+        buffer.clear();
+        buffer.shrink_to_fit();
     };
 
-    auto loadResources = [&app] (utils::Path filename) {
+    auto loadResources = [&app] (const utils::Path& filename) {
         // Load external textures and buffers.
-        std::string gltfPath = filename.getAbsolutePath();
+        std::string const gltfPath = filename.getAbsolutePath();
         ResourceConfiguration configuration = {};
         configuration.engine = app.engine;
         configuration.gltfPath = gltfPath.c_str();
@@ -558,6 +653,8 @@ int main(int argc, char** argv) {
             app.resourceLoader->addTextureProvider("image/png", app.stbDecoder);
             app.resourceLoader->addTextureProvider("image/jpeg", app.stbDecoder);
             app.resourceLoader->addTextureProvider("image/ktx2", app.ktxDecoder);
+        } else {
+            app.resourceLoader->setConfiguration(configuration);
         }
 
         if (!app.resourceLoader->asyncBeginLoad(app.asset)) {
@@ -636,8 +733,8 @@ int main(int argc, char** argv) {
             app.viewer->stopAnimation();
         }
 
-        if (app.settingsFile.size() > 0) {
-            bool success = loadSettings(app.settingsFile.c_str(), &app.viewer->getSettings());
+        if (!app.settingsFile.empty()) {
+            bool const success = loadSettings(app.settingsFile.c_str(), &app.viewer->getSettings());
             if (success) {
                 std::cout << "Loaded settings from " << app.settingsFile << std::endl;
             } else {
@@ -687,7 +784,7 @@ int main(int argc, char** argv) {
                 ImGui::Spacing();
             }
 
-            float progress = app.resourceLoader->asyncGetLoadProgress();
+            float const progress = app.resourceLoader->asyncGetLoadProgress();
             if (progress < 1.0) {
                 ImGui::ProgressBar(progress);
             } else {
@@ -734,7 +831,7 @@ int main(int argc, char** argv) {
                 }
 
                 if (ImGui::Button("Export view settings")) {
-                    automation.exportSettings(app.viewer->getSettings(), "settings.json");
+                    AutomationEngine::exportSettings(app.viewer->getSettings(), "settings.json");
                     app.messageBoxText = automation.getStatusMessage();
                     ImGui::OpenPopup("MessageBox");
                 }
@@ -756,9 +853,33 @@ int main(int argc, char** argv) {
                             debug.getPropertyAddress<bool>("d.renderer.doFrameCapture");
                     *captureFrame = true;
                 }
-                ImGui::Checkbox("Disable buffer padding", debug.getPropertyAddress<bool>("d.renderer.disable_buffer_padding"));
-                ImGui::Checkbox("Camera at origin", debug.getPropertyAddress<bool>("d.view.camera_at_origin"));
+                ImGui::Checkbox("Disable buffer padding",
+                        debug.getPropertyAddress<bool>("d.renderer.disable_buffer_padding"));
+                ImGui::Checkbox("Camera at origin",
+                        debug.getPropertyAddress<bool>("d.view.camera_at_origin"));
                 ImGui::Checkbox("Far Origin", &app.originIsFarAway);
+                ImGui::SliderFloat("Origin", &app.originDistance, 0, 1);
+                ImGui::Checkbox("Far uses shadow casters",
+                        debug.getPropertyAddress<bool>("d.shadowmap.far_uses_shadowcasters"));
+                ImGui::Checkbox("Focus shadow casters",
+                        debug.getPropertyAddress<bool>("d.shadowmap.focus_shadowcasters"));
+
+                bool debugDirectionalShadowmap;
+                if (debug.getProperty("d.shadowmap.debug_directional_shadowmap",
+                        &debugDirectionalShadowmap)) {
+                    ImGui::Checkbox("Debug DIR shadowmap", &debugDirectionalShadowmap);
+                    debug.setProperty("d.shadowmap.debug_directional_shadowmap",
+                            debugDirectionalShadowmap);
+                }
+
+                bool debugFroxelVisualization;
+                if (debug.getProperty("d.lighting.debug_froxel_visualization",
+                        &debugFroxelVisualization)) {
+                    ImGui::Checkbox("Froxel Visualization", &debugFroxelVisualization);
+                    debug.setProperty("d.lighting.debug_froxel_visualization",
+                            debugFroxelVisualization);
+                }
+
                 auto dataSource = debug.getDataSource("d.view.frame_info");
                 if (dataSource.data) {
                     ImGuiExt::PlotLinesSeries("FrameInfo", 6,
@@ -811,7 +932,7 @@ int main(int argc, char** argv) {
                 view->setStencilBufferEnabled(visualizeOverdraw);
             }
 
-            if (ImGui::BeginPopupModal("MessageBox", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            if (ImGui::BeginPopupModal("MessageBox", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
                 ImGui::Text("%s", app.messageBoxText.c_str());
                 if (ImGui::Button("OK", ImVec2(120, 0))) {
                     ImGui::CloseCurrentPopup();
@@ -857,7 +978,7 @@ int main(int argc, char** argv) {
         AssetLoader::destroy(&app.assetLoader);
     };
 
-    auto animate = [&app](Engine* engine, View* view, double now) {
+    auto animate = [&app](Engine*, View*, double now) {
         app.resourceLoader->asyncUpdateLoad();
 
         // Optionally fit the model into a unit cube at the origin.
@@ -869,7 +990,7 @@ int main(int argc, char** argv) {
         app.viewer->applyAnimation(now);
     };
 
-    auto resize = [&app](Engine* engine, View* view) {
+    auto resize = [&app](Engine*, View* view) {
         Camera& camera = view->getCamera();
         if (&camera == app.mainCamera) {
             // Don't adjust the aspect ratio of the main camera, this is done inside of
@@ -877,11 +998,11 @@ int main(int argc, char** argv) {
             return;
         }
         const Viewport& vp = view->getViewport();
-        double aspectRatio = (double) vp.width / vp.height;
+        double const aspectRatio = (double) vp.width / vp.height;
         camera.setScaling({1.0 / aspectRatio, 1.0 });
     };
 
-    auto gui = [&app](Engine* engine, View* view) {
+    auto gui = [&app](Engine*, View*) {
         app.viewer->updateUserInterface();
 
         FilamentApp::get().setSidebarWidth(app.viewer->getSidebarWidth());
@@ -914,32 +1035,15 @@ int main(int argc, char** argv) {
             // Override the aspect ratio in the glTF file and adjust the aspect ratio of this
             // camera to the viewport.
             const Viewport& vp = view->getViewport();
-            double aspectRatio = (double) vp.width / vp.height;
+            double const aspectRatio = (double) vp.width / vp.height;
             camera->setScaling({1.0 / aspectRatio, 1.0});
         }
 
-        if (view->getStereoscopicOptions().enabled) {
-            Camera& c = view->getCamera();
-            auto od = app.viewer->getOcularDistance();
-            // Eye 0 is always rendered to the left side of the screen; Eye 1, the right side.
-            // For testing, we want to render a side-by-side layout so users can view with
-            // "cross-eyed" stereo.
-            // For cross-eyed stereo, Eye 0 is really the RIGHT eye, while Eye 1 is the LEFT eye.
-            const mat4 rightEye = mat4::translation(double3{ od, 0.0, 0.0});    // right eye
-            const mat4 leftEye  = mat4::translation(double3{-od, 0.0, 0.0});    // left eye
-            c.setEyeModelMatrix(0, rightEye);
-            c.setEyeModelMatrix(1, leftEye);
-            mat4 projections[2];
-            // Use an aspect ratio of 1.0. The viewport will be taken into account in
-            // FilamentApp.cpp.
-            projections[0] = mat4::perspective(70.0, 1.0, .1, 10.0);
-            projections[1] = mat4::perspective(70.0, 1.0, .1, 10.0);
-            c.setCustomEyeProjection(projections, 2, projections[0], .1, 10.0);
-            // FIXME: the aspect ratio will be incorrect until configureCamerasForWindow is
-            // triggered, which will happen the next time the window is resized.
-        } else {
-            view->getCamera().setEyeModelMatrix(0, {});
-            view->getCamera().setEyeModelMatrix(1, {});
+        static bool stereoscopicEnabled = false;
+        if (stereoscopicEnabled != view->getStereoscopicOptions().enabled) {
+            // Stereo was turned on/off.
+            FilamentApp::get().reconfigureCameras();
+            stereoscopicEnabled = view->getStereoscopicOptions().enabled;
         }
 
         app.scene.groundMaterial->setDefaultParameter(
@@ -956,10 +1060,15 @@ int main(int argc, char** argv) {
         tcm.setParent(tcm.getInstance(camera.getEntity()), root);
         tcm.setParent(tcm.getInstance(app.asset->getRoot()), root);
         tcm.setParent(tcm.getInstance(view->getFogEntity()), root);
-        tcm.setTransform(root, mat4f::translation(float3{ app.originIsFarAway ? 1e6f : 0.0f }));
+
+        // these values represent a point somewhere on Earth's surface
+        float const d = app.originIsFarAway ? app.originDistance : 0.0f;
+//        tcm.setTransform(root, mat4::translation(double3{ 67.0, -6366759.0, -21552.0 } * d));
+        tcm.setTransform(root, mat4::translation(
+                double3{ 2304097.1410110965, -4688442.9915525438, -3639452.5611694567 } * d));
 
         // Check if color grading has changed.
-        ColorGradingSettings& options = app.viewer->getSettings().view.colorGrading;
+        ColorGradingSettings const& options = app.viewer->getSettings().view.colorGrading;
         if (options.enabled) {
             if (options != app.lastColorGradingOptions) {
                 ColorGrading *colorGrading = createColorGrading(options, engine);
@@ -973,12 +1082,12 @@ int main(int argc, char** argv) {
         }
     };
 
-    auto postRender = [&app](Engine* engine, View* view, Scene* scene, Renderer* renderer) {
+    auto postRender = [&app](Engine* engine, View* view, Scene*, Renderer* renderer) {
         if (app.automationEngine->shouldClose()) {
             FilamentApp::get().close();
             return;
         }
-        AutomationEngine::ViewerContent content = {
+        AutomationEngine::ViewerContent const content = {
             .view = view,
             .renderer = renderer,
             .materials = app.instance->getMaterialInstances(),
@@ -991,14 +1100,19 @@ int main(int argc, char** argv) {
     filamentApp.animate(animate);
     filamentApp.resize(resize);
 
-    filamentApp.setDropHandler([&] (std::string_view path) {
-        app.resourceLoader->asyncCancelLoad();
-        app.resourceLoader->evictResourceData();
-        app.viewer->removeAsset();
-        app.assetLoader->destroyAsset(app.asset);
-        loadAsset(path);
-        loadResources(path);
-        app.viewer->setAsset(app.asset, app.instance);
+    filamentApp.setDropHandler([&](std::string_view path) {
+        utils::Path const filename = getPathForAsset(path);
+        if (!filename.isEmpty()) {
+            if (checkAsset(filename)) {
+                app.resourceLoader->asyncCancelLoad();
+                app.resourceLoader->evictResourceData();
+                app.viewer->removeAsset();
+                app.assetLoader->destroyAsset(app.asset);
+                loadAsset(filename);
+                loadResources(filename);
+                app.viewer->setAsset(app.asset, app.instance);
+            }
+        }
     });
 
     filamentApp.run(app.config, setup, cleanup, gui, preRender, postRender);

@@ -73,8 +73,6 @@ class FMaterialInstance;
 class FRenderer;
 class FScene;
 
-static constexpr Culler::result_type VISIBLE_RENDERABLE = 1u << VISIBLE_RENDERABLE_BIT;
-
 // ------------------------------------------------------------------------------------------------
 
 class FView : public View {
@@ -147,7 +145,8 @@ public:
     void prepareLighting(FEngine& engine, ArenaScope& arena, CameraInfo const& cameraInfo) noexcept;
 
     void prepareSSAO(backend::Handle<backend::HwTexture> ssao) const noexcept;
-    void prepareSSR(backend::Handle<backend::HwTexture> ssr, float refractionLodOffset,
+    void prepareSSR(backend::Handle<backend::HwTexture> ssr, bool disableSSR,
+            float refractionLodOffset,
             ScreenSpaceReflectionsOptions const& ssrOptions) const noexcept;
     void prepareStructure(backend::Handle<backend::HwTexture> structure) const noexcept;
     void prepareShadow(backend::Handle<backend::HwTexture> structure) const noexcept;
@@ -169,7 +168,9 @@ public:
     bool hasDPCF() const noexcept { return mShadowType == ShadowType::DPCF; }
     bool hasPCSS() const noexcept { return mShadowType == ShadowType::PCSS; }
     bool hasPicking() const noexcept { return mActivePickingQueriesList != nullptr; }
-    bool hasInstancedStereo() const noexcept { return mStereoscopicOptions.enabled; }
+    bool hasInstancedStereo() const noexcept {
+        return mIsStereoSupported && mStereoscopicOptions.enabled;
+    }
 
     FrameGraphId<FrameGraphTexture> renderShadowMaps(FEngine& engine, FrameGraph& fg,
             CameraInfo const& cameraInfo, math::float4 const& userTime,
@@ -196,7 +197,7 @@ public:
     void setStereoscopicOptions(StereoscopicOptions const& options) noexcept;
 
     FCamera const* getDirectionalLightCamera() const noexcept {
-        return &mShadowMapManager.getShadowMap(0)->getDebugCamera();
+        return mShadowMapManager.getDirectionalLightCamera();
     }
 
     void setRenderTarget(FRenderTarget* renderTarget) noexcept {
@@ -524,6 +525,7 @@ private:
     const FColorGrading* mColorGrading = nullptr;
     const FColorGrading* mDefaultColorGrading = nullptr;
     utils::Entity mFogEntity{};
+    bool mIsStereoSupported : 1;
 
     PIDController mPidController;
     DynamicResolutionOptions mDynamicResolution;

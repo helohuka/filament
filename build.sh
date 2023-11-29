@@ -191,6 +191,7 @@ function build_clean {
     rm -Rf android/filamat-android/build android/filamat-android/.externalNativeBuild android/filamat-android/.cxx
     rm -Rf android/gltfio-android/build android/gltfio-android/.externalNativeBuild android/gltfio-android/.cxx
     rm -Rf android/filament-utils-android/build android/filament-utils-android/.externalNativeBuild android/filament-utils-android/.cxx
+    rm -f compile_commands.json
 }
 
 function build_clean_aggressive {
@@ -210,13 +211,10 @@ function build_desktop_target {
     echo "Building ${lc_target} in out/cmake-${lc_target}..."
     mkdir -p "out/cmake-${lc_target}"
 
-    cd "out/cmake-${lc_target}"
+    pushd "out/cmake-${lc_target}" > /dev/null
 
-    # On macOS, set the deployment target to 10.15.
     local lc_name=$(echo "${UNAME}" | tr '[:upper:]' '[:lower:]')
     if [[ "${lc_name}" == "darwin" ]]; then
-        local deployment_target="-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15"
-
         if [[ "${BUILD_UNIVERSAL_LIBRARIES}" == "true" ]]; then
             local architectures="-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
         fi
@@ -233,9 +231,10 @@ function build_desktop_target {
             ${MATDBG_OPTION} \
             ${MATOPT_OPTION} \
             ${ASAN_UBSAN_OPTION} \
-            ${deployment_target} \
             ${architectures} \
             ../..
+        ln -sf "out/cmake-${lc_target}/compile_commands.json" \
+           ../../compile_commands.json
     fi
     ${BUILD_COMMAND} ${build_targets}
 
@@ -247,12 +246,13 @@ function build_desktop_target {
     if [[ -d "../${lc_target}/filament" ]]; then
         if [[ "${ISSUE_ARCHIVES}" == "true" ]]; then
             echo "Generating out/filament-${lc_target}-${LC_UNAME}.tgz..."
-            cd "../${lc_target}"
+            pushd "../${lc_target}" > /dev/null
             tar -czvf "../filament-${lc_target}-${LC_UNAME}.tgz" filament
+            popd > /dev/null
         fi
     fi
 
-    cd ../..
+    popd > /dev/null
 }
 
 function build_desktop {
@@ -270,7 +270,7 @@ function build_webgl_with_target {
 
     echo "Building WebGL ${lc_target}..."
     mkdir -p "out/cmake-webgl-${lc_target}"
-    cd "out/cmake-webgl-${lc_target}"
+    pushd "out/cmake-webgl-${lc_target}" > /dev/null
 
     if [[ ! "${BUILD_TARGETS}" ]]; then
         BUILD_TARGETS=${BUILD_CUSTOM_TARGETS}
@@ -290,6 +290,8 @@ function build_webgl_with_target {
             -DCMAKE_INSTALL_PREFIX="../webgl-${lc_target}/filament" \
             -DWEBGL=1 \
             ../..
+        ln -sf "out/cmake-webgl-${lc_target}/compile_commands.json" \
+           ../../compile_commands.json
         ${BUILD_COMMAND} ${BUILD_TARGETS}
         )
     fi
@@ -307,17 +309,17 @@ function build_webgl_with_target {
 
         if [[ "${ISSUE_ARCHIVES}" == "true" ]]; then
             echo "Generating out/filament-${lc_target}-web.tgz..."
-            cd web/filament-js
+            pushd web/filament-js > /dev/null
             tar -cvf "../../../filament-${lc_target}-web.tar" filament.js
             tar -rvf "../../../filament-${lc_target}-web.tar" filament.wasm
             tar -rvf "../../../filament-${lc_target}-web.tar" filament.d.ts
-            cd -
+            popd > /dev/null
             gzip -c "../filament-${lc_target}-web.tar" > "../filament-${lc_target}-web.tgz"
             rm "../filament-${lc_target}-web.tar"
         fi
     fi
 
-    cd ../..
+    popd > /dev/null
 }
 
 function build_webgl {
@@ -348,7 +350,7 @@ function build_android_target {
     echo "Building Android ${lc_target} (${arch})..."
     mkdir -p "out/cmake-android-${lc_target}-${arch}"
 
-    cd "out/cmake-android-${lc_target}-${arch}"
+    pushd "out/cmake-android-${lc_target}-${arch}" > /dev/null
 
     if [[ ! -d "CMakeFiles" ]] || [[ "${ISSUE_CMAKE_ALWAYS}" == "true" ]]; then
         cmake \
@@ -362,12 +364,14 @@ function build_android_target {
             ${MATOPT_OPTION} \
             ${VULKAN_ANDROID_OPTION} \
             ../..
+        ln -sf "out/cmake-android-${lc_target}-${arch}/compile_commands.json" \
+           ../../compile_commands.json
     fi
 
     # We must always install Android libraries to build the AAR
     ${BUILD_COMMAND} install
 
-    cd ../..
+    popd > /dev/null
 }
 
 function build_android_arch {
@@ -388,9 +392,9 @@ function archive_android {
     if [[ -d "out/android-${lc_target}/filament" ]]; then
         if [[ "${ISSUE_ARCHIVES}" == "true" ]]; then
             echo "Generating out/filament-android-${lc_target}-${LC_UNAME}.tgz..."
-            cd "out/android-${lc_target}"
+            pushd "out/android-${lc_target}" > /dev/null
             tar -czvf "../filament-android-${lc_target}-${LC_UNAME}.tgz" filament
-            cd ../..
+            popd > /dev/null
         fi
     fi
 }
@@ -468,7 +472,7 @@ function build_android {
         archive_android "Release"
     fi
 
-    cd android
+    pushd android > /dev/null
 
     if [[ "${ISSUE_DEBUG_BUILD}" == "true" ]]; then
         ./gradlew \
@@ -498,13 +502,13 @@ function build_android {
 
         if [[ "${INSTALL_COMMAND}" ]]; then
             echo "Installing out/filamat-android-debug.aar..."
-            cp filamat-android/build/outputs/aar/filamat-android-full-debug.aar ../out/filamat-android-debug.aar
+            cp filamat-android/build/outputs/aar/filamat-android-debug.aar ../out/filamat-android-debug.aar
 
             echo "Installing out/filament-android-debug.aar..."
             cp filament-android/build/outputs/aar/filament-android-debug.aar ../out/
 
             echo "Installing out/gltfio-android-debug.aar..."
-            cp gltfio-android/build/outputs/aar/gltfio-android-full-debug.aar ../out/gltfio-android-debug.aar
+            cp gltfio-android/build/outputs/aar/gltfio-android-debug.aar ../out/gltfio-android-debug.aar
 
             echo "Installing out/filament-utils-android-debug.aar..."
             cp filament-utils-android/build/outputs/aar/filament-utils-android-debug.aar ../out/filament-utils-android-debug.aar
@@ -547,14 +551,13 @@ function build_android {
 
         if [[ "${INSTALL_COMMAND}" ]]; then
             echo "Installing out/filamat-android-release.aar..."
-            cp filamat-android/build/outputs/aar/filamat-android-lite-release.aar ../out/
-            cp filamat-android/build/outputs/aar/filamat-android-full-release.aar ../out/filamat-android-release.aar
+            cp filamat-android/build/outputs/aar/filamat-android-release.aar ../out/filamat-android-release.aar
 
             echo "Installing out/filament-android-release.aar..."
             cp filament-android/build/outputs/aar/filament-android-release.aar ../out/
 
             echo "Installing out/gltfio-android-release.aar..."
-            cp gltfio-android/build/outputs/aar/gltfio-android-full-release.aar ../out/gltfio-android-release.aar
+            cp gltfio-android/build/outputs/aar/gltfio-android-release.aar ../out/gltfio-android-release.aar
 
             echo "Installing out/filament-utils-android-release.aar..."
             cp filament-utils-android/build/outputs/aar/filament-utils-android-release.aar ../out/filament-utils-android-release.aar
@@ -569,7 +572,7 @@ function build_android {
         fi
     fi
 
-    cd ..
+    popd > /dev/null
 }
 
 function build_ios_target {
@@ -580,7 +583,7 @@ function build_ios_target {
     echo "Building iOS ${lc_target} (${arch}) for ${platform}..."
     mkdir -p "out/cmake-ios-${lc_target}-${arch}"
 
-    cd "out/cmake-ios-${lc_target}-${arch}"
+    pushd "out/cmake-ios-${lc_target}-${arch}" > /dev/null
 
     if [[ ! -d "CMakeFiles" ]] || [[ "${ISSUE_CMAKE_ALWAYS}" == "true" ]]; then
         cmake \
@@ -595,6 +598,8 @@ function build_ios_target {
             ${MATDBG_OPTION} \
             ${MATOPT_OPTION} \
             ../..
+        ln -sf "out/cmake-ios-${lc_target}-${arch}/compile_commands.json" \
+           ../../compile_commands.json
     fi
 
     ${BUILD_COMMAND}
@@ -604,7 +609,7 @@ function build_ios_target {
         ${BUILD_COMMAND} ${INSTALL_COMMAND}
     fi
 
-    cd ../..
+    popd > /dev/null
 }
 
 function archive_ios {
@@ -613,9 +618,9 @@ function archive_ios {
     if [[ -d "out/ios-${lc_target}/filament" ]]; then
         if [[ "${ISSUE_ARCHIVES}" == "true" ]]; then
             echo "Generating out/filament-${lc_target}-ios.tgz..."
-            cd "out/ios-${lc_target}"
+            pushd "out/ios-${lc_target}" > /dev/null
             tar -czvf "../filament-${lc_target}-ios.tgz" filament
-            cd ../..
+            popd > /dev/null
         fi
     fi
 }
@@ -674,14 +679,14 @@ function build_web_docs {
 
     mkdir -p out/web-docs
     cp -f docs/web-docs-package.json out/web-docs/package.json
-    cd out/web-docs
+    pushd out/web-docs > /dev/null
 
     npm install > /dev/null
 
     # Generate documents
     npx markdeep-rasterizer ../../docs/Filament.md.html ../../docs/Materials.md.html  ../../docs/
 
-    cd ../..
+    popd > /dev/null
 }
 
 function validate_build_command {
@@ -754,6 +759,19 @@ function run_tests {
     fi
 }
 
+function check_debug_release_build {
+    if [[ "${ISSUE_DEBUG_BUILD}" == "true" || \
+          "${ISSUE_RELEASE_BUILD}" == "true" || \
+          "${ISSUE_CLEAN}" == "true" || \
+          "${ISSUE_WEB_DOCS}" == "true" ]]; then
+        "$@";
+    else
+        echo "You must declare a debug or release target for $@ builds."
+        echo ""
+        exit 1
+    fi
+}
+
 # Beginning of the script
 
 pushd "$(dirname "$0")" > /dev/null
@@ -762,7 +780,7 @@ while getopts ":hacCfgijmp:q:uvslwtedk:b" opt; do
     case ${opt} in
         h)
             print_help
-            exit 1
+            exit 0
             ;;
         a)
             ISSUE_ARCHIVES=true
@@ -798,7 +816,7 @@ while getopts ":hacCfgijmp:q:uvslwtedk:b" opt; do
             platforms=$(echo "${OPTARG}" | tr ',' '\n')
             for platform in ${platforms}
             do
-                case ${platform} in
+                case $(echo "${platform}" | tr '[:upper:]' '[:lower:]') in
                     desktop)
                         ISSUE_DESKTOP_BUILD=true
                     ;;
@@ -817,6 +835,12 @@ while getopts ":hacCfgijmp:q:uvslwtedk:b" opt; do
                         ISSUE_DESKTOP_BUILD=true
                         ISSUE_WEBGL_BUILD=false
                     ;;
+                    *)
+                        echo "Unknown platform ${platform}"
+                        echo "Platform must be one of [desktop|android|ios|webgl|all]"
+                        echo ""
+                        exit 1
+                    ;;    
                 esac
             done
             ;;
@@ -829,7 +853,7 @@ while getopts ":hacCfgijmp:q:uvslwtedk:b" opt; do
             abis=$(echo "${OPTARG}" | tr ',' '\n')
             for abi in ${abis}
             do
-                case ${abi} in
+                case $(echo "${abi}" | tr '[:upper:]' '[:lower:]') in
                     armeabi-v7a)
                         ABI_ARMEABI_V7A=true
                     ;;
@@ -847,6 +871,12 @@ while getopts ":hacCfgijmp:q:uvslwtedk:b" opt; do
                         ABI_ARM64_V8A=true
                         ABI_X86=true
                         ABI_X86_64=true
+                    ;;
+                    *)
+                        echo "Unknown abi ${abi}"
+                        echo "ABI must be one of [armeabi-v7a|arm64-v8a|x86|x86_64|all]"
+                        echo ""
+                        exit 1
                     ;;
                 esac
             done
@@ -911,9 +941,9 @@ fi
 shift $((OPTIND - 1))
 
 for arg; do
-    if [[ "${arg}" == "release" ]]; then
+    if [[ $(echo "${arg}" | tr '[:upper:]' '[:lower:]') == "release" ]]; then
         ISSUE_RELEASE_BUILD=true
-    elif [[ "${arg}" == "debug" ]]; then
+    elif [[ $(echo "${arg}" | tr '[:upper:]' '[:lower:]') == "debug" ]]; then
         ISSUE_DEBUG_BUILD=true
     else
         BUILD_CUSTOM_TARGETS="${BUILD_CUSTOM_TARGETS} ${arg}"
@@ -931,19 +961,19 @@ if [[ "${ISSUE_CLEAN_AGGRESSIVE}" == "true" ]]; then
 fi
 
 if [[ "${ISSUE_DESKTOP_BUILD}" == "true" ]]; then
-    build_desktop
+    check_debug_release_build build_desktop
 fi
 
 if [[ "${ISSUE_ANDROID_BUILD}" == "true" ]]; then
-    build_android
+    check_debug_release_build build_android
 fi
 
 if [[ "${ISSUE_IOS_BUILD}" == "true" ]]; then
-    build_ios
+    check_debug_release_build build_ios
 fi
 
 if [[ "${ISSUE_WEBGL_BUILD}" == "true" ]]; then
-    build_webgl
+    check_debug_release_build build_webgl
 fi
 
 if [[ "${ISSUE_WEB_DOCS}" == "true" ]]; then

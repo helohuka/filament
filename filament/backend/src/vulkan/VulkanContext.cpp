@@ -64,21 +64,12 @@ VkImageView VulkanAttachment::getImageView(VkImageAspectFlags aspect) {
 
 VkImageSubresourceRange VulkanAttachment::getSubresourceRange(VkImageAspectFlags aspect) const {
     assert_invariant(texture);
-    uint32_t levelCount = 1;
-    uint32_t layerCount = 1;
-    // For depth attachments, we consider all the subresource range since layout transitions of
-    // depth and stencil attachments should always be carried out for all subresources.
-    if (aspect & VK_IMAGE_ASPECT_DEPTH_BIT) {
-        auto range = texture->getPrimaryRange();
-        levelCount = range.levelCount;
-        layerCount = range.layerCount;
-    }
     return {
             .aspectMask = aspect,
             .baseMipLevel = uint32_t(level),
-            .levelCount = levelCount,
+            .levelCount = 1,
             .baseArrayLayer = uint32_t(layer),
-            .layerCount = layerCount,
+            .layerCount = 1,
     };
 }
 
@@ -117,8 +108,9 @@ void VulkanTimestamps::beginQuery(VulkanCommandBuffer const* commands,
         VulkanTimerQuery* query) {
     uint32_t const index = query->getStartingQueryIndex();
 
-    vkCmdResetQueryPool(commands->cmdbuffer, mPool, index, 2);
-    vkCmdWriteTimestamp(commands->cmdbuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, mPool, index);
+    auto const cmdbuffer = commands->buffer();
+    vkCmdResetQueryPool(cmdbuffer, mPool, index, 2);
+    vkCmdWriteTimestamp(cmdbuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, mPool, index);
 
     // We stash this because getResult might come before the query is actually processed.
     query->setFence(commands->fence);
@@ -127,7 +119,7 @@ void VulkanTimestamps::beginQuery(VulkanCommandBuffer const* commands,
 void VulkanTimestamps::endQuery(VulkanCommandBuffer const* commands,
         VulkanTimerQuery const* query) {
     uint32_t const index = query->getStoppingQueryIndex();
-    vkCmdWriteTimestamp(commands->cmdbuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, mPool, index);
+    vkCmdWriteTimestamp(commands->buffer(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, mPool, index);
 }
 
 VulkanTimestamps::QueryResult VulkanTimestamps::getResult(VulkanTimerQuery const* query) {

@@ -120,6 +120,10 @@ ReflectionMode Material::getReflectionMode() const noexcept {
     return downcast(this)->getReflectionMode();
 }
 
+FeatureLevel Material::getFeatureLevel() const noexcept {
+    return downcast(this)->getFeatureLevel();
+}
+
 bool Material::hasParameter(const char* name) const noexcept {
     return downcast(this)->hasParameter(name);
 }
@@ -139,6 +143,10 @@ MaterialInstance const* Material::getDefaultInstance() const noexcept {
 void Material::compile(CompilerPriorityQueue priority, UserVariantFilterMask variantFilter,
         backend::CallbackHandler* handler, utils::Invocable<void(Material*)>&& callback) noexcept {
     downcast(this)->compile(priority, variantFilter, handler, std::move(callback));
+}
+
+UserVariantFilterMask Material::getSupportedVariants() const noexcept {
+    return downcast(this)->getSupportedVariants();
 }
 
 

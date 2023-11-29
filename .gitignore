@@ -16,6 +16,8 @@ settings.json
 test*.png
 test*.json
 results
+/compile_commands.json
+/.cache
 /apps/android/build
 /apps/out
 /apps/windows/build

@@ -1,9 +1,10 @@
 package com.yaha.gamedriver;
 
-import android.app.NativeActivity;
+
+import org.libsdl.app.SDLActivity;
 
 
-public class MainActivity extends NativeActivity {
+public class MainActivity extends SDLActivity {
 
 
 }

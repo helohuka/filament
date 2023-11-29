@@ -26,6 +26,7 @@
 
 #include <utils/compiler.h>
 #include <utils/EntityInstance.h>
+#include <utils/FixedCapacityVector.h>
 
 #include <math/mathfwd.h>
 
@@ -100,6 +101,29 @@ public:
      * @return Non-zero handle if the entity has a renderable component, 0 otherwise.
      */
     Instance getInstance(utils::Entity e) const noexcept;
+
+    /**
+     * @return the number of Components
+     */
+    size_t getComponentCount() const noexcept;
+
+    /**
+     * @return true if the this manager has no components
+     */
+    bool empty() const noexcept;
+
+    /**
+     * Retrieve the `Entity` of the component from its `Instance`.
+     * @param i Instance of the component obtained from getInstance()
+     * @return
+     */
+    utils::Entity getEntity(Instance i) const noexcept;
+
+    /**
+     * Retrieve the Entities of all the components of this manager.
+     * @return A list, in no particular order, of all the entities managed by this manager.
+     */
+    utils::Entity const* getEntities() const noexcept;
 
     /**
      * The transformation associated with a skinning joint.
@@ -349,6 +373,58 @@ public:
         Builder& skinning(size_t boneCount, Bone const* bones) noexcept; //!< \overload
         Builder& skinning(size_t boneCount) noexcept; //!< \overload
 
+        /**
+         * Define bone indices and weights "pairs" for vertex skinning as a float2.
+         * The unsigned int(pair.x) defines index of the bone and pair.y is the bone weight.
+         * The pairs substitute \c BONE_INDICES and the \c BONE_WEIGHTS defined in the VertexBuffer.
+         * Both ways of indices and weights definition must not be combined in one primitive.
+         * Number of pairs per vertex bonesPerVertex is not limited to 4 bones.
+         * Vertex buffer used for \c primitiveIndex must be set for advance skinning.
+         * All bone weights of one vertex should sum to one. Otherwise they will be normalized.
+         * Data must be rectangular and number of bone pairs must be same for all vertices of this
+         * primitive.
+         * The data is arranged sequentially, all bone pairs for the first vertex, then for the
+         * second vertex, and so on.
+         *
+         * @param primitiveIndex zero-based index of the primitive, must be less than the primitive
+         *                       count passed to Builder constructor
+         * @param indicesAndWeights pairs of bone index and bone weight for all vertices
+         *                          sequentially
+         * @param count number of all pairs, must be a multiple of vertexCount of the primitive
+         *                          count = vertexCount * bonesPerVertex
+         * @param bonesPerVertex number of bone pairs, same for all vertices of the primitive
+         *
+         * @return Builder reference for chaining calls.
+         *
+         * @see VertexBuffer:Builder:advancedSkinning
+         */
+        Builder& boneIndicesAndWeights(size_t primitiveIndex,
+                math::float2 const* indicesAndWeights, size_t count, size_t bonesPerVertex) noexcept;
+
+        /**
+         * Define bone indices and weights "pairs" for vertex skinning as a float2.
+         * The unsigned int(pair.x) defines index of the bone and pair.y is the bone weight.
+         * The pairs substitute \c BONE_INDICES and the \c BONE_WEIGHTS defined in the VertexBuffer.
+         * Both ways of indices and weights definition must not be combined in one primitive.
+         * Number of pairs is not limited to 4 bones per vertex.
+         * Vertex buffer used for \c primitiveIndex must be set for advance skinning.
+         * All bone weights of one vertex should sum to one. Otherwise they will be normalized.
+         * Data doesn't have to be rectangular and number of pairs per vertices of primitive can be
+         * variable.
+         * The vector of the vertices contains the vectors of the pairs
+         *
+         * @param primitiveIndex zero-based index of the primitive, must be less than the primitive
+         *                       count passed to Builder constructor
+         * @param indicesAndWeightsVectors pairs of bone index and bone weight for all vertices of
+         *                                 the primitive sequentially
+         *
+         * @return Builder reference for chaining calls.
+         *
+         * @see VertexBuffer:Builder:advancedSkinning
+         */
+        Builder& boneIndicesAndWeights(size_t primitiveIndex,
+                utils::FixedCapacityVector<
+                    utils::FixedCapacityVector<math::float2>> indicesAndWeightsVector) noexcept;
         /**
          * Controls if the renderable has vertex morphing targets, zero by default. This is
          * required to enable GPU morphing.
@@ -776,6 +852,10 @@ public:
             typename = typename is_supported_index_type<INDEX>::type>
     static Box computeAABB(VECTOR const* vertices, INDEX const* indices, size_t count,
             size_t stride = sizeof(VECTOR)) noexcept;
+
+protected:
+    // prevent heap allocation
+    ~RenderableManager() = default;
 };
 
 RenderableManager::Builder& RenderableManager::Builder::morphing(uint8_t level, size_t primitiveIndex,

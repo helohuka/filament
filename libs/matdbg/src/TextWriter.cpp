@@ -112,6 +112,7 @@ static bool printMaterial(ostream& text, const ChunkContainer& container) {
     text << "Shading:" << endl;
     printChunk<Shading, uint8_t>(text, container, MaterialShading, "Model: ");
     printChunk<MaterialDomain, uint8_t>(text, container, ChunkType::MaterialDomain, "Material domain: ");
+    printChunk<UserVariantFilterMask, uint32_t>(text, container, ChunkType::MaterialVariantFilterMask, "Material Variant Filter: ");
     printChunk<VertexDomain, uint8_t>(text, container, MaterialVertexDomain, "Vertex domain: ");
     printChunk<Interpolation, uint8_t>(text, container, MaterialInterpolation, "Interpolation: ");
     printChunk<bool, bool>(text, container, MaterialShadowMultiplier, "Shadow multiply: ");
@@ -401,35 +402,29 @@ static void printShaderInfo(ostream& text, const vector<ShaderInfo>& info,
     text << endl;
 }
 
-static bool printGlslInfo(ostream& text, const ChunkContainer& container) {
+static bool printShaderInfo(ostream& text, const ChunkContainer& container, ChunkType chunkType) {
     vector<ShaderInfo> info;
-    info.resize(getShaderCount(container, ChunkType::MaterialGlsl));
-    if (!getGlShaderInfo(container, info.data())) {
+    info.resize(getShaderCount(container, chunkType));
+    if (!getShaderInfo(container, info.data(), chunkType)) {
         return false;
     }
-    text << "GLSL shaders:" << endl;
-    printShaderInfo(text, info, container);
-    return true;
-}
-
-static bool printVkInfo(ostream& text, const ChunkContainer& container) {
-    vector<ShaderInfo> info;
-    info.resize(getShaderCount(container, ChunkType::MaterialSpirv));
-    if (!getVkShaderInfo(container, info.data())) {
-        return false;
+    switch (chunkType) {
+        case ChunkType::MaterialGlsl:
+            text << "GLSL shaders:" << endl;
+            break;
+        case ChunkType::MaterialEssl1:
+            text << "ESSL1 shaders:" << endl;
+            break;
+        case ChunkType::MaterialSpirv:
+            text << "Vulkan shaders:" << endl;
+            break;
+        case ChunkType::MaterialMetal:
+            text << "Metal shaders:" << endl;
+            break;
+        default:
+            assert(false && "Invalid shader ChunkType");
+            break;
     }
-    text << "Vulkan shaders:" << endl;
-    printShaderInfo(text, info, container);
-    return true;
-}
-
-static bool printMetalInfo(ostream& text, const ChunkContainer& container) {
-    vector<ShaderInfo> info;
-    info.resize(getShaderCount(container, ChunkType::MaterialMetal));
-    if (!getMetalShaderInfo(container, info.data())) {
-        return false;
-    }
-    text << "Metal shaders:" << endl;
     printShaderInfo(text, info, container);
     return true;
 }
@@ -448,13 +443,16 @@ bool TextWriter::writeMaterialInfo(const filaflat::ChunkContainer& container) {
     if (!printSubpassesInfo(text, container)) {
         return false;
     }
-    if (!printGlslInfo(text, container)) {
+    if (!printShaderInfo(text, container, ChunkType::MaterialGlsl)) {
         return false;
     }
-    if (!printVkInfo(text, container)) {
+    if (!printShaderInfo(text, container, ChunkType::MaterialEssl1)) {
         return false;
     }
-    if (!printMetalInfo(text, container)) {
+    if (!printShaderInfo(text, container, ChunkType::MaterialSpirv)) {
+        return false;
+    }
+    if (!printShaderInfo(text, container, ChunkType::MaterialMetal)) {
         return false;
     }
 

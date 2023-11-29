@@ -30,10 +30,9 @@
 #include <utils/CString.h>
 #include <utils/FixedCapacityVector.h>
 #include <utils/Panic.h>
-#include <utils/Systrace.h>
 
 #ifndef NDEBUG
-#include <set>
+#include <set>  // For VulkanDriver::debugCommandBegin
 #endif
 
 using namespace bluevk;
@@ -94,20 +93,24 @@ VulkanTexture* createEmptyTexture(VkDevice device, VkPhysicalDevice physicalDevi
     VulkanTexture* emptyTexture = new VulkanTexture(device, physicalDevice, context, allocator,
             commands, SamplerType::SAMPLER_2D, 1, TextureFormat::RGBA8, 1, 1, 1, 1,
             TextureUsage::DEFAULT | TextureUsage::COLOR_ATTACHMENT | TextureUsage::SUBPASS_INPUT,
-            stagePool);
+            stagePool, true /* heap allocated */);
     uint32_t black = 0;
     PixelBufferDescriptor pbd(&black, 4, PixelDataFormat::RGBA, PixelDataType::UBYTE);
     emptyTexture->updateImage(pbd, 1, 1, 1, 0, 0, 0, 0);
     return emptyTexture;
 }
 
-#if VK_ENABLE_VALIDATION
+#if FVK_ENABLED(FVK_DEBUG_VALIDATION)
 VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallback(VkDebugReportFlagsEXT flags,
         VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location,
         int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData) {
     if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT) {
         utils::slog.e << "VULKAN ERROR: (" << pLayerPrefix << ") " << pMessage << utils::io::endl;
     } else {
+        // TODO: emit best practices warnings about aggressive pipeline barriers.
+        if (strstr(pMessage, "ALL_GRAPHICS_BIT") || strstr(pMessage, "ALL_COMMANDS_BIT")) {
+            return VK_FALSE;
+        }
         utils::slog.w << "VULKAN WARNING: (" << pLayerPrefix << ") " << pMessage << utils::io::endl;
     }
     utils::slog.e << utils::io::endl;
@@ -122,8 +125,8 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugUtilsCallback(VkDebugUtilsMessageSeverityFla
                       << utils::io::endl;
     } else {
         // TODO: emit best practices warnings about aggressive pipeline barriers.
-        if (strstr(cbdata->pMessage, "ALL_GRAPHICS_BIT") ||
-                strstr(cbdata->pMessage, "ALL_COMMANDS_BIT")) {
+        if (strstr(cbdata->pMessage, "ALL_GRAPHICS_BIT")
+                || strstr(cbdata->pMessage, "ALL_COMMANDS_BIT")) {
             return VK_FALSE;
         }
         utils::slog.w << "VULKAN WARNING: (" << cbdata->pMessageIdName << ") " << cbdata->pMessage
@@ -132,7 +135,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugUtilsCallback(VkDebugUtilsMessageSeverityFla
     utils::slog.e << utils::io::endl;
     return VK_FALSE;
 }
-#endif// VK_ENABLE_VALIDATION
+#endif // FVK_EANBLED(FVK_DEBUG_VALIDATION)
 
 } // anonymous namespace
 
@@ -148,11 +151,15 @@ VulkanDriver::VulkanDriver(VulkanPlatform* platform, VulkanContext const& contex
       mAllocator(createAllocator(mPlatform->getInstance(), mPlatform->getPhysicalDevice(),
               mPlatform->getDevice())),
       mContext(context),
-      mHandleAllocator(driverConfig.handleArenaSize),
+      mResourceAllocator(driverConfig.handleArenaSize),
+      mResourceManager(&mResourceAllocator),
+      mThreadSafeResourceManager(&mResourceAllocator),
+      mPipelineCache(&mResourceAllocator),
       mBlitter(mStagePool, mPipelineCache, mFramebufferCache, mSamplerCache),
-      mReadPixels(mPlatform->getDevice()) {
+      mReadPixels(mPlatform->getDevice()),
+      mIsSRGBSwapChainSupported(mPlatform->getCustomization().isSRGBSwapChainSupported) {
 
-#if VK_ENABLE_VALIDATION
+#if FVK_ENABLED(FVK_DEBUG_VALIDATION)
     UTILS_UNUSED const PFN_vkCreateDebugReportCallbackEXT createDebugReportCallback
             = vkCreateDebugReportCallbackEXT;
     VkResult result;
@@ -183,7 +190,8 @@ VulkanDriver::VulkanDriver(VulkanPlatform* platform, VulkanContext const& contex
 #endif
     mTimestamps = std::make_unique<VulkanTimestamps>(mPlatform->getDevice());
     mCommands = std::make_unique<VulkanCommands>(mPlatform->getDevice(),
-            mPlatform->getGraphicsQueue(), mPlatform->getGraphicsQueueFamilyIndex(), &mContext);
+            mPlatform->getGraphicsQueue(), mPlatform->getGraphicsQueueFamilyIndex(), &mContext,
+            &mResourceAllocator);
     mCommands->setObserver(&mPipelineCache);
     mPipelineCache.setDevice(mPlatform->getDevice(), mAllocator);
 
@@ -206,9 +214,9 @@ UTILS_NOINLINE
 Driver* VulkanDriver::create(VulkanPlatform* platform, VulkanContext const& context,
          Platform::DriverConfig const& driverConfig) noexcept {
     assert_invariant(platform);
-    size_t defaultSize = FILAMENT_VULKAN_HANDLE_ARENA_SIZE_IN_MB * 1024U * 1024U;
-    Platform::DriverConfig validConfig{
-            .handleArenaSize = std::max(driverConfig.handleArenaSize, defaultSize)};
+    size_t defaultSize = FVK_HANDLE_ARENA_SIZE_IN_MB * 1024U * 1024U;
+    Platform::DriverConfig validConfig {driverConfig};
+    validConfig.handleArenaSize = std::max(driverConfig.handleArenaSize, defaultSize);
     return new VulkanDriver(platform, context, validConfig);
 }
 
@@ -230,9 +238,8 @@ void VulkanDriver::terminate() {
     mBlitter.terminate();
     mReadPixels.terminate();
 
-    // Allow the stage pool and disposer to clean up.
+    // Allow the stage pool to clean up.
     mStagePool.gc();
-    mDisposer.terminate();
 
     mStagePool.terminate();
     mPipelineCache.terminate();
@@ -259,14 +266,15 @@ void VulkanDriver::tick(int) {
 // rather than the wall clock, because we must wait 3 frames after a DriverAPI-level resource has
 // been destroyed for safe destruction, due to outstanding command buffers and triple buffering.
 void VulkanDriver::collectGarbage() {
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_START("gc");
     // Command buffers need to be submitted and completed before other resources can be gc'd. And
     // its gc() function carrys out the *wait*.
     mCommands->gc();
     mStagePool.gc();
     mFramebufferCache.gc();
-    mDisposer.gc();
+    FVK_SYSTRACE_END();
 }
-
 void VulkanDriver::beginFrame(int64_t monotonic_clock_ns, uint32_t frameId) {
     // Do nothing.
 }
@@ -276,110 +284,118 @@ void VulkanDriver::setFrameScheduledCallback(Handle<HwSwapChain> sch,
 }
 
 void VulkanDriver::setFrameCompletedCallback(Handle<HwSwapChain> sch,
-        FrameCompletedCallback callback, void* user) {
+        CallbackHandler* handler, CallbackHandler::Callback callback, void* user) {
 }
 
 void VulkanDriver::setPresentationTime(int64_t monotonic_clock_ns) {
 }
 
 void VulkanDriver::endFrame(uint32_t frameId) {
-    if (mCommands->flush()) {
-        collectGarbage();
-    }
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_START("endframe");
+    mCommands->flush();
+    collectGarbage();
+    FVK_SYSTRACE_END();
 }
 
 void VulkanDriver::flush(int) {
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_START("flush");
     mCommands->flush();
+    FVK_SYSTRACE_END();
 }
 
 void VulkanDriver::finish(int dummy) {
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_START("finish");
+
     mCommands->flush();
     mCommands->wait();
 
     mReadPixels.runUntilComplete();
+    FVK_SYSTRACE_END();
 }
 
-void VulkanDriver::createSamplerGroupR(Handle<HwSamplerGroup> sbh, uint32_t count) {
-    mHandleAllocator.construct<VulkanSamplerGroup>(sbh, count);
+void VulkanDriver::createSamplerGroupR(Handle<HwSamplerGroup> sbh, uint32_t count,
+        utils::FixedSizeString<32> debugName) {
+    auto sg = mResourceAllocator.construct<VulkanSamplerGroup>(sbh, count);
+    mResourceManager.acquire(sg);
 }
 
 void VulkanDriver::createRenderPrimitiveR(Handle<HwRenderPrimitive> rph,
         Handle<HwVertexBuffer> vbh, Handle<HwIndexBuffer> ibh,
         PrimitiveType pt, uint32_t offset,
         uint32_t minIndex, uint32_t maxIndex, uint32_t count) {
-    mHandleAllocator.construct<VulkanRenderPrimitive>(rph);
+    auto rp = mResourceAllocator.construct<VulkanRenderPrimitive>(rph, &mResourceAllocator);
+    mResourceManager.acquire(rp);
     VulkanDriver::setRenderPrimitiveBuffer(rph, vbh, ibh);
     VulkanDriver::setRenderPrimitiveRange(rph, pt, offset, minIndex, maxIndex, count);
 }
 
 void VulkanDriver::destroyRenderPrimitive(Handle<HwRenderPrimitive> rph) {
-    if (rph) {
-        mHandleAllocator.destruct<VulkanRenderPrimitive>(rph);
+    if (!rph) {
+        return;
     }
+    auto rp = mResourceAllocator.handle_cast<VulkanRenderPrimitive*>(rph);
+    mResourceManager.release(rp);
 }
 
 void VulkanDriver::createVertexBufferR(Handle<HwVertexBuffer> vbh, uint8_t bufferCount,
         uint8_t attributeCount, uint32_t elementCount, AttributeArray attributes) {
-    auto vertexBuffer = mHandleAllocator.construct<VulkanVertexBuffer>(vbh, mContext, mStagePool,
-            bufferCount, attributeCount, elementCount, attributes);
-    mDisposer.createDisposable(vertexBuffer, [this, vbh]() {
-        mHandleAllocator.destruct<VulkanVertexBuffer>(vbh);
-    });
+    auto vertexBuffer = mResourceAllocator.construct<VulkanVertexBuffer>(vbh, mContext, mStagePool,
+            &mResourceAllocator, bufferCount, attributeCount, elementCount, attributes);
+    mResourceManager.acquire(vertexBuffer);
 }
 
 void VulkanDriver::destroyVertexBuffer(Handle<HwVertexBuffer> vbh) {
-    if (vbh) {
-        auto vertexBuffer = mHandleAllocator.handle_cast<VulkanVertexBuffer*>(vbh);
-        mDisposer.removeReference(vertexBuffer);
+    if (!vbh) {
+        return;
     }
+    auto vertexBuffer = mResourceAllocator.handle_cast<VulkanVertexBuffer*>(vbh);
+    mResourceManager.release(vertexBuffer);
 }
 
 void VulkanDriver::createIndexBufferR(Handle<HwIndexBuffer> ibh, ElementType elementType,
         uint32_t indexCount, BufferUsage usage) {
     auto elementSize = (uint8_t) getElementTypeSize(elementType);
-    auto indexBuffer = mHandleAllocator.construct<VulkanIndexBuffer>(ibh, mAllocator,
-            mCommands.get(), mStagePool, elementSize, indexCount);
-    mDisposer.createDisposable(indexBuffer,
-            [this, ibh]() { mHandleAllocator.destruct<VulkanIndexBuffer>(ibh); });
+    auto indexBuffer = mResourceAllocator.construct<VulkanIndexBuffer>(ibh, mAllocator, mStagePool,
+            elementSize, indexCount);
+    mResourceManager.acquire(indexBuffer);
 }
 
 void VulkanDriver::destroyIndexBuffer(Handle<HwIndexBuffer> ibh) {
-    if (ibh) {
-        auto indexBuffer = mHandleAllocator.handle_cast<VulkanIndexBuffer*>(ibh);
-        mDisposer.removeReference(indexBuffer);
+    if (!ibh) {
+        return;
     }
+    auto indexBuffer = mResourceAllocator.handle_cast<VulkanIndexBuffer*>(ibh);
+    mResourceManager.release(indexBuffer);
 }
 
 void VulkanDriver::createBufferObjectR(Handle<HwBufferObject> boh, uint32_t byteCount,
         BufferObjectBinding bindingType, BufferUsage usage) {
-    auto bufferObject = mHandleAllocator.construct<VulkanBufferObject>(boh, mAllocator,
-            mCommands.get(), mStagePool, byteCount, bindingType, usage);
-    mDisposer.createDisposable(bufferObject,
-            [this, boh]() { mHandleAllocator.destruct<VulkanBufferObject>(boh); });
+    auto bufferObject = mResourceAllocator.construct<VulkanBufferObject>(boh, mAllocator,
+            mStagePool, byteCount, bindingType);
+    mResourceManager.acquire(bufferObject);
 }
 
 void VulkanDriver::destroyBufferObject(Handle<HwBufferObject> boh) {
-    if (boh) {
-       auto bufferObject = mHandleAllocator.handle_cast<VulkanBufferObject*>(boh);
-       if (bufferObject->bindingType == BufferObjectBinding::UNIFORM) {
-           mPipelineCache.unbindUniformBuffer(bufferObject->buffer.getGpuBuffer());
-           // Decrement the refcount of the uniform buffer, but schedule it for destruction a few
-           // frames in the future. To be safe, we need to assume that the current command buffer is
-           // still using it somewhere.
-           mDisposer.acquire(bufferObject);
-       }
-       mDisposer.removeReference(bufferObject);
+    if (!boh) {
+        return;
     }
+    auto bufferObject = mResourceAllocator.handle_cast<VulkanBufferObject*>(boh);
+    if (bufferObject->bindingType == BufferObjectBinding::UNIFORM) {
+        mPipelineCache.unbindUniformBuffer(bufferObject->buffer.getGpuBuffer());
+    }
+    mResourceManager.release(bufferObject);
 }
 
 void VulkanDriver::createTextureR(Handle<HwTexture> th, SamplerType target, uint8_t levels,
         TextureFormat format, uint8_t samples, uint32_t w, uint32_t h, uint32_t depth,
         TextureUsage usage) {
-    auto vktexture = mHandleAllocator.construct<VulkanTexture>(th, mPlatform->getDevice(),
+    auto vktexture = mResourceAllocator.construct<VulkanTexture>(th, mPlatform->getDevice(),
             mPlatform->getPhysicalDevice(), mContext, mAllocator, mCommands.get(), target, levels,
             format, samples, w, h, depth, usage, mStagePool);
-    mDisposer.createDisposable(vktexture,
-            [this, th]() { mHandleAllocator.destruct<VulkanTexture>(th); });
+    mResourceManager.acquire(vktexture);
 }
 
 void VulkanDriver::createTextureSwizzledR(Handle<HwTexture> th, SamplerType target, uint8_t levels,
@@ -388,12 +404,10 @@ void VulkanDriver::createTextureSwizzledR(Handle<HwTexture> th, SamplerType targ
         TextureSwizzle r, TextureSwizzle g, TextureSwizzle b, TextureSwizzle a) {
     TextureSwizzle swizzleArray[] = {r, g, b, a};
     const VkComponentMapping swizzleMap = getSwizzleMap(swizzleArray);
-    auto vktexture = mHandleAllocator.construct<VulkanTexture>(th, mPlatform->getDevice(),
+    auto vktexture = mResourceAllocator.construct<VulkanTexture>(th, mPlatform->getDevice(),
             mPlatform->getPhysicalDevice(), mContext, mAllocator, mCommands.get(), target, levels,
-            format, samples, w, h, depth, usage, mStagePool, swizzleMap);
-    mDisposer.createDisposable(vktexture, [this, th]() {
-        mHandleAllocator.destruct<VulkanTexture>(th);
-    });
+            format, samples, w, h, depth, usage, mStagePool, false /*heap allocated */, swizzleMap);
+    mResourceManager.acquire(vktexture);
 }
 
 void VulkanDriver::importTextureR(Handle<HwTexture> th, intptr_t id,
@@ -404,33 +418,31 @@ void VulkanDriver::importTextureR(Handle<HwTexture> th, intptr_t id,
 }
 
 void VulkanDriver::destroyTexture(Handle<HwTexture> th) {
-    if (th) {
-        auto texture = mHandleAllocator.handle_cast<VulkanTexture*>(th);
-        mPipelineCache.unbindImageView(texture->getPrimaryImageView());
-        mDisposer.removeReference(texture);
+    if (!th) {
+        return;
     }
+    auto texture = mResourceAllocator.handle_cast<VulkanTexture*>(th);
+    mResourceManager.release(texture);
 }
 
 void VulkanDriver::createProgramR(Handle<HwProgram> ph, Program&& program) {
-    auto vkprogram = mHandleAllocator.construct<VulkanProgram>(ph, mPlatform->getDevice(), program);
-    mDisposer.createDisposable(vkprogram, [this, ph] () {
-        mHandleAllocator.destruct<VulkanProgram>(ph);
-    });
+    auto vkprogram = mResourceAllocator.construct<VulkanProgram>(ph, mPlatform->getDevice(), program);
+    mResourceManager.acquire(vkprogram);
 }
 
 void VulkanDriver::destroyProgram(Handle<HwProgram> ph) {
-    if (ph) {
-        mDisposer.removeReference(mHandleAllocator.handle_cast<VulkanProgram*>(ph));
+    if (!ph) {
+        return;
     }
+    auto vkprogram = mResourceAllocator.handle_cast<VulkanProgram*>(ph);
+    mResourceManager.release(vkprogram);
 }
 
 void VulkanDriver::createDefaultRenderTargetR(Handle<HwRenderTarget> rth, int) {
     assert_invariant(mDefaultRenderTarget == nullptr);
-    VulkanRenderTarget* renderTarget = mHandleAllocator.construct<VulkanRenderTarget>(rth);
+    VulkanRenderTarget* renderTarget = mResourceAllocator.construct<VulkanRenderTarget>(rth);
     mDefaultRenderTarget = renderTarget;
-    mDisposer.createDisposable(renderTarget, [this, rth] () {
-        mHandleAllocator.destruct<VulkanRenderTarget>(rth);
-    });
+    mResourceManager.acquire(renderTarget);
 }
 
 void VulkanDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
@@ -444,7 +456,7 @@ void VulkanDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
     for (int i = 0; i < MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT; i++) {
         if (color[i].handle) {
             colorTargets[i] = {
-                .texture = mHandleAllocator.handle_cast<VulkanTexture*>(color[i].handle),
+                .texture = mResourceAllocator.handle_cast<VulkanTexture*>(color[i].handle),
                 .level = color[i].level,
                 .layer = color[i].layer,
             };
@@ -458,7 +470,7 @@ void VulkanDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
     VulkanAttachment depthStencil[2] = {};
     if (depth.handle) {
         depthStencil[0] = {
-            .texture = mHandleAllocator.handle_cast<VulkanTexture*>(depth.handle),
+            .texture = mResourceAllocator.handle_cast<VulkanTexture*>(depth.handle),
             .level = depth.level,
             .layer = depth.layer,
         };
@@ -470,7 +482,7 @@ void VulkanDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
 
     if (stencil.handle) {
         depthStencil[1] = {
-            .texture = mHandleAllocator.handle_cast<VulkanTexture*>(stencil.handle),
+            .texture = mResourceAllocator.handle_cast<VulkanTexture*>(stencil.handle),
             .level = stencil.level,
             .layer = stencil.layer,
         };
@@ -486,26 +498,27 @@ void VulkanDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
     assert_invariant(tmin == tmax);
     assert_invariant(tmin.x >= width && tmin.y >= height);
 
-    auto renderTarget = mHandleAllocator.construct<VulkanRenderTarget>(rth, mPlatform->getDevice(),
+    auto renderTarget = mResourceAllocator.construct<VulkanRenderTarget>(rth, mPlatform->getDevice(),
             mPlatform->getPhysicalDevice(), mContext, mAllocator, mCommands.get(), width, height,
             samples, colorTargets, depthStencil, mStagePool);
-    mDisposer.createDisposable(renderTarget,
-            [this, rth]() { mHandleAllocator.destruct<VulkanRenderTarget>(rth); });
+    mResourceManager.acquire(renderTarget);
 }
 
 void VulkanDriver::destroyRenderTarget(Handle<HwRenderTarget> rth) {
-    if (rth) {
-        VulkanRenderTarget* rt = mHandleAllocator.handle_cast<VulkanRenderTarget*>(rth);
-        if (UTILS_UNLIKELY(rt == mDefaultRenderTarget)) {
-            mDefaultRenderTarget = nullptr;
-        }
-        mDisposer.removeReference(rt);
+    if (!rth) {
+        return;
     }
+
+    VulkanRenderTarget* rt = mResourceAllocator.handle_cast<VulkanRenderTarget*>(rth);
+    if (UTILS_UNLIKELY(rt == mDefaultRenderTarget)) {
+        mDefaultRenderTarget = nullptr;
+    }
+    mResourceManager.release(rt);
 }
 
 void VulkanDriver::createFenceR(Handle<HwFence> fh, int) {
     VulkanCommandBuffer const& commandBuffer = mCommands->get();
-    mHandleAllocator.construct<VulkanFence>(fh, commandBuffer.fence);
+    mResourceAllocator.construct<VulkanFence>(fh, commandBuffer.fence);
 }
 
 void VulkanDriver::createSwapChainR(Handle<HwSwapChain> sch, void* nativeWindow, uint64_t flags) {
@@ -514,21 +527,22 @@ void VulkanDriver::createSwapChainR(Handle<HwSwapChain> sch, void* nativeWindow,
                       << utils::io::endl;
         flags = flags | ~(backend::SWAP_CHAIN_CONFIG_SRGB_COLORSPACE);
     }
-    mHandleAllocator.construct<VulkanSwapChain>(sch, mPlatform, mContext, mAllocator,
-            mCommands.get(), mStagePool, nativeWindow, flags);
+    auto swapChain = mResourceAllocator.construct<VulkanSwapChain>(sch, mPlatform, mContext,
+            mAllocator, mCommands.get(), mStagePool, nativeWindow, flags);
+    mResourceManager.acquire(swapChain);
 }
 
 void VulkanDriver::createSwapChainHeadlessR(Handle<HwSwapChain> sch, uint32_t width,
         uint32_t height, uint64_t flags) {
-    if ((flags & backend::SWAP_CHAIN_CONFIG_SRGB_COLORSPACE) != 0 &&
-        !isSRGBSwapChainSupported()) {
+    if ((flags & backend::SWAP_CHAIN_CONFIG_SRGB_COLORSPACE) != 0 && !isSRGBSwapChainSupported()) {
         utils::slog.w << "sRGB swapchain requested, but Platform does not support it"
                       << utils::io::endl;
         flags = flags | ~(backend::SWAP_CHAIN_CONFIG_SRGB_COLORSPACE);
     }
     assert_invariant(width > 0 && height > 0 && "Vulkan requires non-zero swap chain dimensions.");
-    mHandleAllocator.construct<VulkanSwapChain>(sch, mPlatform, mContext, mAllocator,
-            mCommands.get(), mStagePool, nullptr, flags, VkExtent2D{width, height});
+    auto swapChain = mResourceAllocator.construct<VulkanSwapChain>(sch, mPlatform, mContext,
+            mAllocator, mCommands.get(), mStagePool, nullptr, flags, VkExtent2D{width, height});
+    mResourceManager.acquire(swapChain);
 }
 
 void VulkanDriver::createTimerQueryR(Handle<HwTimerQuery> tqh, int) {
@@ -536,106 +550,108 @@ void VulkanDriver::createTimerQueryR(Handle<HwTimerQuery> tqh, int) {
 }
 
 Handle<HwVertexBuffer> VulkanDriver::createVertexBufferS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanVertexBuffer>();
+    return mResourceAllocator.allocHandle<VulkanVertexBuffer>();
 }
 
 Handle<HwIndexBuffer> VulkanDriver::createIndexBufferS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanIndexBuffer>();
+    return mResourceAllocator.allocHandle<VulkanIndexBuffer>();
 }
 
 Handle<HwBufferObject> VulkanDriver::createBufferObjectS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanBufferObject>();
+    return mResourceAllocator.allocHandle<VulkanBufferObject>();
 }
 
 Handle<HwTexture> VulkanDriver::createTextureS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanTexture>();
+    return mResourceAllocator.allocHandle<VulkanTexture>();
 }
 
 Handle<HwTexture> VulkanDriver::createTextureSwizzledS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanTexture>();
+    return mResourceAllocator.allocHandle<VulkanTexture>();
 }
 
 Handle<HwTexture> VulkanDriver::importTextureS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanTexture>();
+    return mResourceAllocator.allocHandle<VulkanTexture>();
 }
 
 Handle<HwSamplerGroup> VulkanDriver::createSamplerGroupS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanSamplerGroup>();
+    return mResourceAllocator.allocHandle<VulkanSamplerGroup>();
 }
 
 Handle<HwRenderPrimitive> VulkanDriver::createRenderPrimitiveS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanRenderPrimitive>();
+    return mResourceAllocator.allocHandle<VulkanRenderPrimitive>();
 }
 
 Handle<HwProgram> VulkanDriver::createProgramS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanProgram>();
+    return mResourceAllocator.allocHandle<VulkanProgram>();
 }
 
 Handle<HwRenderTarget> VulkanDriver::createDefaultRenderTargetS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanRenderTarget>();
+    return mResourceAllocator.allocHandle<VulkanRenderTarget>();
 }
 
 Handle<HwRenderTarget> VulkanDriver::createRenderTargetS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanRenderTarget>();
+    return mResourceAllocator.allocHandle<VulkanRenderTarget>();
 }
 
 Handle<HwFence> VulkanDriver::createFenceS() noexcept {
-    return mHandleAllocator.initHandle<VulkanFence>();
+    return mResourceAllocator.initHandle<VulkanFence>();
 }
 
 Handle<HwSwapChain> VulkanDriver::createSwapChainS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanSwapChain>();
+    return mResourceAllocator.allocHandle<VulkanSwapChain>();
 }
 
 Handle<HwSwapChain> VulkanDriver::createSwapChainHeadlessS() noexcept {
-    return mHandleAllocator.allocHandle<VulkanSwapChain>();
+    return mResourceAllocator.allocHandle<VulkanSwapChain>();
 }
 
 Handle<HwTimerQuery> VulkanDriver::createTimerQueryS() noexcept {
     // The handle must be constructed here, as a synchronous call to getTimerQueryValue might happen
     // before createTimerQueryR is executed.
     Handle<HwTimerQuery> tqh
-            = mHandleAllocator.initHandle<VulkanTimerQuery>(mTimestamps->getNextQuery());
-    auto query = mHandleAllocator.handle_cast<VulkanTimerQuery*>(tqh);
-    mDisposer.createDisposable(query, [this, tqh] () {
-        mHandleAllocator.destruct<VulkanTimerQuery>(tqh);
-    });
+            = mResourceAllocator.initHandle<VulkanTimerQuery>(mTimestamps->getNextQuery());
+    auto query = mResourceAllocator.handle_cast<VulkanTimerQuery*>(tqh);
+    mThreadSafeResourceManager.acquire(query);
     return tqh;
 }
 
 void VulkanDriver::destroySamplerGroup(Handle<HwSamplerGroup> sbh) {
-    if (sbh) {
-        // Unlike most of the other "Hw" handles, the sampler buffer is an abstract concept and does
-        // not map to any Vulkan objects. To handle destruction, the only thing we need to do is
-        // ensure that the next draw call doesn't try to access a zombie sampler buffer. Therefore,
-        // simply replace all weak references with null.
-        auto* hwsb = mHandleAllocator.handle_cast<VulkanSamplerGroup*>(sbh);
-        for (auto& binding : mSamplerBindings) {
-            if (binding == hwsb) {
-                binding = nullptr;
-            }
-        }
-        mHandleAllocator.destruct<VulkanSamplerGroup>(sbh);
+    if (!sbh) {
+        return;
     }
+    // Unlike most of the other "Hw" handles, the sampler buffer is an abstract concept and does
+    // not map to any Vulkan objects. To handle destruction, the only thing we need to do is
+    // ensure that the next draw call doesn't try to access a zombie sampler buffer. Therefore,
+    // simply replace all weak references with null.
+    auto* hwsb = mResourceAllocator.handle_cast<VulkanSamplerGroup*>(sbh);
+    for (auto& binding : mSamplerBindings) {
+        if (binding == hwsb) {
+            binding = nullptr;
+        }
+    }
+    mResourceManager.release(hwsb);
 }
 
 void VulkanDriver::destroySwapChain(Handle<HwSwapChain> sch) {
-    if (sch) {
-        VulkanSwapChain& swapChain = *mHandleAllocator.handle_cast<VulkanSwapChain*>(sch);
-        if (mCurrentSwapChain == &swapChain) {
-            mCurrentSwapChain = nullptr;
-        }
-        mHandleAllocator.destruct<VulkanSwapChain>(sch);
+    if (!sch) {
+        return;
     }
+    VulkanSwapChain* swapChain = mResourceAllocator.handle_cast<VulkanSwapChain*>(sch);
+    if (mCurrentSwapChain == swapChain) {
+        mCurrentSwapChain = nullptr;
+    }
+    mResourceManager.release(swapChain);
 }
 
 void VulkanDriver::destroyStream(Handle<HwStream> sh) {
 }
 
 void VulkanDriver::destroyTimerQuery(Handle<HwTimerQuery> tqh) {
-    if (tqh) {
-        mDisposer.removeReference(mHandleAllocator.handle_cast<VulkanTimerQuery*>(tqh));
+    if (!tqh) {
+        return;
     }
+    auto vtq = mResourceAllocator.handle_cast<VulkanTimerQuery*>(tqh);
+    mThreadSafeResourceManager.release(vtq);
 }
 
 Handle<HwStream> VulkanDriver::createStreamNative(void* nativeStream) {
@@ -661,11 +677,11 @@ void VulkanDriver::updateStreams(CommandStream* driver) {
 }
 
 void VulkanDriver::destroyFence(Handle<HwFence> fh) {
-    mHandleAllocator.destruct<VulkanFence>(fh);
+    mResourceAllocator.destruct<VulkanFence>(fh);
 }
 
 FenceStatus VulkanDriver::getFenceStatus(Handle<HwFence> fh) {
-    auto& cmdfence = mHandleAllocator.handle_cast<VulkanFence*>(fh)->fence;
+    auto& cmdfence = mResourceAllocator.handle_cast<VulkanFence*>(fh)->fence;
     if (!cmdfence) {
         // If wait is called before a fence actually exists, we return timeout.  This matches the
         // current behavior in OpenGLDriver, but we should eventually reconsider a different error
@@ -676,26 +692,21 @@ FenceStatus VulkanDriver::getFenceStatus(Handle<HwFence> fh) {
     // Internally we use the VK_INCOMPLETE status to mean "not yet submitted".
     // When this fence gets submitted, its status changes to VK_NOT_READY.
     std::unique_lock<utils::Mutex> lock(cmdfence->mutex);
-    if (cmdfence->status.load() == VK_INCOMPLETE) {
-        // This will obviously timeout if Filament creates a fence and immediately waits on it
-        // without calling endFrame() or commit().
-        cmdfence->condition.wait(lock);
-    } else {
-        lock.unlock();
+    if (cmdfence->status.load() == VK_SUCCESS) {
+        return FenceStatus::CONDITION_SATISFIED;
     }
-    VkResult result =
-            vkWaitForFences(mPlatform->getDevice(), 1, &cmdfence->fence, VK_TRUE, 0);
-    return result == VK_SUCCESS ? FenceStatus::CONDITION_SATISFIED : FenceStatus::TIMEOUT_EXPIRED;
+
+    // Two other states are possible:
+    //  - VK_INCOMPLETE: the corresponding buffer has not yet been submitted.
+    //  - VK_NOT_READY: the buffer has been submitted but not yet signaled.
+    // In either case, we return TIMEOUT_EXPIRED to indicate the fence has not been signaled.
+    return FenceStatus::TIMEOUT_EXPIRED;
 }
 
 // We create all textures using VK_IMAGE_TILING_OPTIMAL, so our definition of "supported" is that
 // the GPU supports the given texture format with non-zero optimal tiling features.
 bool VulkanDriver::isTextureFormatSupported(TextureFormat format) {
     VkFormat vkformat = getVkFormat(format);
-    // We automatically use an alternative format when the client requests DEPTH24.
-    if (format == TextureFormat::DEPTH24) {
-        vkformat = mContext.getDepthFormat();
-    }
     if (vkformat == VK_FORMAT_UNDEFINED) {
         return false;
     }
@@ -723,10 +734,6 @@ bool VulkanDriver::isTextureFormatMipmappable(TextureFormat format) {
 
 bool VulkanDriver::isRenderTargetFormatSupported(TextureFormat format) {
     VkFormat vkformat = getVkFormat(format);
-    // We automatically use an alternative format when the client requests DEPTH24.
-    if (format == TextureFormat::DEPTH24) {
-        vkformat = mContext.getDepthFormat();
-    }
     if (vkformat == VK_FORMAT_UNDEFINED) {
         return false;
     }
@@ -752,7 +759,11 @@ bool VulkanDriver::isAutoDepthResolveSupported() {
 }
 
 bool VulkanDriver::isSRGBSwapChainSupported() {
-    return mPlatform->isSRGBSwapChainSupported();
+    return mIsSRGBSwapChainSupported;
+}
+
+bool VulkanDriver::isStereoSupported() {
+    return true;
 }
 
 bool VulkanDriver::isParallelShaderCompileSupported() {
@@ -842,34 +853,42 @@ size_t VulkanDriver::getMaxUniformBufferSize() {
 
 void VulkanDriver::setVertexBufferObject(Handle<HwVertexBuffer> vbh, uint32_t index,
         Handle<HwBufferObject> boh) {
-    auto& vb = *mHandleAllocator.handle_cast<VulkanVertexBuffer*>(vbh);
-    auto& bo = *mHandleAllocator.handle_cast<VulkanBufferObject*>(boh);
-    assert_invariant(bo.bindingType == BufferObjectBinding::VERTEX);
-    vb.buffers[index] = &bo.buffer;
+    auto vb = mResourceAllocator.handle_cast<VulkanVertexBuffer*>(vbh);
+    auto bo = mResourceAllocator.handle_cast<VulkanBufferObject*>(boh);
+    assert_invariant(bo->bindingType == BufferObjectBinding::VERTEX);
+
+    vb->setBuffer(bo, index);
 }
 
 void VulkanDriver::updateIndexBuffer(Handle<HwIndexBuffer> ibh, BufferDescriptor&& p,
         uint32_t byteOffset) {
-    auto ib = mHandleAllocator.handle_cast<VulkanIndexBuffer*>(ibh);
-    ib->buffer.loadFromCpu(p.buffer, byteOffset, p.size);
-    mDisposer.acquire(ib);
+    VulkanCommandBuffer& commands = mCommands->get();
+    auto ib = mResourceAllocator.handle_cast<VulkanIndexBuffer*>(ibh);
+    commands.acquire(ib);
+    ib->buffer.loadFromCpu(commands.buffer(), p.buffer, byteOffset, p.size);
+
     scheduleDestroy(std::move(p));
 }
 
 void VulkanDriver::updateBufferObject(Handle<HwBufferObject> boh, BufferDescriptor&& bd,
         uint32_t byteOffset) {
-    auto bo = mHandleAllocator.handle_cast<VulkanBufferObject*>(boh);
-    bo->buffer.loadFromCpu(bd.buffer, byteOffset, bd.size);
-    mDisposer.acquire(bo);
+    VulkanCommandBuffer& commands = mCommands->get();
+
+    auto bo = mResourceAllocator.handle_cast<VulkanBufferObject*>(boh);
+    commands.acquire(bo);
+    bo->buffer.loadFromCpu(commands.buffer(), bd.buffer, byteOffset, bd.size);
+
     scheduleDestroy(std::move(bd));
 }
 
 void VulkanDriver::updateBufferObjectUnsynchronized(Handle<HwBufferObject> boh,
         BufferDescriptor&& bd, uint32_t byteOffset) {
-    auto bo = mHandleAllocator.handle_cast<VulkanBufferObject*>(boh);
+    VulkanCommandBuffer& commands = mCommands->get();
+    auto bo = mResourceAllocator.handle_cast<VulkanBufferObject*>(boh);
+    commands.acquire(bo);
     // TODO: implement unsynchronized version
-    bo->buffer.loadFromCpu(bd.buffer, byteOffset, bd.size);
-    mDisposer.acquire(bo);
+    bo->buffer.loadFromCpu(commands.buffer(), bd.buffer, byteOffset, bd.size);
+    mResourceManager.acquire(bo);
     scheduleDestroy(std::move(bd));
 }
 
@@ -883,13 +902,13 @@ void VulkanDriver::resetBufferObject(Handle<HwBufferObject> boh) {
 }
 
 void VulkanDriver::setMinMaxLevels(Handle<HwTexture> th, uint32_t minLevel, uint32_t maxLevel) {
-    mHandleAllocator.handle_cast<VulkanTexture*>(th)->setPrimaryRange(minLevel, maxLevel);
+    mResourceAllocator.handle_cast<VulkanTexture*>(th)->setPrimaryRange(minLevel, maxLevel);
 }
 
 void VulkanDriver::update3DImage(Handle<HwTexture> th, uint32_t level, uint32_t xoffset,
         uint32_t yoffset, uint32_t zoffset, uint32_t width, uint32_t height, uint32_t depth,
         PixelBufferDescriptor&& data) {
-    mHandleAllocator.handle_cast<VulkanTexture*>(th)->updateImage(data, width, height, depth,
+    mResourceAllocator.handle_cast<VulkanTexture*>(th)->updateImage(data, width, height, depth,
             xoffset, yoffset, zoffset, level);
     scheduleDestroy(std::move(data));
 }
@@ -898,7 +917,7 @@ void VulkanDriver::setupExternalImage(void* image) {
 }
 
 bool VulkanDriver::getTimerQueryValue(Handle<HwTimerQuery> tqh, uint64_t* elapsedTime) {
-    VulkanTimerQuery* vtq = mHandleAllocator.handle_cast<VulkanTimerQuery*>(tqh);
+    VulkanTimerQuery* vtq = mResourceAllocator.handle_cast<VulkanTimerQuery*>(tqh);
     if (!vtq->isCompleted()) {
         return false;
     }
@@ -942,7 +961,7 @@ bool VulkanDriver::canGenerateMipmaps() {
 
 void VulkanDriver::updateSamplerGroup(Handle<HwSamplerGroup> sbh,
         BufferDescriptor&& data) {
-    auto* sb = mHandleAllocator.handle_cast<VulkanSamplerGroup*>(sbh);
+    auto* sb = mResourceAllocator.handle_cast<VulkanSamplerGroup*>(sbh);
 
     // FIXME: we shouldn't be using SamplerGroup here, instead the backend should create
     //        a descriptor or any internal data-structure that represents the textures/samplers.
@@ -964,7 +983,10 @@ void VulkanDriver::compilePrograms(CompilerPriorityQueue priority,
 }
 
 void VulkanDriver::beginRenderPass(Handle<HwRenderTarget> rth, const RenderPassParams& params) {
-    VulkanRenderTarget* const rt = mHandleAllocator.handle_cast<VulkanRenderTarget*>(rth);
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_START("beginRenderPass");
+
+    VulkanRenderTarget* const rt = mResourceAllocator.handle_cast<VulkanRenderTarget*>(rth);
     const VkExtent2D extent = rt->getExtent();
     assert_invariant(extent.width > 0 && extent.height > 0);
 
@@ -982,7 +1004,8 @@ void VulkanDriver::beginRenderPass(Handle<HwRenderTarget> rth, const RenderPassP
     }
 
     VulkanAttachment depth = rt->getSamples() == 1 ? rt->getDepth() : rt->getMsaaDepth();
-#if FILAMENT_VULKAN_VERBOSE
+
+#if FVK_ENABLED(FVK_DEBUG_TEXTURE)
     if (depth.texture) {
         depth.texture->print();
     }
@@ -992,8 +1015,8 @@ void VulkanDriver::beginRenderPass(Handle<HwRenderTarget> rth, const RenderPassP
     // If that's the case, we need to change the layout of the texture to DEPTH_SAMPLER, which is a
     // more general layout. Otherwise, we prefer the DEPTH_ATTACHMENT layout, which is optimal for
     // the non-sampling case.
-    bool samplingDepthAttachment = false;
-    VkCommandBuffer const cmdbuffer = mCommands->get().cmdbuffer;
+    VulkanCommandBuffer& commands = mCommands->get();
+    VkCommandBuffer const cmdbuffer = commands.buffer();
 
     UTILS_NOUNROLL
     for (uint8_t samplerGroupIdx = 0; samplerGroupIdx < Program::SAMPLER_BINDING_COUNT;
@@ -1007,32 +1030,28 @@ void VulkanDriver::beginRenderPass(Handle<HwRenderTarget> rth, const RenderPassP
             SamplerDescriptor const* boundSampler = sb->data() + i;
             if (UTILS_LIKELY(boundSampler->t)) {
                 VulkanTexture* texture
-                        = mHandleAllocator.handle_cast<VulkanTexture*>(boundSampler->t);
+                        = mResourceAllocator.handle_cast<VulkanTexture*>(boundSampler->t);
                 if (!any(texture->usage & TextureUsage::DEPTH_ATTACHMENT)) {
                     continue;
                 }
-                samplingDepthAttachment
-                        = depth.texture && texture->getVkImage() == depth.texture->getVkImage();
                 if (texture->getPrimaryImageLayout() == VulkanLayout::DEPTH_SAMPLER) {
                     continue;
                 }
-                VkImageSubresourceRange const subresources{
-                        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                        .baseMipLevel = 0,
-                        .levelCount = texture->levels,
-                        .baseArrayLayer = 0,
-                        .layerCount = texture->depth,
-                };
-                texture->transitionLayout(cmdbuffer, subresources, VulkanLayout::DEPTH_SAMPLER);
+                commands.acquire(texture);
+
+                // Transition the primary view, which is the sampler's view into the right layout.
+                texture->transitionLayout(cmdbuffer, texture->getPrimaryViewRange(),
+                        VulkanLayout::DEPTH_SAMPLER);
                 break;
             }
         }
     }
-    // currentDepthLayout tracks state of the layout after the (potential) transition in the above block.
-    VulkanLayout currentDepthLayout = depth.getLayout();
-    VulkanLayout const renderPassDepthLayout = samplingDepthAttachment
-                                                       ? VulkanLayout::DEPTH_SAMPLER
-                                                       : VulkanLayout::DEPTH_ATTACHMENT;
+
+    VulkanLayout const currentDepthLayout = depth.getLayout();
+    VulkanLayout const renderPassDepthLayout = VulkanLayout::DEPTH_ATTACHMENT;
+    // We need to keep the final layout as an attachment because the implicit transition does not
+    // have any barrier guarrantees, meaning that if we want to sample from the output in the next
+    // pass, then we'd have a race-condition/validation error.
     VulkanLayout const finalDepthLayout = renderPassDepthLayout;
 
     TargetBufferFlags clearVal = params.flags.clear;
@@ -1042,11 +1061,8 @@ void VulkanDriver::beginRenderPass(Handle<HwRenderTarget> rth, const RenderPassP
             discardEndVal &= ~TargetBufferFlags::DEPTH;
             clearVal &= ~TargetBufferFlags::DEPTH;
         }
-        if (currentDepthLayout != renderPassDepthLayout) {
-            depth.texture->transitionLayout(cmdbuffer,
-                    depth.getSubresourceRange(VK_IMAGE_ASPECT_DEPTH_BIT), renderPassDepthLayout);
-            currentDepthLayout = renderPassDepthLayout;
-        }
+        auto const attachmentSubresourceRange = depth.getSubresourceRange(VK_IMAGE_ASPECT_DEPTH_BIT);
+        depth.texture->setLayout(attachmentSubresourceRange, VulkanLayout::DEPTH_ATTACHMENT);
     }
 
     // Create the VkRenderPass or fetch it from cache.
@@ -1125,6 +1141,7 @@ void VulkanDriver::beginRenderPass(Handle<HwRenderTarget> rth, const RenderPassP
     VkFramebuffer vkfb = mFramebufferCache.getFramebuffer(fbkey);
 
     // Assign a label to the framebuffer for debugging purposes.
+    #if FVK_ENABLED(FVK_DEBUG_GROUP_MARKERS)
     if (UTILS_UNLIKELY(mContext.isDebugUtilsSupported())) {
         auto const topMarker = mCommands->getTopGroupMarker();
         if (!topMarker.empty()) {
@@ -1138,13 +1155,18 @@ void VulkanDriver::beginRenderPass(Handle<HwRenderTarget> rth, const RenderPassP
             vkSetDebugUtilsObjectNameEXT(mPlatform->getDevice(), &info);
         }
     }
+    #endif
 
     // The current command buffer now owns a reference to the render target and its attachments.
     // Note that we must acquire parent textures, not sidecars.
-    mDisposer.acquire(rt);
-    mDisposer.acquire((VulkanTexture const*) rt->getDepth().texture);
+    commands.acquire(rt);
+    if (depth.texture) {
+        commands.acquire((VulkanTexture*) depth.texture);
+    }
     for (int i = 0; i < MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT; i++) {
-        mDisposer.acquire((VulkanTexture const*) rt->getColor(i).texture);
+        if (rt->getColor(i).texture) {
+            commands.acquire(rt->getColor(i).texture);
+        }
     }
 
     // Populate the structures required for vkCmdBeginRenderPass.
@@ -1210,10 +1232,15 @@ void VulkanDriver::beginRenderPass(Handle<HwRenderTarget> rth, const RenderPassP
         .params = params,
         .currentSubpass = 0,
     };
+    FVK_SYSTRACE_END();
 }
 
 void VulkanDriver::endRenderPass(int) {
-    VkCommandBuffer cmdbuffer = mCommands->get().cmdbuffer;
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_START("endRenderPass");
+
+    VulkanCommandBuffer& commands = mCommands->get();
+    VkCommandBuffer cmdbuffer = commands.buffer();
     vkCmdEndRenderPass(cmdbuffer);
 
     VulkanRenderTarget* rt = mCurrentRenderPass.renderTarget;
@@ -1229,12 +1256,11 @@ void VulkanDriver::endRenderPass(int) {
     // NOTE: ideally dstStageMask would merely be VERTEX_SHADER_BIT | FRAGMENT_SHADER_BIT, but this
     // seems to be insufficient on Mali devices. To work around this we are adding a more aggressive
     // TOP_OF_PIPE barrier.
-
     if (!rt->isSwapChain()) {
-        VkMemoryBarrier barrier {
-            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        VkMemoryBarrier barrier{
+                .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+                .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
         };
         VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         if (rt->hasDepth()) {
@@ -1255,6 +1281,7 @@ void VulkanDriver::endRenderPass(int) {
     }
     mCurrentRenderPass.renderTarget = nullptr;
     mCurrentRenderPass.renderPass = VK_NULL_HANDLE;
+    FVK_SYSTRACE_END();
 }
 
 void VulkanDriver::nextSubpass(int) {
@@ -1265,7 +1292,7 @@ void VulkanDriver::nextSubpass(int) {
     assert_invariant(renderTarget);
     assert_invariant(mCurrentRenderPass.params.subpassMask);
 
-    vkCmdNextSubpass(mCommands->get().cmdbuffer, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdNextSubpass(mCommands->get().buffer(), VK_SUBPASS_CONTENTS_INLINE);
 
     mPipelineCache.bindRenderPass(mCurrentRenderPass.renderPass,
             ++mCurrentRenderPass.currentSubpass);
@@ -1284,15 +1311,15 @@ void VulkanDriver::nextSubpass(int) {
 
 void VulkanDriver::setRenderPrimitiveBuffer(Handle<HwRenderPrimitive> rph,
         Handle<HwVertexBuffer> vbh, Handle<HwIndexBuffer> ibh) {
-    auto primitive = mHandleAllocator.handle_cast<VulkanRenderPrimitive*>(rph);
-    primitive->setBuffers(mHandleAllocator.handle_cast<VulkanVertexBuffer*>(vbh),
-            mHandleAllocator.handle_cast<VulkanIndexBuffer*>(ibh));
+    auto primitive = mResourceAllocator.handle_cast<VulkanRenderPrimitive*>(rph);
+    primitive->setBuffers(mResourceAllocator.handle_cast<VulkanVertexBuffer*>(vbh),
+            mResourceAllocator.handle_cast<VulkanIndexBuffer*>(ibh));
 }
 
 void VulkanDriver::setRenderPrimitiveRange(Handle<HwRenderPrimitive> rph,
         PrimitiveType pt, uint32_t offset,
         uint32_t minIndex, uint32_t maxIndex, uint32_t count) {
-    auto& primitive = *mHandleAllocator.handle_cast<VulkanRenderPrimitive*>(rph);
+    auto& primitive = *mResourceAllocator.handle_cast<VulkanRenderPrimitive*>(rph);
     primitive.setPrimitiveType(pt);
     primitive.offset = offset * primitive.indexBuffer->elementSize;
     primitive.count = count;
@@ -1301,9 +1328,13 @@ void VulkanDriver::setRenderPrimitiveRange(Handle<HwRenderPrimitive> rph,
 }
 
 void VulkanDriver::makeCurrent(Handle<HwSwapChain> drawSch, Handle<HwSwapChain> readSch) {
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_START("makeCurrent");
+
     ASSERT_PRECONDITION_NON_FATAL(drawSch == readSch,
-                                  "Vulkan driver does not support distinct draw/read swap chains.");
-    VulkanSwapChain* swapChain = mCurrentSwapChain = mHandleAllocator.handle_cast<VulkanSwapChain*>(drawSch);
+            "Vulkan driver does not support distinct draw/read swap chains.");
+    VulkanSwapChain* swapChain = mCurrentSwapChain
+            = mResourceAllocator.handle_cast<VulkanSwapChain*>(drawSch);
 
     bool resized = false;
     swapChain->acquire(resized);
@@ -1315,24 +1346,26 @@ void VulkanDriver::makeCurrent(Handle<HwSwapChain> drawSch, Handle<HwSwapChain> 
     if (UTILS_LIKELY(mDefaultRenderTarget)) {
         mDefaultRenderTarget->bindToSwapChain(*swapChain);
     }
+
+    FVK_SYSTRACE_END();
 }
 
 void VulkanDriver::commit(Handle<HwSwapChain> sch) {
-    VulkanSwapChain* swapChain = mHandleAllocator.handle_cast<VulkanSwapChain*>(sch);
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_START("commit");
 
-    if (mCommands->flush()) {
-        collectGarbage();
-    }
+    VulkanSwapChain* swapChain = mResourceAllocator.handle_cast<VulkanSwapChain*>(sch);
 
     // Present the backbuffer after the most recent command buffer submission has finished.
     swapChain->present();
+    FVK_SYSTRACE_END();
 }
 
 void VulkanDriver::bindUniformBuffer(uint32_t index, Handle<HwBufferObject> boh) {
-    auto* bo = mHandleAllocator.handle_cast<VulkanBufferObject*>(boh);
+    auto* bo = mResourceAllocator.handle_cast<VulkanBufferObject*>(boh);
     const VkDeviceSize offset = 0;
     const VkDeviceSize size = VK_WHOLE_SIZE;
-    mPipelineCache.bindUniformBuffer((uint32_t) index, bo->buffer.getGpuBuffer(), offset, size);
+    mPipelineCache.bindUniformBufferObject((uint32_t) index, bo, offset, size);
 }
 
 void VulkanDriver::bindBufferRange(BufferObjectBinding bindingType, uint32_t index,
@@ -1343,8 +1376,8 @@ void VulkanDriver::bindBufferRange(BufferObjectBinding bindingType, uint32_t ind
 
     // TODO: implement BufferObjectBinding::SHADER_STORAGE case
 
-    auto* bo = mHandleAllocator.handle_cast<VulkanBufferObject*>(boh);
-    mPipelineCache.bindUniformBuffer((uint32_t)index, bo->buffer.getGpuBuffer(), offset, size);
+    auto* bo = mResourceAllocator.handle_cast<VulkanBufferObject*>(boh);
+    mPipelineCache.bindUniformBufferObject((uint32_t)index, bo, offset, size);
 }
 
 void VulkanDriver::unbindBuffer(BufferObjectBinding bindingType, uint32_t index) {
@@ -1352,29 +1385,31 @@ void VulkanDriver::unbindBuffer(BufferObjectBinding bindingType, uint32_t index)
 }
 
 void VulkanDriver::bindSamplers(uint32_t index, Handle<HwSamplerGroup> sbh) {
-    auto* hwsb = mHandleAllocator.handle_cast<VulkanSamplerGroup*>(sbh);
+    auto* hwsb = mResourceAllocator.handle_cast<VulkanSamplerGroup*>(sbh);
     mSamplerBindings[index] = hwsb;
 }
 
 void VulkanDriver::insertEventMarker(char const* string, uint32_t len) {
+#if FVK_ENABLED(FVK_DEBUG_GROUP_MARKERS)
     mCommands->insertEventMarker(string, len);
+#endif
 }
 
 void VulkanDriver::pushGroupMarker(char const* string, uint32_t) {
     // Turns out all the markers are 0-terminated, so we can just pass it without len.
+#if FVK_ENABLED(FVK_DEBUG_GROUP_MARKERS)
     mCommands->pushGroupMarker(string);
-    {
-        SYSTRACE_CONTEXT();
-        SYSTRACE_NAME_BEGIN(string);
-    }
+#endif
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_START(string);
 }
 
 void VulkanDriver::popGroupMarker(int) {
+#if FVK_ENABLED(FVK_DEBUG_GROUP_MARKERS)
     mCommands->popGroupMarker();
-    {
-        SYSTRACE_CONTEXT();
-        SYSTRACE_NAME_END();
-    }
+#endif
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_END();
 }
 
 void VulkanDriver::startCapture(int) {}
@@ -1383,7 +1418,7 @@ void VulkanDriver::stopCapture(int) {}
 
 void VulkanDriver::readPixels(Handle<HwRenderTarget> src, uint32_t x, uint32_t y, uint32_t width,
         uint32_t height, PixelBufferDescriptor&& pbd) {
-    VulkanRenderTarget* srcTarget = mHandleAllocator.handle_cast<VulkanRenderTarget*>(src);
+    VulkanRenderTarget* srcTarget = mResourceAllocator.handle_cast<VulkanRenderTarget*>(src);
     mCommands->flush();
     mReadPixels.run(
             srcTarget, x, y, width, height, mPlatform->getGraphicsQueueFamilyIndex(),
@@ -1404,6 +1439,9 @@ void VulkanDriver::readBufferSubData(backend::BufferObjectHandle boh,
 
 void VulkanDriver::blit(TargetBufferFlags buffers, Handle<HwRenderTarget> dst, Viewport dstRect,
         Handle<HwRenderTarget> src, Viewport srcRect, SamplerMagFilter filter) {
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_START("blit");
+
     assert_invariant(mCurrentRenderPass.renderPass == VK_NULL_HANDLE);
 
     // blit operation only support COLOR0 color buffer
@@ -1415,8 +1453,8 @@ void VulkanDriver::blit(TargetBufferFlags buffers, Handle<HwRenderTarget> dst, V
         return;
     }
 
-    VulkanRenderTarget* dstTarget = mHandleAllocator.handle_cast<VulkanRenderTarget*>(dst);
-    VulkanRenderTarget* srcTarget = mHandleAllocator.handle_cast<VulkanRenderTarget*>(src);
+    VulkanRenderTarget* dstTarget = mResourceAllocator.handle_cast<VulkanRenderTarget*>(dst);
+    VulkanRenderTarget* srcTarget = mResourceAllocator.handle_cast<VulkanRenderTarget*>(src);
 
     VkFilter vkfilter = filter == SamplerMagFilter::NEAREST ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
 
@@ -1443,26 +1481,30 @@ void VulkanDriver::blit(TargetBufferFlags buffers, Handle<HwRenderTarget> dst, V
     if (any(buffers & TargetBufferFlags::COLOR0)) {
         mBlitter.blitColor({ dstTarget, dstOffsets, srcTarget, srcOffsets, vkfilter, int(0) });
     }
+    FVK_SYSTRACE_END();
 }
 
 void VulkanDriver::draw(PipelineState pipelineState, Handle<HwRenderPrimitive> rph,
         const uint32_t instanceCount) {
-    VulkanCommandBuffer const* commands = &mCommands->get();
-    VkCommandBuffer cmdbuffer = commands->cmdbuffer;
-    const VulkanRenderPrimitive& prim = *mHandleAllocator.handle_cast<VulkanRenderPrimitive*>(rph);
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_START("draw");
+
+    VulkanCommandBuffer* commands = &mCommands->get();
+    VkCommandBuffer cmdbuffer = commands->buffer();
+    const VulkanRenderPrimitive& prim = *mResourceAllocator.handle_cast<VulkanRenderPrimitive*>(rph);
 
     Handle<HwProgram> programHandle = pipelineState.program;
     RasterState rasterState = pipelineState.rasterState;
     PolygonOffset depthOffset = pipelineState.polygonOffset;
-    const Viewport& scissorBox = pipelineState.scissor;
+    Viewport const& scissorBox = pipelineState.scissor;
 
-    auto* program = mHandleAllocator.handle_cast<VulkanProgram*>(programHandle);
-    mDisposer.acquire(program);
-    mDisposer.acquire(prim.indexBuffer);
-    mDisposer.acquire(prim.vertexBuffer);
+    auto* program = mResourceAllocator.handle_cast<VulkanProgram*>(programHandle);
+    commands->acquire(program);
+    commands->acquire(prim.indexBuffer);
+    commands->acquire(prim.vertexBuffer);
 
     // If this is a debug build, validate the current shader.
-#if !defined(NDEBUG)
+#if FVK_ENABLED(FVK_DEBUG_SHADER_MODULE)
     if (program->bundle.vertex == VK_NULL_HANDLE || program->bundle.fragment == VK_NULL_HANDLE) {
         utils::slog.e << "Binding missing shader: " << program->name.c_str() << utils::io::endl;
     }
@@ -1493,114 +1535,91 @@ void VulkanDriver::draw(PipelineState pipelineState, Handle<HwRenderPrimitive> r
     mPipelineCache.setCurrentRasterState(vkraster);
 
     // Declare fixed-size arrays that get passed to the pipeCache and to vkCmdBindVertexBuffers.
-    VulkanPipelineCache::VertexArray varray = {};
-    VkBuffer buffers[MAX_VERTEX_ATTRIBUTE_COUNT] = {};
-    VkDeviceSize offsets[MAX_VERTEX_ATTRIBUTE_COUNT] = {};
-
-    // For each attribute, append to each of the above lists.
-    const uint32_t bufferCount = prim.vertexBuffer->attributes.size();
-    for (uint32_t attribIndex = 0; attribIndex < bufferCount; attribIndex++) {
-        Attribute attrib = prim.vertexBuffer->attributes[attribIndex];
-
-        const bool isInteger = attrib.flags & Attribute::FLAG_INTEGER_TARGET;
-        const bool isNormalized = attrib.flags & Attribute::FLAG_NORMALIZED;
-
-        VkFormat vkformat = getVkFormat(attrib.type, isNormalized, isInteger);
-
-        // HACK: Re-use the positions buffer as a dummy buffer for disabled attributes. Filament's
-        // vertex shaders declare all attributes as either vec4 or uvec4 (the latter for bone
-        // indices), and positions are always at least 32 bits per element. Therefore we can assign
-        // a dummy type of either R8G8B8A8_UINT or R8G8B8A8_SNORM, depending on whether the shader
-        // expects to receive floats or ints.
-        if (attrib.buffer == Attribute::BUFFER_UNUSED) {
-            vkformat = isInteger ? VK_FORMAT_R8G8B8A8_UINT : VK_FORMAT_R8G8B8A8_SNORM;
-            attrib = prim.vertexBuffer->attributes[0];
-        }
-
-        const VulkanBuffer* buffer = prim.vertexBuffer->buffers[attrib.buffer];
-
-        // If the vertex buffer is missing a constituent buffer object, skip the draw call.
-        // There is no need to emit an error message because this is not explicitly forbidden.
-        if (buffer == nullptr) {
-            return;
-        }
-
-        buffers[attribIndex] = buffer->getGpuBuffer();
-        offsets[attribIndex] = attrib.offset;
-        varray.attributes[attribIndex] = {
-            .location = attribIndex, // matches the GLSL layout specifier
-            .binding = attribIndex,  // matches the position within vkCmdBindVertexBuffers
-            .format = vkformat,
-        };
-        varray.buffers[attribIndex] = {
-            .binding = attribIndex,
-            .stride = attrib.stride,
-        };
-    }
+    uint32_t const bufferCount = prim.vertexBuffer->attributes.size();
+    VkVertexInputAttributeDescription const* attribDesc = prim.vertexBuffer->getAttribDescriptions();
+    VkVertexInputBindingDescription const* bufferDesc =  prim.vertexBuffer->getBufferDescriptions();
+    VkBuffer const* buffers = prim.vertexBuffer->getVkBuffers();
+    VkDeviceSize const* offsets = prim.vertexBuffer->getOffsets();
 
     // Push state changes to the VulkanPipelineCache instance. This is fast and does not make VK calls.
-    mPipelineCache.bindProgram(*program);
+    mPipelineCache.bindProgram(program);
     mPipelineCache.bindRasterState(mPipelineCache.getCurrentRasterState());
     mPipelineCache.bindPrimitiveTopology(prim.primitiveTopology);
-    mPipelineCache.bindVertexArray(varray);
+    mPipelineCache.bindVertexArray(attribDesc, bufferDesc, bufferCount);
 
     // Query the program for the mapping from (SamplerGroupBinding,Offset) to (SamplerBinding),
     // where "SamplerBinding" is the integer in the GLSL, and SamplerGroupBinding is the abstract
     // Filament concept used to form groups of samplers.
 
     VkDescriptorImageInfo samplerInfo[VulkanPipelineCache::SAMPLER_BINDING_COUNT] = {};
-    VulkanPipelineCache::UsageFlags usage;
+    VulkanTexture* samplerTextures[VulkanPipelineCache::SAMPLER_BINDING_COUNT] = {nullptr};
+
+    auto const& bindingToSamplerIndex = program->getBindingToSamplerIndex();
+    VulkanPipelineCache::UsageFlags  usage = program->getUsage();
 
     UTILS_NOUNROLL
-    for (uint8_t samplerGroupIdx = 0; samplerGroupIdx < Program::SAMPLER_BINDING_COUNT; samplerGroupIdx++) {
-        const auto& samplerGroup = program->samplerGroupInfo[samplerGroupIdx];
-        const auto& samplers = samplerGroup.samplers;
-        if (samplers.empty()) {
+    for (uint8_t binding = 0; binding < VulkanPipelineCache::SAMPLER_BINDING_COUNT; binding++) {
+        uint16_t const indexPair = bindingToSamplerIndex[binding];
+
+        if (indexPair == 0xffff) {
+            usage = VulkanPipelineCache::disableUsageFlags(binding, usage);
             continue;
         }
-        VulkanSamplerGroup* vksb = mSamplerBindings[samplerGroupIdx];
+
+        uint16_t const samplerGroupInd = (indexPair >> 8) & 0xff;
+        uint16_t const samplerInd = (indexPair & 0xff);
+
+        VulkanSamplerGroup* vksb = mSamplerBindings[samplerGroupInd];
         if (!vksb) {
+            usage = VulkanPipelineCache::disableUsageFlags(binding, usage);
             continue;
         }
-        SamplerGroup* sb = vksb->sb.get();
-        assert_invariant(sb->getSize() == samplers.size());
-        size_t samplerIdx = 0;
-        for (auto& sampler : samplers) {
-            const SamplerDescriptor* boundSampler = sb->data() + samplerIdx;
-            samplerIdx++;
+        SamplerDescriptor const* boundSampler = ((SamplerDescriptor*) vksb->sb->data()) + samplerInd;
 
-            if (UTILS_LIKELY(boundSampler->t)) {
-                VulkanTexture* texture = mHandleAllocator.handle_cast<VulkanTexture*>(boundSampler->t);
-                mDisposer.acquire(texture);
-
-                // TODO: can this uninitialized check be checked in a higher layer?
-                // This fallback path is very flaky because the dummy texture might not have
-                // matching characteristics. (e.g. if the missing texture is a 3D texture)
-                if (UTILS_UNLIKELY(texture->getPrimaryImageLayout() == VulkanLayout::UNDEFINED)) {
-#ifndef NDEBUG
-                    utils::slog.w << "Uninitialized texture bound to '" << sampler.name.c_str() << "'";
-                    utils::slog.w << " in material '" << program->name.c_str() << "'";
-                    utils::slog.w << " at binding point " << +sampler.binding << utils::io::endl;
-#endif
-                    // Calling get() won't leak here since `texture` is local.
-                    texture = mEmptyTexture.get();
-                }
-
-                const SamplerParams& samplerParams = boundSampler->s;
-                VkSampler vksampler = mSamplerCache.getSampler(samplerParams);
-
-                usage = VulkanPipelineCache::getUsageFlags(sampler.binding, samplerGroup.stageFlags, usage);
-
-                samplerInfo[sampler.binding] = {
-                    .sampler = vksampler,
-                    .imageView = texture->getPrimaryImageView(),
-                    .imageLayout = ImgUtil::getVkLayout(texture->getPrimaryImageLayout())
-                };
-            }
+        if (UTILS_UNLIKELY(!boundSampler->t)) {
+            usage = VulkanPipelineCache::disableUsageFlags(binding, usage);
+            continue;
         }
+
+        VulkanTexture* texture = mResourceAllocator.handle_cast<VulkanTexture*>(boundSampler->t);
+        VkImageViewType const expectedType = texture->getViewType();
+
+        // TODO: can this uninitialized check be checked in a higher layer?
+        // This fallback path is very flaky because the dummy texture might not have
+        // matching characteristics. (e.g. if the missing texture is a 3D texture)
+        if (UTILS_UNLIKELY(texture->getPrimaryImageLayout() == VulkanLayout::UNDEFINED)) {
+#if FVK_ENABLED(FVK_DEBUG_TEXTURE)
+            utils::slog.w << "Uninitialized texture bound to '" << sampler.name.c_str() << "'";
+            utils::slog.w << " in material '" << program->name.c_str() << "'";
+            utils::slog.w << " at binding point " << +sampler.binding << utils::io::endl;
+#endif
+            texture = mEmptyTexture.get();
+        }
+
+        SamplerParams const& samplerParams = boundSampler->s;
+        VkSampler const vksampler = mSamplerCache.getSampler(samplerParams);
+        VkImageView imageView = VK_NULL_HANDLE;
+        VkImageSubresourceRange const range = texture->getPrimaryViewRange();
+        if (any(texture->usage & TextureUsage::DEPTH_ATTACHMENT) &&
+                expectedType == VK_IMAGE_VIEW_TYPE_2D) {
+            // If the sampler is part of a mipmapped depth texture, where one of the level *can* be
+            // an attachment, then the sampler for this texture has the same view properties as a
+            // view for an attachment. Therefore, we can use getAttachmentView to get a
+            // corresponding VkImageView.
+            imageView = texture->getAttachmentView(range);
+        } else {
+            imageView = texture->getViewForType(range, expectedType);
+        }
+
+        samplerInfo[binding] = {
+            .sampler = vksampler,
+            .imageView = imageView,
+            .imageLayout = ImgUtil::getVkLayout(texture->getPrimaryImageLayout())
+        };
+        samplerTextures[binding] = texture;
     }
 
-    mPipelineCache.bindSamplers(samplerInfo, usage);
+    mPipelineCache.bindSamplers(samplerInfo, samplerTextures, usage);
 
     // Bind new descriptor sets if they need to change.
     // If descriptor set allocation failed, skip the draw call and bail. No need to emit an error
@@ -1633,7 +1652,7 @@ void VulkanDriver::draw(PipelineState pipelineState, Handle<HwRenderPrimitive> r
     // Bind a new pipeline if the pipeline state changed.
     // If allocation failed, skip the draw call and bail. We do not emit an error since the
     // validation layer will already do so.
-    if (!mPipelineCache.bindPipeline(cmdbuffer)) {
+    if (!mPipelineCache.bindPipeline(commands)) {
         return;
     }
 
@@ -1649,7 +1668,9 @@ void VulkanDriver::draw(PipelineState pipelineState, Handle<HwRenderPrimitive> r
     const uint32_t firstIndex = prim.offset / prim.indexBuffer->elementSize;
     const int32_t vertexOffset = 0;
     const uint32_t firstInstId = 0;
+
     vkCmdDrawIndexed(cmdbuffer, indexCount, instanceCount, firstIndex, vertexOffset, firstInstId);
+    FVK_SYSTRACE_END();
 }
 
 void VulkanDriver::dispatchCompute(Handle<HwProgram> program, math::uint3 workGroupCount) {
@@ -1657,12 +1678,12 @@ void VulkanDriver::dispatchCompute(Handle<HwProgram> program, math::uint3 workGr
 }
 
 void VulkanDriver::beginTimerQuery(Handle<HwTimerQuery> tqh) {
-    VulkanTimerQuery* vtq = mHandleAllocator.handle_cast<VulkanTimerQuery*>(tqh);
+    VulkanTimerQuery* vtq = mResourceAllocator.handle_cast<VulkanTimerQuery*>(tqh);
     mTimestamps->beginQuery(&(mCommands->get()), vtq);
 }
 
 void VulkanDriver::endTimerQuery(Handle<HwTimerQuery> tqh) {
-    VulkanTimerQuery* vtq = mHandleAllocator.handle_cast<VulkanTimerQuery*>(tqh);
+    VulkanTimerQuery* vtq = mResourceAllocator.handle_cast<VulkanTimerQuery*>(tqh);
     mTimestamps->endQuery(&(mCommands->get()), vtq);
 }
 

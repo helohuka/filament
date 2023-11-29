@@ -45,11 +45,11 @@ constexpr uint32_t const INVALID_VK_INDEX = 0xFFFFFFFF;
 
 typedef std::unordered_set<std::string_view> ExtensionSet;
 
-#if VK_ENABLE_VALIDATION
+#if FVK_ENABLED(FVK_DEBUG_VALIDATION)
 // These strings need to be allocated outside a function stack
 const std::string_view DESIRED_LAYERS[] = {
         "VK_LAYER_KHRONOS_validation",
-#if FILAMENT_VULKAN_DUMP_API
+#if FVK_ENABLED(FVK_DEBUG_DUMP_API)
         "VK_LAYER_LUNARG_api_dump",
 #endif
 #if defined(ENABLE_RENDERDOC)
@@ -75,7 +75,7 @@ FixedCapacityVector<const char*> getEnabledLayers() {
     }
     return enabledLayers;
 }
-#endif
+#endif // FVK_EANBLED(FVK_DEBUG_VALIDATION)
 
 void printDeviceInfo(VkInstance instance, VkPhysicalDevice device) {
     // Print some driver or MoltenVK information if it is available.
@@ -129,30 +129,30 @@ void printDeviceInfo(VkInstance instance, VkPhysicalDevice device) {
                   << minor << ")" << utils::io::endl;
 }
 
+#if FVK_ENABLED(FVK_DEBUG_VALIDATION)
 void printDepthFormats(VkPhysicalDevice device) {
     // For diagnostic purposes, print useful information about available depth formats.
     // Note that Vulkan is more constrained than OpenGL ES 3.1 in this area.
-    if constexpr (VK_ENABLE_VALIDATION && FILAMENT_VULKAN_VERBOSE) {
-        const VkFormatFeatureFlags required = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+    const VkFormatFeatureFlags required = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
                                               | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
-        utils::slog.i << "Sampleable depth formats: ";
-        for (VkFormat format = (VkFormat) 1;;) {
-            VkFormatProperties props;
-            vkGetPhysicalDeviceFormatProperties(device, format, &props);
-            if ((props.optimalTilingFeatures & required) == required) {
-                utils::slog.i << format << " ";
-            }
-            if (format == VK_FORMAT_ASTC_12x12_SRGB_BLOCK) {
-                utils::slog.i << utils::io::endl;
-                break;
-            }
-            format = (VkFormat) (1 + (int) format);
+    utils::slog.i << "Sampleable depth formats: ";
+    for (VkFormat format = (VkFormat) 1;;) {
+        VkFormatProperties props;
+        vkGetPhysicalDeviceFormatProperties(device, format, &props);
+        if ((props.optimalTilingFeatures & required) == required) {
+            utils::slog.i << format << " ";
         }
+        if (format == VK_FORMAT_ASTC_12x12_SRGB_BLOCK) {
+            utils::slog.i << utils::io::endl;
+            break;
+        }
+        format = (VkFormat) (1 + (int) format);
     }
 }
+#endif
 
 ExtensionSet getInstanceExtensions() {
-    std::array<std::string_view, 4> const TARGET_EXTS = {
+    std::string_view const TARGET_EXTS[] = {
             // Request all cross-platform extensions.
             VK_KHR_SURFACE_EXTENSION_NAME,
             VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
@@ -160,6 +160,10 @@ ExtensionSet getInstanceExtensions() {
             // Request these if available.
             VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
             VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+
+#if FVK_ENABLED(FVK_DEBUG_VALIDATION)
+            VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
+#endif
     };
     ExtensionSet exts;
     FixedCapacityVector<VkExtensionProperties> const availableExts
@@ -176,7 +180,7 @@ ExtensionSet getInstanceExtensions() {
 }
 
 ExtensionSet getDeviceExtensions(VkPhysicalDevice device) {
-    std::array<std::string_view, 5> const TARGET_EXTS = {
+    std::string_view const TARGET_EXTS[] = {
             VK_EXT_DEBUG_MARKER_EXTENSION_NAME,
             VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME,
             VK_KHR_MAINTENANCE1_EXTENSION_NAME,
@@ -203,7 +207,7 @@ VkInstance createInstance(ExtensionSet const& requiredExts) {
     VkInstanceCreateInfo instanceCreateInfo = {};
     bool validationFeaturesSupported = false;
 
-#if VK_ENABLE_VALIDATION
+#if FVK_ENABLED(FVK_DEBUG_VALIDATION)
     auto const enabledLayers = getEnabledLayers();
     if (!enabledLayers.empty()) {
         // If layers are supported, Check if VK_EXT_validation_features is supported.
@@ -225,19 +229,17 @@ VkInstance createInstance(ExtensionSet const& requiredExts) {
 #else
         utils::slog.d << "Validation layer not available; did you install the Vulkan SDK?\n"
                       << "Please ensure that VK_LAYER_PATH is set correctly." << utils::io::endl;
-#endif
+#endif // __ANDROID__
+
     }
-#endif// VK_ENABLE_VALIDATION
+#endif // FVK_ENABLED(FVK_DEBUG_VALIDATION)
 
     // The Platform class can require 1 or 2 instance extensions, plus we'll request at most 5
     // instance extensions here in the common code. So that's a max of 7.
-    static constexpr uint32_t MAX_INSTANCE_EXTENSION_COUNT = 7;
+    static constexpr uint32_t MAX_INSTANCE_EXTENSION_COUNT = 8;
     const char* ppEnabledExtensions[MAX_INSTANCE_EXTENSION_COUNT];
     uint32_t enabledExtensionCount = 0;
 
-#if VK_ENABLE_VALIDATION && defined(__ANDROID__)
-    ppEnabledExtensions[enabledExtensionCount++] = VK_EXT_DEBUG_REPORT_EXTENSION_NAME;
-#endif
     if (validationFeaturesSupported) {
         ppEnabledExtensions[enabledExtensionCount++] = VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME;
     }
@@ -251,7 +253,7 @@ VkInstance createInstance(ExtensionSet const& requiredExts) {
     VkApplicationInfo appInfo = {};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.apiVersion
-            = VK_MAKE_API_VERSION(0, VK_REQUIRED_VERSION_MAJOR, VK_REQUIRED_VERSION_MINOR, 0);
+            = VK_MAKE_API_VERSION(0, FVK_REQUIRED_VERSION_MAJOR, FVK_REQUIRED_VERSION_MINOR, 0);
     instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instanceCreateInfo.pApplicationInfo = &appInfo;
     instanceCreateInfo.enabledExtensionCount = enabledExtensionCount;
@@ -273,12 +275,8 @@ VkInstance createInstance(ExtensionSet const& requiredExts) {
     }
 
     VkResult result = vkCreateInstance(&instanceCreateInfo, VKALLOC, &instance);
-#ifndef NDEBUG
-    if (result != VK_SUCCESS) {
-        utils::slog.e << "Unable to create instance: " << result << utils::io::endl;
-    }
-#endif
-    ASSERT_POSTCONDITION(result == VK_SUCCESS, "Unable to create Vulkan instance.");
+    ASSERT_POSTCONDITION(result == VK_SUCCESS, "Unable to create Vulkan instance. Result=%d",
+            result);
     return instance;
 }
 
@@ -422,9 +420,9 @@ inline int deviceTypeOrder(VkPhysicalDeviceType deviceType) {
 }
 
 VkPhysicalDevice selectPhysicalDevice(VkInstance instance,
-        VulkanPlatform::GPUPreference const& gpuPreference) {
-    FixedCapacityVector<VkPhysicalDevice> const physicalDevices
-            = filament::backend::enumerate(vkEnumeratePhysicalDevices, instance);
+        VulkanPlatform::Customization::GPUPreference const& gpuPreference) {
+    FixedCapacityVector<VkPhysicalDevice> const physicalDevices =
+            filament::backend::enumerate(vkEnumeratePhysicalDevices, instance);
     struct DeviceInfo {
         VkPhysicalDevice device = VK_NULL_HANDLE;
         VkPhysicalDeviceType deviceType = VK_PHYSICAL_DEVICE_TYPE_OTHER;
@@ -442,10 +440,10 @@ VkPhysicalDevice selectPhysicalDevice(VkInstance instance,
         int const minor = VK_VERSION_MINOR(targetDeviceProperties.apiVersion);
 
         // Does the device support the required Vulkan level?
-        if (major < VK_REQUIRED_VERSION_MAJOR) {
+        if (major < FVK_REQUIRED_VERSION_MAJOR) {
             continue;
         }
-        if (major == VK_REQUIRED_VERSION_MAJOR && minor < VK_REQUIRED_VERSION_MINOR) {
+        if (major == FVK_REQUIRED_VERSION_MAJOR && minor < FVK_REQUIRED_VERSION_MINOR) {
             continue;
         }
 
@@ -490,10 +488,10 @@ VkPhysicalDevice selectPhysicalDevice(VkInstance instance,
                     return true;
                 }
                 if (!pref.deviceName.empty()) {
-                    if (a.name.find(pref.deviceName) != a.name.npos) {
+                    if (a.name.find(pref.deviceName.c_str()) != a.name.npos) {
                         return false;
                     }
-                    if (b.name.find(pref.deviceName) != b.name.npos) {
+                    if (b.name.find(pref.deviceName.c_str()) != b.name.npos) {
                         return true;
                     }
                 }
@@ -510,17 +508,28 @@ VkPhysicalDevice selectPhysicalDevice(VkInstance instance,
     return device;
 }
 
-VkFormat findSupportedFormat(VkPhysicalDevice device) {
+VkFormatList findAttachmentDepthFormats(VkPhysicalDevice device) {
     VkFormatFeatureFlags const features = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    std::array<VkFormat, 2> const formats = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_X8_D24_UNORM_PACK32};
+
+    // The ordering here indicates the preference of choosing depth+stencil format.
+    VkFormat const formats[] = {
+        VK_FORMAT_D32_SFLOAT,
+        VK_FORMAT_X8_D24_UNORM_PACK32,
+
+        VK_FORMAT_D32_SFLOAT_S8_UINT,
+        VK_FORMAT_D24_UNORM_S8_UINT,
+    };
+    std::vector<VkFormat> selectedFormats;
     for (VkFormat format: formats) {
         VkFormatProperties props;
         vkGetPhysicalDeviceFormatProperties(device, format, &props);
         if ((props.optimalTilingFeatures & features) == features) {
-            return format;
+            selectedFormats.push_back(format);
         }
     }
-    return VK_FORMAT_UNDEFINED;
+    VkFormatList ret(selectedFormats.size());
+    std::copy(selectedFormats.begin(), selectedFormats.end(), ret.begin());
+    return ret;
 }
 
 }// anonymous namespace
@@ -605,7 +614,7 @@ Driver* VulkanPlatform::createDriver(void* sharedContext,
 
     bluevk::bindInstance(mImpl->mInstance);
 
-    VulkanPlatform::GPUPreference const pref = getPreferredGPU();
+    VulkanPlatform::Customization::GPUPreference const pref = getCustomization().gpu;
     bool const hasGPUPreference = pref.index >= 0 || !pref.deviceName.empty();
     ASSERT_PRECONDITION(!(hasGPUPreference && sharedContext),
             "Cannot both share context and indicate GPU preference");
@@ -662,11 +671,13 @@ Driver* VulkanPlatform::createDriver(void* sharedContext,
     context.mDebugMarkersSupported
             = deviceExts.find(VK_EXT_DEBUG_MARKER_EXTENSION_NAME) != deviceExts.end();
 
-    // Choose a depth format that meets our requirements. Take care not to include stencil formats
-    // just yet, since that would require a corollary change to the "aspect" flags for the VkImage.
-    context.mDepthFormat = findSupportedFormat(mImpl->mPhysicalDevice);
+    context.mDepthFormats = findAttachmentDepthFormats(mImpl->mPhysicalDevice);
 
+    assert_invariant(context.mDepthFormats.size() > 0);
+
+#if FVK_ENABLED(FVK_DEBUG_VALIDATION)
     printDepthFormats(mImpl->mPhysicalDevice);
+#endif
 
     // Keep a copy of context for swapchains.
     mImpl->mContext = context;

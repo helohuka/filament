@@ -7,6 +7,79 @@ A new header is inserted each time a *tag* is created.
 Instead, if you are authoring a PR for the main branch, add your release note to
 [NEW_RELEASE_NOTES.md](./NEW_RELEASE_NOTES.md).
 
+## v1.48.0
+
+- matc: New option `-1` to disable generation of ESSL 1.0 code in Feature Level 0 materials
+- matc: Support optimizations for ESSL 1.0 code [⚠️ **Recompile materials**]
+
+## v1.47.0
+
+- engine: Support up to 4 side-by-side stereoscopic eyes, configurable at Engine creation time. See
+  `Engine::Config::stereoscopicEyeCount`. [⚠️ **Recompile Materials**]
+
+## v1.46.0
+
+- engine: Allow instantiating Engine at a given feature level via `Engine::Builder::featureLevel`
+- matc: Enable `GL_OES_standard_derivatives` extension in ESSL 1.0 shaders
+- matc: Fix code generation of double sided and masked materials in ESSL 1.0 shaders
+- filagui: Add support for feature level 0
+- matc: Add support for post-process materials in feature level 0
+- engine: Add `Material::getFeatureLevel()`
+- engine: Add missing `Material::getReflectionMode()` method in Java
+- engine: Support basic usage of post-processing materials on feature level 0
+- engine: Fix critical GLES 2.0 bugs
+- engine: Add `FILAMENT_ENABLE_FEATURE_LEVEL_0` build-time option optionally allow building Filament
+  without FL0 support.
+
+## v1.45.1
+
+- engine: Added parameter for configuring JobSystem thread count
+- engine: In Java, introduce Engine.Builder
+- gltfio: fix ubershader index for transmission&volume material
+- engine: New tone mapper: `AgXTonemapper`.
+- matinfo: Add support for viewing ESSL 1.0 shaders
+- engine: Add `Renderer::getClearOptions()` [b/243846268]
+- engine: Fix stable shadows (again) when an IBL rotation is used
+
+## v1.45.0
+
+- materials: fix alpha masked materials when MSAA is turned on [⚠️ **Recompile materials**]
+- materials: better support materials with custom depth [**Recompile Materials**]
+- engine: fade shadows at shadowFar distance instead of hard cutoff [⚠️ **New Material Version**]
+
+## v1.44.0
+
+- engine: add support for skinning with more than four bones per vertex.
+- engine: remove `BloomOptions::anamorphism` which wasn't working well in most cases [**API CHANGE**]
+- engine: new API to return a Material's supported variants, C++ only (b/297456590)
+- build: fix emscripten-1.3.46 build
+- engine: materials built for feature level 0 can now also be loaded in higher feature levels [⚠️
+  **New Material Version**]
+
+## v1.43.1
+
+## v1.43.0
+
+- gltfio: Fix possible change of scale sign when decomposing transform matrix for animation
+- engine: Fixes "stable" shadows (see b/299310624)
+
+## v1.42.2
+
+- Fix possible NPE when updating fog options from Java/Kotlin
+- The `emissive` property was not applied properly to `MASKED` materials, and could cause
+  dark fringes to appear (recompile materials)
+- Allow glTF materials with transmission/volume extensions to choose their alpha mode
+  instead of forcing `MASKED`
+- Fix a crash in gltfio when not using ubershaders
+- Use flatmat for mat parameter in jsbinding
+- Fix TextureFlags for sheenRoughnessMap when textures of sheenRoughnessMap and sheenColorMap is same
+- Directional shadows can now be transformed (b/297095805)
+
+## v1.42.1
+
+- Fix potential `EXC_BAD_ACCESS` with Metal backend: b/297059776
+- `setFrameCompletedCallback` now takes a `backend::CallbackHandler`.
+
 ## v1.42.0
 
 - engine: add preliminary support for instanced stereoscopic rendering [⚠️ **Recompile materials**]

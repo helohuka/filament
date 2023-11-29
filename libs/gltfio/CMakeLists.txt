@@ -16,6 +16,7 @@ set(PUBLIC_HDRS
         include/gltfio/FilamentInstance.h
         include/gltfio/MaterialProvider.h
         include/gltfio/NodeManager.h
+        include/gltfio/TrsTransformManager.h
         include/gltfio/ResourceLoader.h
         include/gltfio/TextureProvider.h
         include/gltfio/math.h
@@ -35,10 +36,12 @@ set(SRCS
         src/FilamentAsset.cpp
         src/FilamentInstance.cpp
         src/FNodeManager.h
+        src/FTrsTransformManager.h
         src/GltfEnums.h
         src/Ktx2Provider.cpp
         src/MaterialProvider.cpp
         src/NodeManager.cpp
+        src/TrsTransformManager.cpp
         src/ResourceLoader.cpp
         src/StbProvider.cpp
         src/TangentsJob.cpp
@@ -120,8 +123,12 @@ build_ubershader(specularGlossiness_masked base            specularGlossiness ma
 build_ubershader(unlit_fade                base            unlit fade)
 build_ubershader(unlit_opaque              base            unlit opaque)
 build_ubershader(unlit_masked              base            unlit masked)
-build_ubershader(volume                    volume          _ _)
-build_ubershader(transmission              transmission    _ _)
+build_ubershader(transmission_opaque       transmission    lit opaque)
+build_ubershader(transmission_fade         transmission    lit fade)
+build_ubershader(transmission_masked       transmission    lit masked)
+build_ubershader(volume_opaque             volume          lit opaque)
+build_ubershader(volume_fade               volume          lit fade)
+build_ubershader(volume_masked             volume          lit masked)
 build_ubershader(sheen                     sheen           _ _)
 
 add_custom_target(uberz_file DEPENDS ${UBERZ_OUTPUT_PATH})
@@ -170,6 +177,11 @@ if (WEBGL_PTHREADS)
     target_compile_definitions(gltfio_core PUBLIC -DFILAMENT_WASM_THREADS)
 endif()
 
+set(GLTFIO_WARNINGS -Wall -Werror)
+if (NOT MSVC)
+    target_compile_options(gltfio_core PRIVATE ${GLTFIO_WARNINGS})
+endif()
+
 #if (NOT WEBGL AND NOT ANDROID AND NOT IOS)
 
     # ==================================================================================================
@@ -179,12 +191,7 @@ endif()
     target_link_libraries(${TARGET} PUBLIC filamat gltfio_core)
     target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
     set_target_properties(${TARGET} PROPERTIES FOLDER Libs)
-
-    # ==================================================================================================
-    # Compiler flags
-    # ==================================================================================================
-    if (MSVC)
-    else()
+    if (NOT MSVC)
         target_compile_options(${TARGET} PRIVATE -Wno-deprecated-register)
     endif()
 
@@ -220,9 +227,12 @@ if (TNT_DEV AND NOT WEBGL AND NOT ANDROID AND NOT IOS)
 
     add_executable(${TEST_TARGET} test/gltfio_test.cpp)
     add_dependencies(${TEST_TARGET} test_gltfio_files)
+    set_property(TARGET test_gltfio PROPERTY LINK_LIBRARIES)
 
-    target_link_libraries(${TEST_TARGET} PRIVATE ${TARGET} filament filabridge gtest uberarchive)
-    target_compile_options(${TEST_TARGET} PRIVATE -Wno-deprecated-register)
+    target_link_libraries(${TEST_TARGET} PRIVATE ${TARGET} gtest uberarchive)
+    if (NOT MSVC)
+        target_compile_options(${TEST_TARGET} PRIVATE ${GLTFIO_WARNINGS})
+    endif()
     set_target_properties(${TEST_TARGET} PROPERTIES FOLDER Tests)
 endif()
 endif(FILAMENT_ENABLE_BUILD_TEST)

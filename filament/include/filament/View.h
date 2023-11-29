@@ -662,7 +662,8 @@ public:
      * Material's stencil comparison function and reference value. Fragments that don't pass the
      * stencil test are then discarded.
      *
-     * Post-processing must be enabled in order to use the stencil buffer.
+     * If post-processing is disabled, then the SwapChain must have the CONFIG_HAS_STENCIL_BUFFER
+     * flag set in order to use the stencil buffer.
      *
      * A renderable's priority (see RenderableManager::setPriority) is useful to control the order
      * in which primitives are drawn.
@@ -688,6 +689,10 @@ public:
      * - post-processing
      * - shadowing
      * - punctual lights
+     *
+     * Stereo rendering depends on device and platform support. To check if stereo rendering is
+     * supported, use Engine::isStereoSupported(). If stereo rendering is not supported, then the
+     * stereoscopic options have no effect.
      *
      * @param options The stereoscopic options to use on this view
      */
@@ -759,10 +764,10 @@ public:
      * @param handler   Handler to dispatch the callback or nullptr for the default handler.
      */
     template<typename T, void(T::*method)(PickingQueryResult const&)>
-    void pick(uint32_t x, uint32_t y, T* instance, backend::CallbackHandler* handler = nullptr) noexcept {
+    void pick(uint32_t x, uint32_t y, T* instance,
+            backend::CallbackHandler* handler = nullptr) noexcept {
         PickingQuery& query = pick(x, y, [](PickingQueryResult const& result, PickingQuery* pq) {
-            void* user = pq->storage;
-            (*static_cast<T**>(user)->*method)(result);
+            (static_cast<T*>(pq->storage[0])->*method)(result);
         }, handler);
         query.storage[0] = instance;
     }
@@ -779,11 +784,11 @@ public:
      * @param handler   Handler to dispatch the callback or nullptr for the default handler.
      */
     template<typename T, void(T::*method)(PickingQueryResult const&)>
-    void pick(uint32_t x, uint32_t y, T instance, backend::CallbackHandler* handler = nullptr) noexcept {
+    void pick(uint32_t x, uint32_t y, T instance,
+            backend::CallbackHandler* handler = nullptr) noexcept {
         static_assert(sizeof(instance) <= sizeof(PickingQuery::storage), "user data too large");
         PickingQuery& query = pick(x, y, [](PickingQueryResult const& result, PickingQuery* pq) {
-            void* user = pq->storage;
-            T* that = static_cast<T*>(user);
+            T* const that = static_cast<T*>(reinterpret_cast<void*>(pq->storage));
             (that->*method)(result);
             that->~T();
         }, handler);
@@ -800,15 +805,15 @@ public:
      * @param handler   Handler to dispatch the callback or nullptr for the default handler.
      */
     template<typename T>
-    void pick(uint32_t x, uint32_t y, T functor, backend::CallbackHandler* handler = nullptr) noexcept {
+    void pick(uint32_t x, uint32_t y, T functor,
+            backend::CallbackHandler* handler = nullptr) noexcept {
         static_assert(sizeof(functor) <= sizeof(PickingQuery::storage), "functor too large");
         PickingQuery& query = pick(x, y, handler,
                 (PickingQueryResultCallback)[](PickingQueryResult const& result, PickingQuery* pq) {
-            void* user = pq->storage;
-            T& that = *static_cast<T*>(user);
-            that(result);
-            that.~T();
-        });
+                    T* const that = static_cast<T*>(reinterpret_cast<void*>(pq->storage));
+                    that->operator()(result);
+                    that->~T();
+                });
         new(query.storage) T(std::move(functor));
     }
 
@@ -890,6 +895,10 @@ public:
      */
     UTILS_DEPRECATED
     AmbientOcclusion getAmbientOcclusion() const noexcept;
+
+protected:
+    // prevent heap allocation
+    ~View() = default;
 };
 
 } // namespace filament

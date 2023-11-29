@@ -19,6 +19,7 @@
 #include "VulkanFboCache.h"
 #include "VulkanHandles.h"
 #include "VulkanSamplerCache.h"
+#include "VulkanTexture.h"
 
 #include <utils/FixedCapacityVector.h>
 #include <utils/Panic.h>
@@ -26,8 +27,6 @@
 #include <smolv.h>
 
 #include "generated/vkshaders/vkshaders.h"
-
-#define FILAMENT_VULKAN_CHECK_BLIT_FORMAT 0
 
 using namespace bluevk;
 using namespace utils;
@@ -41,16 +40,20 @@ namespace {
 inline void blitFast(const VkCommandBuffer cmdbuffer, VkImageAspectFlags aspect, VkFilter filter,
         const VkExtent2D srcExtent, VulkanAttachment src, VulkanAttachment dst,
         const VkOffset3D srcRect[2], const VkOffset3D dstRect[2]) {
-    const VkImageBlit blitRegions[1] = {{.srcSubresource = {aspect, src.level, src.layer, 1},
+    const VkImageBlit blitRegions[1] = {{
+            .srcSubresource = {aspect, src.level, src.layer, 1},
             .srcOffsets = {srcRect[0], srcRect[1]},
             .dstSubresource = {aspect, dst.level, dst.layer, 1},
-            .dstOffsets = {dstRect[0], dstRect[1]}}};
+            .dstOffsets = {dstRect[0], dstRect[1]},
+        }};
 
-    const VkImageResolve resolveRegions[1] = {{.srcSubresource = {aspect, src.level, src.layer, 1},
+    const VkImageResolve resolveRegions[1] = {{
+            .srcSubresource = {aspect, src.level, src.layer, 1},
             .srcOffset = srcRect[0],
             .dstSubresource = {aspect, dst.level, dst.layer, 1},
             .dstOffset = dstRect[0],
-            .extent = {srcExtent.width, srcExtent.height, 1}}};
+            .extent = {srcExtent.width, srcExtent.height, 1},
+        }};
 
     const VkImageSubresourceRange srcRange = {
             .aspectMask = aspect,
@@ -68,12 +71,15 @@ inline void blitFast(const VkCommandBuffer cmdbuffer, VkImageAspectFlags aspect,
             .layerCount = 1,
     };
 
-    if constexpr (FILAMENT_VULKAN_VERBOSE) {
+    if constexpr (FVK_ENABLED(FVK_DEBUG_BLITTER)) {
         utils::slog.d << "Fast blit from=" << src.texture->getVkImage() << ",level=" << (int) src.level
-                      << "layout=" << src.getLayout()
+                      << " layout=" << src.getLayout()
                       << " to=" << dst.texture->getVkImage() << ",level=" << (int) dst.level
-                      << "layout=" << dst.getLayout() << utils::io::endl;
+                      << " layout=" << dst.getLayout() << utils::io::endl;
     }
+
+    VulkanLayout oldSrcLayout = src.getLayout();
+    VulkanLayout oldDstLayout = dst.getLayout();
 
     src.texture->transitionLayout(cmdbuffer, srcRange, VulkanLayout::TRANSFER_SRC);
     dst.texture->transitionLayout(cmdbuffer, dstRange, VulkanLayout::TRANSFER_DST);
@@ -92,17 +98,14 @@ inline void blitFast(const VkCommandBuffer cmdbuffer, VkImageAspectFlags aspect,
                 1, blitRegions, filter);
     }
 
-    VulkanLayout newSrcLayout = ImgUtil::getDefaultLayout(src.texture->usage);
-    VulkanLayout const newDstLayout = ImgUtil::getDefaultLayout(dst.texture->usage);
-
-    // In the case of blitting the depth attachment, we transition the source into GENERAL (for
-    // sampling) and set the copy as ATTACHMENT_OPTIMAL (to be set as the attachment).
-    if (any(src.texture->usage & TextureUsage::DEPTH_ATTACHMENT)) {
-        newSrcLayout = VulkanLayout::DEPTH_SAMPLER;
+    if (oldSrcLayout == VulkanLayout::UNDEFINED) {
+        oldSrcLayout = ImgUtil::getDefaultLayout(src.texture->usage);
     }
-
-    src.texture->transitionLayout(cmdbuffer, srcRange, newSrcLayout);
-    dst.texture->transitionLayout(cmdbuffer, dstRange, newDstLayout);
+    if (oldDstLayout == VulkanLayout::UNDEFINED) {
+        oldDstLayout = ImgUtil::getDefaultLayout(dst.texture->usage);
+    }
+    src.texture->transitionLayout(cmdbuffer, srcRange, oldSrcLayout);
+    dst.texture->transitionLayout(cmdbuffer, dstRange, oldDstLayout);
 }
 
 struct BlitterUniforms {
@@ -131,21 +134,25 @@ void VulkanBlitter::blitColor(BlitArgs args) {
     const VulkanAttachment dst = args.dstTarget->getColor(0);
     const VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 
-#if FILAMENT_VULKAN_CHECK_BLIT_FORMAT
+#if FVK_ENABLED(FVK_DEBUG_BLIT_FORMAT)
     VkPhysicalDevice const gpu = mPhysicalDevice;
     VkFormatProperties info;
     vkGetPhysicalDeviceFormatProperties(gpu, src.getFormat(), &info);
     if (!ASSERT_POSTCONDITION_NON_FATAL(info.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT,
-            "Source format is not blittable")) {
+                "Source format is not blittable %d", src.getFormat())) {
         return;
     }
     vkGetPhysicalDeviceFormatProperties(gpu, dst.getFormat(), &info);
     if (!ASSERT_POSTCONDITION_NON_FATAL(info.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT,
-            "Destination format is not blittable")) {
+                "Destination format is not blittable %d", dst.getFormat())) {
         return;
     }
 #endif
-    VkCommandBuffer const cmdbuffer = mCommands->get().cmdbuffer;
+    VulkanCommandBuffer& commands = mCommands->get();
+    VkCommandBuffer const cmdbuffer = commands.buffer();
+    commands.acquire(src.texture);
+    commands.acquire(dst.texture);
+
     blitFast(cmdbuffer, aspect, args.filter, args.srcTarget->getExtent(), src, dst,
             args.srcRectPair, args.dstRectPair);
 }
@@ -155,17 +162,17 @@ void VulkanBlitter::blitDepth(BlitArgs args) {
     const VulkanAttachment dst = args.dstTarget->getDepth();
     const VkImageAspectFlags aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
 
-#if FILAMENT_VULKAN_CHECK_BLIT_FORMAT
+#if FVK_ENABLED(FVK_DEBUG_BLIT_FORMAT)
     VkPhysicalDevice const gpu = mPhysicalDevice;
     VkFormatProperties info;
     vkGetPhysicalDeviceFormatProperties(gpu, src.getFormat(), &info);
     if (!ASSERT_POSTCONDITION_NON_FATAL(info.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT,
-            "Depth format is not blittable")) {
+                "Depth src format is not blittable %d", src.getFormat())) {
         return;
     }
     vkGetPhysicalDeviceFormatProperties(gpu, dst.getFormat(), &info);
     if (!ASSERT_POSTCONDITION_NON_FATAL(info.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT,
-            "Depth format is not blittable")) {
+                "Depth dst format is not blittable %d", dst.getFormat())) {
         return;
     }
 #endif
@@ -177,27 +184,29 @@ void VulkanBlitter::blitDepth(BlitArgs args) {
                 args.dstRectPair);
         return;
     }
-    VkCommandBuffer const cmdbuffer = mCommands->get().cmdbuffer;
+
+    VulkanCommandBuffer& commands = mCommands->get();
+    VkCommandBuffer const cmdbuffer = commands.buffer();
+    commands.acquire(src.texture);
+    commands.acquire(dst.texture);
     blitFast(cmdbuffer, aspect, args.filter, args.srcTarget->getExtent(), src, dst, args.srcRectPair,
             args.dstRectPair);
 }
 
 void VulkanBlitter::terminate() noexcept {
-    if (mDevice) {
+    if (mDepthResolveProgram) {
         delete mDepthResolveProgram;
         mDepthResolveProgram = nullptr;
+    }
 
-        if (mTriangleBuffer) {
-            mTriangleBuffer->terminate();
-            delete mTriangleBuffer;
-            mTriangleBuffer = nullptr;
-        }
+    if (mTriangleBuffer) {
+        delete mTriangleBuffer;
+        mTriangleBuffer = nullptr;
+    }
 
-        if (mParamsBuffer) {
-            mParamsBuffer->terminate();
-            delete mParamsBuffer;
-            mParamsBuffer = nullptr;
-        }
+    if (mParamsBuffer) {
+        delete mParamsBuffer;
+        mParamsBuffer = nullptr;
     }
 }
 
@@ -228,17 +237,18 @@ void VulkanBlitter::lazyInit() noexcept {
 
     VkShaderModule vertexShader = decode(VKSHADERS_BLITDEPTHVS_DATA, VKSHADERS_BLITDEPTHVS_SIZE);
     VkShaderModule fragmentShader = decode(VKSHADERS_BLITDEPTHFS_DATA, VKSHADERS_BLITDEPTHFS_SIZE);
-    mDepthResolveProgram = new VulkanProgram(mDevice, vertexShader, fragmentShader);
 
     // Allocate one anonymous sampler at slot 0.
-    mDepthResolveProgram->samplerGroupInfo[0].samplers.reserve(1);
-    mDepthResolveProgram->samplerGroupInfo[0].samplers.resize(1);
+    VulkanProgram::CustomSamplerInfoList samplers = {
+        {0, 0, ShaderStageFlags::FRAGMENT},
+    };
+    mDepthResolveProgram = new VulkanProgram(mDevice, vertexShader, fragmentShader, samplers);
 
-    if constexpr (FILAMENT_VULKAN_VERBOSE) {
-        utils::slog.d << "Created Shader Module for VulkanBlitter "
-                    << "shaders = (" << vertexShader << ", " << fragmentShader << ")"
-                    << utils::io::endl;
-    }
+#if FVK_ENABLED(FVK_DEBUG_BLITTER)
+    utils::slog.d << "Created Shader Module for VulkanBlitter "
+                  << "shaders = (" << vertexShader << ", " << fragmentShader << ")"
+                  << utils::io::endl;
+#endif
 
     static const float kTriangleVertices[] = {
         -1.0f, -1.0f,
@@ -247,13 +257,16 @@ void VulkanBlitter::lazyInit() noexcept {
         +1.0f, +1.0f,
     };
 
-    mTriangleBuffer = new VulkanBuffer(mAllocator, mCommands, mStagePool,
-            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, sizeof(kTriangleVertices));
+    VulkanCommandBuffer& commands = mCommands->get();
+    VkCommandBuffer const cmdbuffer = commands.buffer();
 
-    mTriangleBuffer->loadFromCpu(kTriangleVertices, 0, sizeof(kTriangleVertices));
+    mTriangleBuffer = new VulkanBuffer(mAllocator, mStagePool, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            sizeof(kTriangleVertices));
 
-    mParamsBuffer = new VulkanBuffer(mAllocator, mCommands, mStagePool,
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(BlitterUniforms));
+    mTriangleBuffer->loadFromCpu(cmdbuffer, kTriangleVertices, 0, sizeof(kTriangleVertices));
+
+    mParamsBuffer = new VulkanBuffer(mAllocator, mStagePool, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            sizeof(BlitterUniforms));
 }
 
 // At a high level, the procedure for resolving depth looks like this:
@@ -265,11 +278,16 @@ void VulkanBlitter::blitSlowDepth(VkFilter filter, const VkExtent2D srcExtent, V
         VulkanAttachment dst, const VkOffset3D srcRect[2], const VkOffset3D dstRect[2]) {
     lazyInit();
 
+    VulkanCommandBuffer* commands = &mCommands->get();
+    VkCommandBuffer const cmdbuffer = commands->buffer();
+    commands->acquire(src.texture);
+    commands->acquire(dst.texture);
+
     BlitterUniforms const uniforms = {
-        .sampleCount = src.texture->samples,
-        .inverseSampleCount = 1.0f / float(src.texture->samples),
+            .sampleCount = src.texture->samples,
+            .inverseSampleCount = 1.0f / float(src.texture->samples),
     };
-    mParamsBuffer->loadFromCpu(&uniforms, 0, sizeof(uniforms));
+    mParamsBuffer->loadFromCpu(cmdbuffer, &uniforms, 0, sizeof(uniforms));
 
     VkImageAspectFlags const aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
 
@@ -316,8 +334,6 @@ void VulkanBlitter::blitSlowDepth(VkFilter filter, const VkExtent2D srcExtent, V
     renderPassInfo.renderArea.extent.width = dstRect[1].x - dstRect[0].x;
     renderPassInfo.renderArea.extent.height = dstRect[1].y - dstRect[0].y;
 
-    const VkCommandBuffer cmdbuffer = mCommands->get().cmdbuffer;
-
     // We need to transition the source into a sampler since it'll be sampled in the shader.
     const VkImageSubresourceRange srcRange = {
             .aspectMask = aspect,
@@ -344,7 +360,7 @@ void VulkanBlitter::blitSlowDepth(VkFilter filter, const VkExtent2D srcExtent, V
     // DRAW THE TRIANGLE
     // -----------------
 
-    mPipelineCache.bindProgram(*mDepthResolveProgram);
+    mPipelineCache.bindProgram(mDepthResolveProgram);
     mPipelineCache.bindPrimitiveTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
     auto vkraster = mPipelineCache.getCurrentRasterState();
@@ -366,18 +382,25 @@ void VulkanBlitter::blitSlowDepth(VkFilter filter, const VkExtent2D srcExtent, V
     vkraster.colorTargetCount = 0;
     mPipelineCache.bindRasterState(vkraster);
 
-    VulkanPipelineCache::VertexArray varray = {};
     VkBuffer buffers[1] = {};
     VkDeviceSize offsets[1] = {};
     buffers[0] = mTriangleBuffer->getGpuBuffer();
-    varray.attributes[0] = { .location = 0, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT };
-    varray.buffers[0] = { .binding = 0, .stride = sizeof(float) * 2 };
-    mPipelineCache.bindVertexArray(varray);
+    VkVertexInputAttributeDescription attribDesc = {
+            .location = 0,
+            .binding = 0,
+            .format = VK_FORMAT_R32G32_SFLOAT,
+    };
+    VkVertexInputBindingDescription bufferDesc = {
+            .binding = 0,
+            .stride = sizeof(float) * 2,
+    };
+    mPipelineCache.bindVertexArray(&attribDesc, &bufferDesc, 1);
 
     // Select nearest filtering and clamp_to_edge.
     VkSampler vksampler = mSamplerCache.getSampler({});
 
     VkDescriptorImageInfo samplers[VulkanPipelineCache::SAMPLER_BINDING_COUNT];
+    VulkanTexture* textures[VulkanPipelineCache::SAMPLER_BINDING_COUNT] = {nullptr};
     for (auto& sampler : samplers) {
         sampler = {
             .sampler = vksampler,
@@ -391,8 +414,9 @@ void VulkanBlitter::blitSlowDepth(VkFilter filter, const VkExtent2D srcExtent, V
         .imageView = src.getImageView(VK_IMAGE_ASPECT_DEPTH_BIT),
         .imageLayout = ImgUtil::getVkLayout(samplerLayout),
     };
+    textures[0] = src.texture;
 
-    mPipelineCache.bindSamplers(samplers,
+    mPipelineCache.bindSamplers(samplers, textures,
             VulkanPipelineCache::getUsageFlags(0, ShaderStageFlags::FRAGMENT));
 
     auto previousUbo = mPipelineCache.getUniformBufferBinding(0);
@@ -409,7 +433,7 @@ void VulkanBlitter::blitSlowDepth(VkFilter filter, const VkExtent2D srcExtent, V
 
     mPipelineCache.bindScissor(cmdbuffer, scissor);
 
-    if (!mPipelineCache.bindPipeline(cmdbuffer)) {
+    if (!mPipelineCache.bindPipeline(commands)) {
         assert_invariant(false);
     }
 

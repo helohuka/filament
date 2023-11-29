@@ -21,6 +21,7 @@
 
 #include "CallbackManager.h"
 #include "CompilerThreadPool.h"
+#include "OpenGLBlobCache.h"
 
 #include <backend/CallbackHandler.h>
 #include <backend/Program.h>
@@ -95,6 +96,7 @@ public:
 
 private:
     OpenGLDriver& mDriver;
+    OpenGLBlobCache mBlobCache;
     CallbackManager mCallbackManager;
     CompilerThreadPool mCompilerThreadPool;
 
@@ -141,7 +143,7 @@ private:
     void runAtNextTick(CompilerPriorityQueue priority,
             const program_token_t& token, Job job) noexcept;
     void executeTickOps() noexcept;
-    void cancelTickOp(program_token_t token) noexcept;
+    bool cancelTickOp(program_token_t token) noexcept;
     // order of insertion is important
 
     using ContainerType = std::tuple<CompilerPriorityQueue, program_token_t, Job>;

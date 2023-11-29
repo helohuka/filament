@@ -18,11 +18,11 @@ struct Configure
     std::string title      = "GameBox";
     std::string iblDirectory;
     std::string dirt;
-    std::string filename = "/sdcard/models/TreeHouse.glb"; //"/sdcard/model/TreeHouse.glb";
+    std::string filename = "/sdcard/models/Breakdancer.glb"; //"/sdcard/model/TreeHouse.glb";
     //std::string filename = "E:/1/filament/third_party/models/Breakdancer.glb";
 
     filament::Engine::Backend       backend      = filament::Engine::Backend::OPENGL;
-    filament::backend::FeatureLevel featureLevel = filament::backend::FeatureLevel::FEATURE_LEVEL_1;
+    filament::backend::FeatureLevel featureLevel = filament::backend::FeatureLevel::FEATURE_LEVEL_3;
     filament::camutils::Mode        cameraMode   = filament::camutils::Mode::ORBIT;
 };
 

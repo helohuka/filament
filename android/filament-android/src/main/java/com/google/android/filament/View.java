@@ -27,6 +27,8 @@ import static com.google.android.filament.Asserts.assertFloat3In;
 import static com.google.android.filament.Asserts.assertFloat4In;
 import static com.google.android.filament.Colors.LinearColor;
 
+import com.google.android.filament.proguard.UsedByNative;
+
 /**
  * Encompasses all the state needed for rendering a {@link Scene}.
  *
@@ -73,6 +75,7 @@ public class View {
     private AmbientOcclusionOptions mAmbientOcclusionOptions;
     private BloomOptions mBloomOptions;
     private FogOptions mFogOptions;
+    private StereoscopicOptions mStereoscopicOptions;
     private RenderTarget mRenderTarget;
     private BlendMode mBlendMode;
     private DepthOfFieldOptions mDepthOfFieldOptions;
@@ -902,7 +905,7 @@ public class View {
         mBloomOptions = options;
         nSetBloomOptions(getNativeObject(), options.dirt != null ? options.dirt.getNativeObject() : 0,
                 options.dirtStrength, options.strength, options.resolution,
-                options.anamorphism, options.levels, options.blendMode.ordinal(),
+                options.levels, options.blendMode.ordinal(),
                 options.threshold, options.enabled, options.highlight,
                 options.lensFlare, options.starburst, options.chromaticAberration,
                 options.ghostCount, options.ghostSpacing, options.ghostThreshold,
@@ -965,7 +968,8 @@ public class View {
                 options.heightFalloff, options.cutOffDistance,
                 options.color[0], options.color[1], options.color[2],
                 options.density, options.inScatteringStart, options.inScatteringSize,
-                options.fogColorFromIbl, options.skyColor.getNativeObject(),
+                options.fogColorFromIbl,
+                options.skyColor == null ? 0 : options.skyColor.getNativeObject(),
                 options.enabled);
     }
 
@@ -1029,7 +1033,8 @@ public class View {
      * </p>
      *
      * <p>
-     * Post-processing must be enabled in order to use the stencil buffer.
+     * If post-processing is disabled, then the SwapChain must have the CONFIG_HAS_STENCIL_BUFFER
+     * flag set in order to use the stencil buffer.
      * </p>
      *
      * <p>
@@ -1050,6 +1055,51 @@ public class View {
     public boolean isStencilBufferEnabled() {
         return nIsStencilBufferEnabled(getNativeObject());
     }
+
+    /**
+     * Sets the stereoscopic rendering options for this view.
+     *
+     * <p>
+     * Currently, only one type of stereoscopic rendering is supported: side-by-side.
+     * Side-by-side stereo rendering splits the viewport into two halves: a left and right half.
+     * Eye 0 will render to the left half, while Eye 1 will render into the right half.
+     * </p>
+     *
+     * <p>
+     * Currently, the following features are not supported with stereoscopic rendering:
+     * - post-processing
+     * - shadowing
+     * - punctual lights
+     * </p>
+     *
+     * <p>
+     * Stereo rendering depends on device and platform support. To check if stereo rendering is
+     * supported, use {@link Engine#isStereoSupported()}. If stereo rendering is not supported, then
+     * the stereoscopic options have no effect.
+     * </p>
+     *
+     * @param options The stereoscopic options to use on this view
+     * @see #getStereoscopicOptions
+     */
+    public void setStereoscopicOptions(@NonNull StereoscopicOptions options) {
+        mStereoscopicOptions = options;
+        nSetStereoscopicOptions(getNativeObject(), options.enabled);
+    }
+
+    /**
+     * Gets the stereoscopic options.
+     *
+     * @return options Stereoscopic options currently set.
+     * @see #setStereoscopicOptions
+     */
+    @NonNull
+    public StereoscopicOptions getStereoscoopicOptions() {
+        if (mStereoscopicOptions == null) {
+            mStereoscopicOptions = new StereoscopicOptions();
+        }
+        return mStereoscopicOptions;
+    }
+
 
     /**
      * A class containing the result of a picking query
@@ -1095,10 +1145,29 @@ public class View {
         nPick(getNativeObject(), x, y, handler, internalCallback);
     }
 
+    @UsedByNative("View.cpp")
     private static class InternalOnPickCallback implements Runnable {
+        private final OnPickCallback mUserCallback;
+        private final PickingQueryResult mPickingQueryResult = new PickingQueryResult();
+
+        @UsedByNative("View.cpp")
+        @Entity
+        int mRenderable;
+
+        @UsedByNative("View.cpp")
+        float mDepth;
+
+        @UsedByNative("View.cpp")
+        float mFragCoordsX;
+        @UsedByNative("View.cpp")
+        float mFragCoordsY;
+        @UsedByNative("View.cpp")
+        float mFragCoordsZ;
+
         public InternalOnPickCallback(OnPickCallback mUserCallback) {
             this.mUserCallback = mUserCallback;
         }
+
         @Override
         public void run() {
             mPickingQueryResult.renderable = mRenderable;
@@ -1108,13 +1177,6 @@ public class View {
             mPickingQueryResult.fragCoords[2] = mFragCoordsZ;
             mUserCallback.onPick(mPickingQueryResult);
         }
-        private final OnPickCallback mUserCallback;
-        private final PickingQueryResult mPickingQueryResult = new PickingQueryResult();
-        @Entity int mRenderable;
-        float mDepth;
-        float mFragCoordsX;
-        float mFragCoordsY;
-        float mFragCoordsZ;
     }
 
     /**
@@ -1201,9 +1263,10 @@ public class View {
     private static native int nGetAmbientOcclusion(long nativeView);
     private static native void nSetAmbientOcclusionOptions(long nativeView, float radius, float bias, float power, float resolution, float intensity, float bilateralThreshold, int quality, int lowPassFilter, int upsampling, boolean enabled, boolean bentNormals, float minHorizonAngleRad);
     private static native void nSetSSCTOptions(long nativeView, float ssctLightConeRad, float ssctStartTraceDistance, float ssctContactDistanceMax, float ssctIntensity, float v, float v1, float v2, float ssctDepthBias, float ssctDepthSlopeBias, int ssctSampleCount, int ssctRayCount, boolean ssctEnabled);
-    private static native void nSetBloomOptions(long nativeView, long dirtNativeObject, float dirtStrength, float strength, int resolution, float anamorphism, int levels, int blendMode, boolean threshold, boolean enabled, float highlight,
+    private static native void nSetBloomOptions(long nativeView, long dirtNativeObject, float dirtStrength, float strength, int resolution, int levels, int blendMode, boolean threshold, boolean enabled, float highlight,
             boolean lensFlare, boolean starburst, float chromaticAberration, int ghostCount, float ghostSpacing, float ghostThreshold, float haloThickness, float haloRadius, float haloThreshold);
     private static native void nSetFogOptions(long nativeView, float distance, float maximumOpacity, float height, float heightFalloff, float cutOffDistance, float v, float v1, float v2, float density, float inScatteringStart, float inScatteringSize, boolean fogColorFromIbl, long skyColorNativeObject, boolean enabled);
+    private static native void nSetStereoscopicOptions(long nativeView, boolean enabled);
     private static native void nSetBlendMode(long nativeView, int blendMode);
     private static native void nSetDepthOfFieldOptions(long nativeView, float cocScale, float maxApertureDiameter, boolean enabled, int filter,
             boolean nativeResolution, int foregroundRingCount, int backgroundRingCount, int fastGatherRingCount, int maxForegroundCOC, int maxBackgroundCOC);
@@ -1338,8 +1401,6 @@ public class View {
      * blendMode:   Whether the bloom effect is purely additive (false) or mixed with the original
      *              image (true).
      *
-     * anamorphism: Bloom's aspect ratio (x/y), for artistic purposes.
-     *
      * threshold:   When enabled, a threshold at 1.0 is applied on the source image, this is
      *              useful for artistic reasons and is usually needed when a dirt texture is used.
      *
@@ -1377,13 +1438,9 @@ public class View {
         /**
          * resolution of vertical axis (2^levels to 2048)
          */
-        public int resolution = 360;
+        public int resolution = 384;
         /**
-         * bloom x/y aspect-ratio (1/32 to 32)
-         */
-        public float anamorphism = 1.0f;
-        /**
-         * number of blur levels (3 to 11)
+         * number of blur levels (1 to 11)
          */
         public int levels = 6;
         /**
@@ -1403,6 +1460,17 @@ public class View {
          * limit highlights to this value before bloom [10, +inf]
          */
         public float highlight = 1000.0f;
+        /**
+         * Bloom quality level.
+         * LOW (default): use a more optimized down-sampling filter, however there can be artifacts
+         *      with dynamic resolution, this can be alleviated by using the homogenous mode.
+         * MEDIUM: Good balance between quality and performance.
+         * HIGH: In this mode the bloom resolution is automatically increased to avoid artifacts.
+         *      This mode can be significantly slower on mobile, especially at high resolution.
+         *      This mode greatly improves the anamorphic bloom.
+         */
+        @NonNull
+        public QualityLevel quality = QualityLevel.LOW;
         /**
          * enable screen-space lens flare
          */
@@ -1909,6 +1977,7 @@ public class View {
          * PCF with soft shadows and contact hardening
          */
         PCSS,
+        PCFd,
     }
 
     /**

@@ -28,9 +28,11 @@
 #include <utils/compiler.h>
 #include <utils/Hash.h>
 
+#include <list>
 #include <tsl/robin_map.h>
 #include <type_traits>
 #include <vector>
+#include <unordered_map>
 
 #include "VulkanCommands.h"
 
@@ -41,6 +43,9 @@ VK_DEFINE_HANDLE(VmaPool)
 namespace filament::backend {
 
 struct VulkanProgram;
+struct VulkanBufferObject;
+struct VulkanTexture;
+class VulkanResourceAllocator;
 
 // VulkanPipelineCache manages a cache of descriptor sets and pipelines.
 //
@@ -75,8 +80,6 @@ public:
     // as a vertex assembler configuration. For simplicity it contains fixed-size arrays and does
     // not store sizes; all unused entries are simply zeroed out.
     struct VertexArray {
-        VkVertexInputAttributeDescription attributes[VERTEX_ATTRIBUTE_COUNT];
-        VkVertexInputBindingDescription buffers[VERTEX_ATTRIBUTE_COUNT];
     };
 
     // The ProgramBundle contains weak references to the compiled vertex and fragment shaders.
@@ -88,6 +91,7 @@ public:
 
     using UsageFlags = utils::bitset128;
     static UsageFlags getUsageFlags(uint16_t binding, ShaderStageFlags stages, UsageFlags src = {});
+    static UsageFlags disableUsageFlags(uint16_t binding, UsageFlags src);
 
     #pragma clang diagnostic push
     #pragma clang diagnostic warning "-Wpadded"
@@ -131,7 +135,7 @@ public:
 
     // Upon construction, the pipeCache initializes some internal state but does not make any Vulkan
     // calls. On destruction it will free any cached Vulkan objects that haven't already been freed.
-    VulkanPipelineCache();
+    VulkanPipelineCache(VulkanResourceAllocator* allocator);
     ~VulkanPipelineCache();
     void setDevice(VkDevice device, VmaAllocator allocator);
 
@@ -141,21 +145,25 @@ public:
 
     // Creates a new pipeline if necessary and binds it using vkCmdBindPipeline.
     // Returns false if an error occurred.
-    bool bindPipeline(VkCommandBuffer cmdbuffer) noexcept;
+    bool bindPipeline(VulkanCommandBuffer* commands) noexcept;
 
     // Sets up a new scissor rectangle if it has been dirtied.
     void bindScissor(VkCommandBuffer cmdbuffer, VkRect2D scissor) noexcept;
 
     // Each of the following methods are fast and do not make Vulkan calls.
-    void bindProgram(const VulkanProgram& program) noexcept;
+    void bindProgram(VulkanProgram* program) noexcept;
     void bindRasterState(const RasterState& rasterState) noexcept;
     void bindRenderPass(VkRenderPass renderPass, int subpassIndex) noexcept;
     void bindPrimitiveTopology(VkPrimitiveTopology topology) noexcept;
-    void bindUniformBuffer(uint32_t bindingIndex, VkBuffer uniformBuffer,
+    void bindUniformBufferObject(uint32_t bindingIndex, VulkanBufferObject* bufferObject,
             VkDeviceSize offset = 0, VkDeviceSize size = VK_WHOLE_SIZE) noexcept;
-    void bindSamplers(VkDescriptorImageInfo samplers[SAMPLER_BINDING_COUNT], UsageFlags flags) noexcept;
+    void bindUniformBuffer(uint32_t bindingIndex, VkBuffer buffer,
+            VkDeviceSize offset = 0, VkDeviceSize size = VK_WHOLE_SIZE) noexcept;
+    void bindSamplers(VkDescriptorImageInfo samplers[SAMPLER_BINDING_COUNT],
+            VulkanTexture* textures[SAMPLER_BINDING_COUNT], UsageFlags flags) noexcept;
     void bindInputAttachment(uint32_t bindingIndex, VkDescriptorImageInfo imageInfo) noexcept;
-    void bindVertexArray(const VertexArray& varray) noexcept;
+    void bindVertexArray(VkVertexInputAttributeDescription const* attribDesc,
+            VkVertexInputBindingDescription const* bufferDesc, uint8_t count);
 
     // Gets the current UBO at the given slot, useful for push / pop.
     UniformBufferBinding getUniformBufferBinding(uint32_t bindingIndex) const noexcept;
@@ -185,17 +193,22 @@ public:
         mDummyTargetInfo.imageView = imageView;
     }
 
+    // Acquires a resource to be bound to the current pipeline. The ownership of the resource
+    // will be transferred to the corresponding pipeline when pipeline is bound.
+    void acquireResource(VulkanResource* resource) {
+        mPipelineBoundResources.acquire(resource);
+    }
+
     inline RasterState getCurrentRasterState() const noexcept {
-	return mCurrentRasterState;
+        return mCurrentRasterState;
     }
 
     // We need to update this outside of bindRasterState due to VulkanDriver::draw.
     inline void setCurrentRasterState(RasterState const& rasterState) noexcept {
-	mCurrentRasterState = rasterState;
+        mCurrentRasterState = rasterState;
     }
 
 private:
-
     // PIPELINE LAYOUT CACHE KEY
     // -------------------------
 
@@ -327,7 +340,7 @@ private:
 
     // The timestamp associated with a given cache entry represents time as a count of flush
     // events since the cache was constructed. If any cache entry was most recently used over
-    // VK_MAX_PIPELINE_AGE flushes in the past, then we can be sure that it is no longer
+    // FVK_MAX_PIPELINE_AGE flushes in the past, then we can be sure that it is no longer
     // being used by the GPU, and is therefore safe to destroy or reclaim.
     using Timestamp = uint64_t;
     Timestamp mCurrentTime = 0;
@@ -337,7 +350,10 @@ private:
         std::array<VkDescriptorSet, DESCRIPTOR_TYPE_COUNT> handles;
         Timestamp lastUsed;
         PipelineLayoutKey pipelineLayout;
+        uint32_t id;
     };
+    uint32_t mDescriptorCacheEntryCount = 0;
+
 
     struct PipelineCacheEntry {
         VkPipeline handle;
@@ -372,12 +388,15 @@ private:
             PipelineLayoutKeyHashFn, PipelineLayoutKeyEqual>;
     using PipelineMap = tsl::robin_map<PipelineKey, PipelineCacheEntry,
             PipelineHashFn, PipelineEqual>;
-    using DescriptorMap = tsl::robin_map<DescriptorKey, DescriptorCacheEntry,
-            DescHashFn, DescEqual>;
+    using DescriptorMap
+            = tsl::robin_map<DescriptorKey, DescriptorCacheEntry, DescHashFn, DescEqual>;
+    using DescriptorResourceMap
+            = std::unordered_map<uint32_t, std::unique_ptr<VulkanAcquireOnlyResourceManager>>;
 
     PipelineLayoutMap mPipelineLayouts;
     PipelineMap mPipelines;
     DescriptorMap mDescriptorSets;
+    DescriptorResourceMap mDescriptorResources;
 
     // These helpers all return unstable pointers that should not be stored.
     DescriptorCacheEntry* createDescriptorSets() noexcept;
@@ -397,7 +416,7 @@ private:
     RasterState mCurrentRasterState;
     PipelineKey mPipelineRequirements = {};
     DescriptorKey mDescriptorRequirements = {};
-    VkSpecializationInfo* mSpecializationRequirements = {};
+    VkSpecializationInfo const* mSpecializationRequirements = nullptr;
 
     // Current bindings for the pipeline and descriptor sets.
     PipelineKey mBoundPipeline = {};
@@ -425,8 +444,8 @@ private:
     // After a growth event (i.e. when the VkDescriptorPool is replaced with a bigger version), all
     // currently used descriptors are moved into the "extinct" sets so that they can be safely
     // destroyed a few frames later.
-    std::vector<VkDescriptorPool> mExtinctDescriptorPools;
-    std::vector<DescriptorCacheEntry> mExtinctDescriptorBundles;
+    std::list<VkDescriptorPool> mExtinctDescriptorPools;
+    std::list<DescriptorCacheEntry> mExtinctDescriptorBundles;
 
     VkDescriptorBufferInfo mDummyBufferInfo = {};
     VkWriteDescriptorSet mDummyBufferWriteInfo = {};
@@ -435,6 +454,9 @@ private:
 
     VkBuffer mDummyBuffer;
     VmaAllocation mDummyMemory;
+
+    VulkanResourceAllocator* mResourceAllocator;
+    VulkanAcquireOnlyResourceManager mPipelineBoundResources;
 };
 
 } // namespace filament::backend

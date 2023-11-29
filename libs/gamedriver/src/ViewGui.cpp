@@ -463,8 +463,6 @@ void GameDriver::applyAnimation(double currentTime )
     }
 }
 
- 
-
 void GameDriver::customUI()
 {
     auto& automation = Automation::get().getAutomationEngine();

@@ -127,7 +127,7 @@ public:
 
 protected:
     // Looks at platform and target API, then decides on shader models and output formats.
-    void prepare(bool vulkanSemantics);
+    void prepare(bool vulkanSemantics, filament::backend::FeatureLevel featureLevel);
 
     using ShaderModel = filament::backend::ShaderModel;
     Platform mPlatform = Platform::DESKTOP;
@@ -135,11 +135,13 @@ protected:
     Optimization mOptimization = Optimization::PERFORMANCE;
     bool mPrintShaders = false;
     bool mGenerateDebugInfo = false;
+    bool mIncludeEssl1 = true;
     utils::bitset32 mShaderModels;
     struct CodeGenParams {
         ShaderModel shaderModel;
         TargetApi targetApi;
         TargetLanguage targetLanguage;
+        filament::backend::FeatureLevel featureLevel;
     };
     std::vector<CodeGenParams> mCodeGenPermutations;
 
@@ -269,6 +271,9 @@ public:
 
 
     MaterialBuilder& noSamplerValidation(bool enabled) noexcept;
+
+    //! Enable generation of ESSL 1.0 code in FL0 materials.
+    MaterialBuilder& includeEssl1(bool enabled) noexcept;
 
     //! Set the name of this material.
     MaterialBuilder& name(const char* name) noexcept;
@@ -690,8 +695,8 @@ public:
     std::string peek(filament::backend::ShaderStage type,
             const CodeGenParams& params, const PropertyList& properties) noexcept;
 
-    // Returns true if any of the parameter samplers is of type samplerExternal
-    bool hasExternalSampler() const noexcept;
+    // Returns true if any of the parameter samplers matches the specified type.
+    bool hasSamplerType(SamplerType samplerType) const noexcept;
 
     static constexpr size_t MAX_PARAMETERS_COUNT = 48;
     static constexpr size_t MAX_SUBPASS_COUNT = 1;
@@ -754,7 +759,7 @@ private:
             MaterialBuilder::PropertyList& allProperties,
             CodeGenParams const& semanticCodeGenParams) noexcept;
 
-    bool runSemanticAnalysis(MaterialInfo const& info,
+    bool runSemanticAnalysis(MaterialInfo* inOutInfo,
             CodeGenParams const& semanticCodeGenParams) noexcept;
 
     bool checkLiteRequirements() noexcept;

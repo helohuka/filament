@@ -43,7 +43,8 @@ PerViewUniforms::PerViewUniforms(FEngine& engine) noexcept
         : mSamplers(PerViewSib::SAMPLER_COUNT) {
     DriverApi& driver = engine.getDriverApi();
 
-    mSamplerGroupHandle = driver.createSamplerGroup(mSamplers.getSize());
+    mSamplerGroupHandle = driver.createSamplerGroup(
+            mSamplers.getSize(), utils::FixedSizeString<32>("Per-view samplers"));
 
     mUniformBufferHandle = driver.createBufferObject(mUniforms.getSize(),
             BufferObjectBinding::UNIFORM, BufferUsage::DYNAMIC);
@@ -74,14 +75,15 @@ void PerViewUniforms::prepareCamera(FEngine& engine, const CameraInfo& camera) n
     s.clipFromViewMatrix  = clipFromView;     // projection
     s.viewFromClipMatrix  = viewFromClip;     // 1/projection
     s.worldFromClipMatrix = worldFromClip;    // 1/(projection * view)
-    s.userWorldFromWorldMatrix = mat4f(inverse(camera.worldOrigin));
-    s.clipTransform = camera.clipTransfrom;
+    s.userWorldFromWorldMatrix = mat4f(inverse(camera.worldTransform));
+    s.clipTransform = camera.clipTransform;
     s.cameraFar = camera.zf;
     s.oneOverFarMinusNear = 1.0f / (camera.zf - camera.zn);
     s.nearOverFarMinusNear = camera.zn / (camera.zf - camera.zn);
 
     mat4f const& headFromWorld = camera.view;
-    for (uint8_t i = 0; i < CONFIG_STEREOSCOPIC_EYES; i++) {
+    Engine::Config const& config = engine.getConfig();
+    for (int i = 0; i < config.stereoscopicEyeCount; i++) {
         mat4f const& eyeFromHead = camera.eyeFromView[i];   // identity for monoscopic rendering
         mat4f const& clipFromEye = camera.eyeProjection[i];
         // clipFromEye * eyeFromHead * headFromWorld
@@ -150,7 +152,7 @@ void PerViewUniforms::prepareFog(FEngine& engine, const CameraInfo& cameraInfo,
     // why we store the cofactor matrix.
 
     mat4f const viewFromWorld       = cameraInfo.view;
-    mat4 const worldFromUserWorld   = cameraInfo.worldOrigin;
+    mat4 const worldFromUserWorld   = cameraInfo.worldTransform;
     mat4 const worldFromFog         = worldFromUserWorld * userWorldFromFog;
     mat4 const viewFromFog          = viewFromWorld * worldFromFog;
 
@@ -244,6 +246,7 @@ void PerViewUniforms::prepareMaterialGlobals(
 }
 
 void PerViewUniforms::prepareSSR(Handle<HwTexture> ssr,
+        bool disableSSR,
         float refractionLodOffset,
         ScreenSpaceReflectionsOptions const& ssrOptions) noexcept {
 
@@ -254,7 +257,7 @@ void PerViewUniforms::prepareSSR(Handle<HwTexture> ssr,
 
     auto& s = mUniforms.edit();
     s.refractionLodOffset = refractionLodOffset;
-    s.ssrDistance = ssrOptions.enabled ? ssrOptions.maxDistance : 0.0f;
+    s.ssrDistance = (ssrOptions.enabled && !disableSSR) ? ssrOptions.maxDistance : 0.0f;
 }
 
 void PerViewUniforms::prepareHistorySSR(Handle<HwTexture> ssr,
@@ -285,8 +288,13 @@ void PerViewUniforms::prepareDirectionalLight(FEngine& engine,
         float exposure,
         float3 const& sceneSpaceDirection,
         PerViewUniforms::LightManagerInstance directionalLight) noexcept {
-    FLightManager& lcm = engine.getLightManager();
+    FLightManager const& lcm = engine.getLightManager();
     auto& s = mUniforms.edit();
+
+    float const shadowFar = lcm.getShadowFar(directionalLight);
+    // TODO: make the falloff rate a parameter
+    s.shadowFarAttenuationParams = shadowFar > 0.0f ?
+            0.5f * float2{ 10.0f, 10.0f / (shadowFar * shadowFar) } : float2{ 1.0f, 0.0f };
 
     const float3 l = -sceneSpaceDirection; // guaranteed normalized
 
@@ -302,11 +310,11 @@ void PerViewUniforms::prepareDirectionalLight(FEngine& engine,
         // The last parameter must be < 0.0f for regular directional lights
         float4 sun{ 0.0f, 0.0f, 0.0f, -1.0f };
         if (UTILS_UNLIKELY(isSun && colorIntensity.w > 0.0f)) {
-            // currently we have only a single directional light, so it's probably likely that it's
+            // Currently we have only a single directional light, so it's probably likely that it's
             // also the Sun. However, conceptually, most directional lights won't be sun lights.
-            float radius = lcm.getSunAngularRadius(directionalLight);
-            float haloSize = lcm.getSunHaloSize(directionalLight);
-            float haloFalloff = lcm.getSunHaloFalloff(directionalLight);
+            float const radius = lcm.getSunAngularRadius(directionalLight);
+            float const haloSize = lcm.getSunHaloSize(directionalLight);
+            float const haloFalloff = lcm.getSunHaloFalloff(directionalLight);
             sun.x = std::cos(radius);
             sun.y = std::sin(radius);
             sun.z = 1.0f / (std::cos(radius * haloSize) - sun.x);
@@ -324,7 +332,7 @@ void PerViewUniforms::prepareAmbientLight(FEngine& engine, FIndirectLight const&
     auto& s = mUniforms.edit();
 
     // Set up uniforms and sampler for the IBL, guaranteed to be non-null at this point.
-    float iblRoughnessOneLevel = ibl.getLevelCount() - 1.0f;
+    float const iblRoughnessOneLevel = ibl.getLevelCount() - 1.0f;
     s.iblRoughnessOneLevel = iblRoughnessOneLevel;
     s.iblLuminance = intensity * exposure;
     std::transform(ibl.getSH(), ibl.getSH() + 9, s.iblSH, [](float3 v) {
@@ -347,6 +355,7 @@ void PerViewUniforms::prepareDynamicLights(Froxelizer& froxelizer) noexcept {
     auto& s = mUniforms.edit();
     froxelizer.updateUniforms(s);
     float const f = froxelizer.getLightFar();
+    // TODO: make the falloff rate a parameter
     s.lightFarAttenuationParams = 0.5f * float2{ 10.0f, 10.0f / (f * f) };
 }
 
@@ -419,6 +428,17 @@ void PerViewUniforms::prepareShadowPCSS(Handle<HwTexture> texture,
     auto& s = mUniforms.edit();
     s.shadowSamplingType = SHADOW_SAMPLING_RUNTIME_PCSS;
     s.shadowPenumbraRatioScale = options.penumbraRatioScale;
+    PerViewUniforms::prepareShadowSampling(s, shadowMappingUniforms);
+}
+
+void PerViewUniforms::prepareShadowPCFDebug(Handle<HwTexture> texture,
+        ShadowMappingUniforms const& shadowMappingUniforms) noexcept {
+    mSamplers.setSampler(PerViewSib::SHADOW_MAP, { texture, {
+            .filterMag = SamplerMagFilter::NEAREST,
+            .filterMin = SamplerMinFilter::NEAREST
+    }});
+    auto& s = mUniforms.edit();
+    s.shadowSamplingType = SHADOW_SAMPLING_RUNTIME_PCF;
     PerViewUniforms::prepareShadowSampling(s, shadowMappingUniforms);
 }
 

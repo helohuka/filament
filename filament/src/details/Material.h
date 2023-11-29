@@ -86,6 +86,8 @@ public:
         return bool(mCachedPrograms[variant.key]);
     }
 
+    void invalidate(Variant::type_t variantMask = 0, Variant::type_t variantValue = 0) noexcept;
+
     // prepareProgram creates the program for the material's given variant at the backend level.
     // Must be called outside of backend render pass.
     // Must be called before getProgram() below.
@@ -116,6 +118,10 @@ public:
     backend::FeatureLevel getFeatureLevel() const noexcept { return mFeatureLevel; }
     backend::RasterState getRasterState() const noexcept  { return mRasterState; }
     uint32_t getId() const noexcept { return mMaterialId; }
+
+    UserVariantFilterMask getSupportedVariants() const noexcept {
+        return UserVariantFilterMask(UserVariantFilterBit::ALL) & ~mVariantFilterMask;
+    }
 
     Shading getShading() const noexcept { return mShading; }
     Interpolation getInterpolation() const noexcept { return mInterpolation; }
@@ -220,6 +226,7 @@ private:
     MaterialDomain mMaterialDomain = MaterialDomain::SURFACE;
     CullingMode mCullingMode = CullingMode::NONE;
     AttributeBitset mRequiredAttributes;
+    UserVariantFilterMask mVariantFilterMask = 0;
     RefractionMode mRefractionMode = RefractionMode::NONE;
     RefractionType mRefractionType = RefractionType::SOLID;
     ReflectionMode mReflectionMode = ReflectionMode::DEFAULT;

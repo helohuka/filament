@@ -20,7 +20,7 @@ struct FroxelParams {
  * Returns the coordinates of the froxel at the specified fragment coordinates.
  * The coordinates are a 3D position in the froxel grid.
  */
-uvec3 getFroxelCoords(highp vec3 fragCoords) {
+uvec3 getFroxelCoords(const highp vec3 fragCoords) {
     uvec3 froxelCoord;
 
     froxelCoord.xy = uvec2(fragCoords.xy * frameUniforms.froxelCountXY);
@@ -48,7 +48,7 @@ uvec3 getFroxelCoords(highp vec3 fragCoords) {
  * The froxel index is computed from the 3D coordinates of the froxel in the
  * froxel grid and later used to fetch from the froxel buffer.
  */
-uint getFroxelIndex(highp vec3 fragCoords) {
+uint getFroxelIndex(const highp vec3 fragCoords) {
     uvec3 froxelCoord = getFroxelCoords(fragCoords);
     return froxelCoord.x * frameUniforms.fParams.x +
            froxelCoord.y * frameUniforms.fParams.y +
@@ -66,7 +66,7 @@ ivec2 getFroxelTexCoord(uint froxelIndex) {
  * Returns the froxel data for the given froxel index. The data is fetched
  * from FroxelsUniforms UBO.
  */
-FroxelParams getFroxelParams(uint froxelIndex) {
+FroxelParams getFroxelParams(const uint froxelIndex) {
     uint w = froxelIndex >> 2u;
     uint c = froxelIndex & 0x3u;
     highp uvec4 d = froxelsUniforms.records[w];
@@ -81,7 +81,7 @@ FroxelParams getFroxelParams(uint froxelIndex) {
  * Return the light index from the record index
  * A light record is a single uint index into the lights data buffer (lightsUniforms UBO).
  */
-uint getLightIndex(uint index) {
+uint getLightIndex(const uint index) {
     uint v = index >> 4u;
     uint c = (index >> 2u) & 0x3u;
     uint s = (index & 0x3u) * 8u;
@@ -98,18 +98,17 @@ float getSquareFalloffAttenuation(float distanceSquare, float falloff) {
     return smoothFactor * smoothFactor;
 }
 
-float getDistanceAttenuation(highp vec3 posToLight, float falloff) {
+float getDistanceAttenuation(const highp vec3 posToLight, float falloff) {
     float distanceSquare = dot(posToLight, posToLight);
     float attenuation = getSquareFalloffAttenuation(distanceSquare, falloff);
     // light far attenuation
     highp vec3 v = getWorldPosition() - getWorldCameraPosition();
-    float d = dot(v, v);
-    attenuation *= saturate(frameUniforms.lightFarAttenuationParams.x - d * frameUniforms.lightFarAttenuationParams.y);
+    attenuation *= saturate(frameUniforms.lightFarAttenuationParams.x - dot(v, v) * frameUniforms.lightFarAttenuationParams.y);
     // Assume a punctual light occupies a volume of 1cm to avoid a division by 0
     return attenuation / max(distanceSquare, 1e-4);
 }
 
-float getAngleAttenuation(highp vec3 lightDir, highp vec3 l, highp vec2 scaleOffset) {
+float getAngleAttenuation(const highp vec3 lightDir, const highp vec3 l, const highp vec2 scaleOffset) {
     float cd = dot(lightDir, l);
     float attenuation = saturate(cd * scaleOffset.x + scaleOffset.y);
     return attenuation * attenuation;
@@ -124,7 +123,7 @@ float getAngleAttenuation(highp vec3 lightDir, highp vec3 l, highp vec2 scaleOff
  * lightsUniforms uniform buffer.
  */
 
-Light getLight(uint lightIndex) {
+Light getLight(const uint lightIndex) {
     // retrieve the light data from the UBO
 
     highp mat4 data = lightsUniforms.lights[lightIndex];
@@ -176,8 +175,8 @@ Light getLight(uint lightIndex) {
  * The result of the lighting computations is accumulated in the color
  * parameter, as linear HDR RGB.
  */
-void evaluatePunctualLights(MaterialInputs material,
-        PixelParams pixel, inout vec3 color) {
+void evaluatePunctualLights(const MaterialInputs material,
+        const PixelParams pixel, inout vec3 color) {
 
     // Fetch the light information stored in the froxel that contains the
     // current fragment
@@ -242,5 +241,30 @@ void evaluatePunctualLights(MaterialInputs material,
 #else
         color.rgb += surfaceShading(pixel, light, visibility);
 #endif
+    }
+
+    if (CONFIG_DEBUG_FROXEL_VISUALIZATION) {
+        if (froxel.count > 0u) {
+            const vec3 debugColors[17] = vec3[](
+                vec3(0.0,     0.0,     0.0),         // black
+                vec3(0.0,     0.0,     0.1647),      // darkest blue
+                vec3(0.0,     0.0,     0.3647),      // darker blue
+                vec3(0.0,     0.0,     0.6647),      // dark blue
+                vec3(0.0,     0.0,     0.9647),      // blue
+                vec3(0.0,     0.9255,  0.9255),      // cyan
+                vec3(0.0,     0.5647,  0.0),         // dark green
+                vec3(0.0,     0.7843,  0.0),         // green
+                vec3(1.0,     1.0,     0.0),         // yellow
+                vec3(0.90588, 0.75294, 0.0),         // yellow-orange
+                vec3(1.0,     0.5647,  0.0),         // orange
+                vec3(1.0,     0.0,     0.0),         // bright red
+                vec3(0.8392,  0.0,     0.0),         // red
+                vec3(1.0,     0.0,     1.0),         // magenta
+                vec3(0.6,     0.3333,  0.7882),      // purple
+                vec3(1.0,     1.0,     1.0),         // white
+                vec3(1.0,     1.0,     1.0)          // white
+            );
+            color = mix(color, debugColors[clamp(froxel.count, 0u, 16u)], 0.8);
+        }
     }
 }

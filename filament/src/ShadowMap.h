@@ -26,6 +26,7 @@
 
 #include <backend/DriverApiForward.h>
 
+#include <filament/Box.h>
 #include <filament/Viewport.h>
 
 #include <math/mat4.h>
@@ -38,12 +39,12 @@ class RenderPass;
 // The value of the 'VISIBLE_MASK' after culling. Each bit represents visibility in a frustum
 // (either camera or light).
 //
-//                                    1
-// bits                               5 ... 7 6 5 4 3 2 1 0
-// +------------------------------------------------------+
-// VISIBLE_RENDERABLE                                     X
-// VISIBLE_DIR_SHADOW_RENDERABLE                        X
-// VISIBLE_DYN_SHADOW_RENDERABLE                      X
+//
+// bits                            7 6 5 4 3 2 1 0
+// +---------------------------------------------+
+// VISIBLE_RENDERABLE                            X
+// VISIBLE_DIR_SHADOW_RENDERABLE               X
+// VISIBLE_DYN_SHADOW_RENDERABLE             X
 
 // A "shadow renderable" is a renderable rendered to the shadow map during a shadow pass:
 // PCF shadows: only shadow casters
@@ -53,6 +54,7 @@ static constexpr size_t VISIBLE_RENDERABLE_BIT              = 0u;
 static constexpr size_t VISIBLE_DIR_SHADOW_RENDERABLE_BIT   = 1u;
 static constexpr size_t VISIBLE_DYN_SHADOW_RENDERABLE_BIT   = 2u;
 
+static constexpr Culler::result_type VISIBLE_RENDERABLE = 1u << VISIBLE_RENDERABLE_BIT;
 static constexpr Culler::result_type VISIBLE_DIR_SHADOW_RENDERABLE = 1u << VISIBLE_DIR_SHADOW_RENDERABLE_BIT;
 static constexpr Culler::result_type VISIBLE_DYN_SHADOW_RENDERABLE = 1u << VISIBLE_DYN_SHADOW_RENDERABLE_BIT;
 
@@ -104,7 +106,8 @@ public:
 
         // scratch data: light's near/far expressed in light-space, calculated from the scene's
         // content assuming the light is at the origin.
-        math::float2 lsNearFar;
+        math::float2 lsCastersNearFar;
+        math::float2 lsReceiversNearFar;
 
         // Viewing camera's near/far expressed in view-space, calculated from the
         // scene's content.
@@ -119,8 +122,8 @@ public:
         uint8_t visibleLayers;
     };
 
-    static math::mat4f getDirectionalLightViewMatrix(
-            math::float3 direction, math::float3 position = {}) noexcept;
+    static math::mat4f getDirectionalLightViewMatrix(math::float3 direction, math::float3 up,
+            math::float3 position = {}) noexcept;
 
     static math::mat4f getPointLightViewMatrix(backend::TextureCubemapFace face,
             math::float3 position) noexcept;
@@ -207,6 +210,8 @@ private:
         uint8_t v0, v1, v2, v3;
     };
 
+    using Corners = Aabb::Corners;
+
     // 8 corners, 12 segments w/ 2 intersection max -- all of this twice (8 + 12 * 2) * 2 (768 bytes)
     using FrustumBoxIntersection = std::array<math::float3, 64>;
 
@@ -215,17 +220,49 @@ private:
             const ShadowMapInfo& shadowMapInfo,
             const FLightManager::ShadowParams& params) noexcept;
 
+    struct DirectionalShadowBounds {
+        math::mat4f Mv;
+        float zNear;
+        float zFar;
+        FrustumBoxIntersection lsClippedShadowVolume;
+        size_t vertexCount;
+        bool visibleShadows = false;
+    };
+
+    static DirectionalShadowBounds computeDirectionalShadowBounds(
+            FEngine& engine,
+            math::float3 direction,
+            FLightManager::ShadowParams params,
+            filament::CameraInfo const& camera,
+            SceneInfo const& sceneInfo) noexcept;
+
     static math::mat4f applyLISPSM(math::mat4f& Wp,
             filament::CameraInfo const& camera, FLightManager::ShadowParams const& params,
+            const math::mat4f& LMp,
+            const math::mat4f& Mv,
             const math::mat4f& LMpMv,
-            FrustumBoxIntersection const& wsShadowReceiverVolume, size_t vertexCount,
+            FrustumBoxIntersection const& lsShadowVolume, size_t vertexCount,
             const math::float3& dir);
 
-    static inline void snapLightFrustum(math::float2& s, math::float2& o,
-            math::mat4f const& Mv, math::float3 worldOrigin, math::float2 shadowMapResolution) noexcept;
+    static inline math::mat4f computeLightRotation(math::float3 const& lsDirection) noexcept;
 
-    static inline void computeFrustumCorners(math::float3* out,
-            const math::mat4f& projectionViewInverse, math::float2 csNearFar = { -1.0f, 1.0f }) noexcept;
+    static inline math::float4 computeFocusParams(
+            math::mat4f const& LMpMv,
+            math::mat4f const& WLMp,
+            FrustumBoxIntersection const& lsShadowVolume, size_t vertexCount,
+            filament::CameraInfo const& camera, math::float2 const& csNearFar,
+            float shadowFar, bool stable) noexcept;
+
+    static inline void snapLightFrustum(math::float2& s, math::float2& o,
+            math::double2 lsRef, math::int2 resolution) noexcept;
+
+    static inline Aabb computeLightFrustumBounds(const math::mat4f& lightView,
+            Aabb const& wsShadowReceiversVolume, Aabb const& wsShadowCastersVolume,
+            SceneInfo const& sceneInfo,
+            bool stable, bool focusShadowCasters, bool farUsesShadowCasters) noexcept;
+
+    static Corners computeFrustumCorners(const math::mat4f& projectionInverse,
+            math::float2 csNearFar = { -1.0f, 1.0f }) noexcept;
 
     static inline math::float2 computeNearFar(math::mat4f const& view,
             math::float3 const* wsVertices, size_t count) noexcept;
@@ -241,10 +278,7 @@ private:
             math::float3 const* wsVertices, size_t count) noexcept;
 
     static inline Aabb compute2DBounds(const math::mat4f& lightView,
-            math::float4 const& sphere) noexcept;
-
-    static inline void intersectWithShadowCasters(Aabb& lightFrustum, const math::mat4f& lightView,
-            Aabb const& wsShadowCastersVolume) noexcept;
+            Aabb const& volume) noexcept;
 
     static inline math::float2 computeNearFarOfWarpSpace(math::mat4f const& lightView,
             math::float3 const* wsVertices, size_t count) noexcept;
@@ -263,9 +297,8 @@ private:
 
     static size_t intersectFrustumWithBox(
             FrustumBoxIntersection& outVertices,
-            Frustum const& wsFrustum,
-            math::float3 const* wsFrustumCorners,
-            Aabb const& wsBox);
+            math::mat4f const& projection, math::float2 const& csNearFar,
+            Aabb const& box);
 
     static math::mat4f warpFrustum(float n, float f) noexcept;
 
@@ -281,13 +314,13 @@ private:
     static math::mat4f computeVsmLightSpaceMatrix(const math::mat4f& lightSpacePcf,
             const math::mat4f& Mv, float znear, float zfar) noexcept;
 
-    math::float4 getViewportNormalized(ShadowMapInfo const& shadowMapInfo) const noexcept;
+    math::float4 getClampToEdgeCoords(ShadowMapInfo const& shadowMapInfo) const noexcept;
 
-    float texelSizeWorldSpace(const math::mat3f& worldToShadowTexture,
-            uint16_t shadowDimension) const noexcept;
+    static float texelSizeWorldSpace(const math::mat3f& worldToShadowTexture,
+            uint16_t shadowDimension) noexcept;
 
-    float texelSizeWorldSpace(const math::mat4f& W, const math::mat4f& MbMtF,
-            uint16_t shadowDimension) const noexcept;
+    static float texelSizeWorldSpace(const math::mat4f& W, const math::mat4f& MbMtF,
+            uint16_t shadowDimension) noexcept;
 
     static constexpr const Segment sBoxSegments[12] = {
             { 0, 1 }, { 1, 3 }, { 3, 2 }, { 2, 0 },

@@ -32,6 +32,7 @@
 #include "private/backend/SamplerGroup.h"
 
 #include <utils/bitset.h>
+#include <utils/CString.h>
 #include <utils/FixedCapacityVector.h>
 #include <utils/Panic.h>
 
@@ -66,11 +67,13 @@ public:
     id<MTLTexture> acquireDrawable();
 
     id<MTLTexture> acquireDepthTexture();
+    id<MTLTexture> acquireStencilTexture();
 
     void releaseDrawable();
 
     void setFrameScheduledCallback(FrameScheduledCallback callback, void* user);
-    void setFrameCompletedCallback(FrameCompletedCallback callback, void* user);
+    void setFrameCompletedCallback(CallbackHandler* handler,
+            CallbackHandler::Callback callback, void* user);
 
     // For CAMetalLayer-backed SwapChains, presents the drawable or schedules a
     // FrameScheduledCallback.
@@ -93,12 +96,16 @@ private:
     void scheduleFrameScheduledCallback();
     void scheduleFrameCompletedCallback();
 
+    static MTLPixelFormat decideDepthStencilFormat(uint64_t flags);
+    void ensureDepthStencilTexture();
+
     MetalContext& context;
     id<CAMetalDrawable> drawable = nil;
-    id<MTLTexture> depthTexture = nil;
+    id<MTLTexture> depthStencilTexture = nil;
     id<MTLTexture> headlessDrawable = nil;
-    NSUInteger headlessWidth;
-    NSUInteger headlessHeight;
+    MTLPixelFormat depthStencilFormat = MTLPixelFormatInvalid;
+    NSUInteger headlessWidth = 0;
+    NSUInteger headlessHeight = 0;
     CAMetalLayer* layer = nullptr;
     MetalExternalImage externalImage;
     SwapChainType type;
@@ -112,8 +119,11 @@ private:
     FrameScheduledCallback frameScheduledCallback = nullptr;
     void* frameScheduledUserData = nullptr;
 
-    FrameCompletedCallback frameCompletedCallback = nullptr;
-    void* frameCompletedUserData = nullptr;
+    struct {
+        CallbackHandler* handler = nullptr;
+        CallbackHandler::Callback callback = {};
+        void* user = nullptr;
+    } frameCompleted;
 };
 
 class MetalBufferObject : public HwBufferObject {
@@ -150,6 +160,7 @@ struct MetalIndexBuffer : public HwIndexBuffer {
 };
 
 struct MetalRenderPrimitive : public HwRenderPrimitive {
+    MetalRenderPrimitive();
     void setBuffers(MetalVertexBuffer* vertexBuffer, MetalIndexBuffer* indexBuffer);
     // The pointers to MetalVertexBuffer and MetalIndexBuffer are "weak".
     // The MetalVertexBuffer and MetalIndexBuffer must outlive the MetalRenderPrimitive.
@@ -159,18 +170,35 @@ struct MetalRenderPrimitive : public HwRenderPrimitive {
 
     // This struct is used to create the pipeline description to describe vertex assembly.
     VertexDescription vertexDescription = {};
+
+    struct Entry {
+        uint8_t sourceBufferIndex = 0;
+        uint8_t stride = 0;
+        // maps to ->
+        uint8_t bufferArgumentIndex = 0;
+
+        Entry(uint8_t sourceBufferIndex, uint8_t stride, uint8_t bufferArgumentIndex)
+                : sourceBufferIndex(sourceBufferIndex),
+                  stride(stride),
+                  bufferArgumentIndex(bufferArgumentIndex) {}
+    };
+    utils::FixedCapacityVector<Entry> bufferMapping;
 };
 
-struct MetalProgram : public HwProgram {
-    MetalProgram(id<MTLDevice> device, const Program& program) noexcept;
+class MetalProgram : public HwProgram {
+public:
+    MetalProgram(MetalContext& context, Program&& program) noexcept;
 
-    id<MTLFunction> vertexFunction;
-    id<MTLFunction> fragmentFunction;
-    id<MTLFunction> computeFunction;
+    const MetalShaderCompiler::MetalFunctionBundle& getFunctions();
+    const Program::SamplerGroupInfo& getSamplerGroupInfo() { return samplerGroupInfo; }
+
+private:
+    void initialize();
 
     Program::SamplerGroupInfo samplerGroupInfo;
-
-    bool isValid = false;
+    MetalContext& mContext;
+    MetalShaderCompiler::MetalFunctionBundle mFunctionBundle;
+    MetalShaderCompiler::program_token_t mToken;
 };
 
 struct PixelBufferShape {
@@ -213,21 +241,14 @@ public:
     void generateMipmaps() noexcept;
 
     // A texture starts out with none of its mip levels (also referred to as LODs) available for
-    // reading. 3 actions update the range of LODs available:
+    // reading. 4 actions update the range of LODs available:
     // - calling loadImage
     // - calling generateMipmaps
     // - using the texture as a render target attachment
-    // The range of available mips can only increase, never decrease.
+    // - calling setMinMaxLevels
     // A texture's available mips are consistent throughout a render pass.
-    void updateLodRange(uint32_t level);
-    void updateLodRange(uint32_t minLevel, uint32_t maxLevel);
-
-    // Returns true if the texture has all of its mip levels accessible for reading.
-    // For any MetalTexture, once this is true, will always return true.
-    // The value returned will remain consistent for an entire render pass.
-    bool allLodsValid() const {
-        return minLod == 0 && maxLod == levels - 1;
-    }
+    void setLodRange(uint16_t minLevel, uint16_t maxLevel);
+    void extendLodRangeTo(uint16_t level);
 
     static MTLPixelFormat decidePixelFormat(MetalContext* context, TextureFormat format);
 
@@ -240,6 +261,26 @@ public:
     id<MTLTexture> msaaSidecar = nil;
 
     MTLPixelFormat devicePixelFormat;
+
+    // Frees memory associated with this texture and marks it as "terminated".
+    // Used to track "use after free" scenario.
+    void terminate() noexcept;
+    bool isTerminated() const noexcept { return terminated; }
+    inline void checkUseAfterFree(const char* samplerGroupDebugName, size_t textureIndex) const {
+        if (UTILS_LIKELY(!isTerminated())) {
+            return;
+        }
+        NSString* reason =
+                [NSString stringWithFormat:
+                                  @"Filament Metal texture use after free, sampler group = "
+                                  @"%s, texture index = %zu",
+                          samplerGroupDebugName, textureIndex];
+        NSException* useAfterFreeException =
+                [NSException exceptionWithName:@"MetalTextureUseAfterFree"
+                                        reason:reason
+                                      userInfo:nil];
+        [useAfterFreeException raise];
+    }
 
 private:
     void loadSlice(uint32_t level, MTLRegion region, uint32_t byteOffset, uint32_t slice,
@@ -257,14 +298,17 @@ private:
     id<MTLTexture> swizzledTextureView = nil;
     id<MTLTexture> lodTextureView = nil;
 
-    uint32_t minLod = UINT_MAX;
-    uint32_t maxLod = 0;
+    uint16_t minLod = std::numeric_limits<uint16_t>::max();
+    uint16_t maxLod = 0;
+
+    bool terminated = false;
 };
 
 class MetalSamplerGroup : public HwSamplerGroup {
 public:
-    explicit MetalSamplerGroup(size_t size) noexcept
+    explicit MetalSamplerGroup(size_t size, utils::FixedSizeString<32> name) noexcept
         : size(size),
+          debugName(name),
           textureHandles(size, Handle<HwTexture>()),
           textures(size, nil),
           samplers(size, nil) {}
@@ -274,12 +318,10 @@ public:
         textureHandles[index] = th;
     }
 
-#ifndef NDEBUG
     // This method is only used for debugging, to ensure all texture handles are alive.
     const auto& getTextureHandles() const {
         return textureHandles;
     }
-#endif
 
     // Encode a MTLTexture into this SamplerGroup at the given index.
     inline void setFinalizedTexture(size_t index, id<MTLTexture> t) {
@@ -325,6 +367,7 @@ public:
     void useResources(id<MTLRenderCommandEncoder> renderPassEncoder);
 
     size_t size;
+    utils::FixedSizeString<32> debugName;
 
 public:
 

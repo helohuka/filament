@@ -34,6 +34,7 @@
 #include "ParametersProcessor.h"
 
 #include <GlslangToSpv.h>
+#include "glslang/Include/intermediate.h"
 
 #include "sca/builtinResource.h"
 
@@ -398,6 +399,7 @@ bool MaterialCompiler::run(const Config& config) {
 
     builder
         .noSamplerValidation(config.noSamplerValidation())
+        .includeEssl1(config.includeEssl1())
         .includeCallback(includer)
         .fileName(materialFilePath.getName().c_str())
         .platform(config.getPlatform())

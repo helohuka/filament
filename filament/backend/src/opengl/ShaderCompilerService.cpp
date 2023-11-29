@@ -103,6 +103,11 @@ struct ShaderCompilerService::OpenGLProgramToken : ProgramToken {
         return programData;
     }
 
+    void wait() const noexcept {
+        std::unique_lock l(lock);
+        cond.wait(l, [this](){ return signaled; });
+    }
+
     // Checks if the programBinary is ready.
     // This is similar to std::future::wait_for(0s)
     bool isReady() const noexcept {
@@ -135,6 +140,7 @@ void* ShaderCompilerService::getUserData(const program_token_t& token) noexcept 
 
 ShaderCompilerService::ShaderCompilerService(OpenGLDriver& driver)
         : mDriver(driver),
+          mBlobCache(driver.getContext()),
           mCallbackManager(driver),
           KHR_parallel_shader_compile(driver.getContext().ext.KHR_parallel_shader_compile) {
 }
@@ -214,7 +220,7 @@ ShaderCompilerService::program_token_t ShaderCompilerService::createProgram(
         token->attributes = std::move(program.getAttributes());
     }
 
-    token->gl.program = OpenGLBlobCache::retrieve(&token->key, mDriver.mPlatform, program);
+    token->gl.program = mBlobCache.retrieve(&token->key, mDriver.mPlatform, program);
     if (token->gl.program) {
         return token;
     }
@@ -244,7 +250,7 @@ ShaderCompilerService::program_token_t ShaderCompilerService::createProgram(
                     // We need to query the link status here to guarantee that the
                     // program is compiled and linked now (we don't want this to be
                     // deferred to later). We don't care about the result at this point.
-                    GLint status;
+                    GLint status = GL_FALSE;
                     glGetProgramiv(glProgram, GL_LINK_STATUS, &status);
                     programData.program = glProgram;
 
@@ -257,9 +263,9 @@ ShaderCompilerService::program_token_t ShaderCompilerService::createProgram(
                     mCallbackManager.put(token->handle);
 
                     // caching must be the last thing we do
-                    if (token->key) {
+                    if (token->key && status == GL_TRUE) {
                         // Attempt to cache. This calls glGetProgramBinary.
-                        OpenGLBlobCache::insert(mDriver.mPlatform, token->key, glProgram);
+                        mBlobCache.insert(mDriver.mPlatform, token->key, glProgram);
                     }
                 });
 
@@ -312,7 +318,7 @@ ShaderCompilerService::program_token_t ShaderCompilerService::createProgram(
                 //       do this later, maybe depending on CPU usage?
                 // attempt to cache if we don't have a thread pool (otherwise it's done
                 // by the pool).
-                OpenGLBlobCache::insert(mDriver.mPlatform, token->key, token->gl.program);
+                mBlobCache.insert(mDriver.mPlatform, token->key, token->gl.program);
             }
 
             return true;
@@ -336,7 +342,23 @@ GLuint ShaderCompilerService::getProgram(ShaderCompilerService::program_token_t&
 
     token->canceled = true;
 
-    token->compiler.cancelTickOp(token);
+    bool canceled = token->compiler.cancelTickOp(token);
+
+    if (token->compiler.mShaderCompilerThreadCount) {
+        auto job = token->compiler.mCompilerThreadPool.dequeue(token);
+        if (!job) {
+            // The job is being executed right now. We need to wait for it to finish to avoid a
+            // race.
+            token->wait();
+        } else {
+            // The job has not been executed, but we still need to inform the callback manager in
+            // order for future callbacks to be successfully called.
+            token->compiler.mCallbackManager.put(token->handle);
+        }
+    } else if (canceled) {
+        // Since the tick op was canceled, we need to .put the token here.
+        token->compiler.mCallbackManager.put(token->handle);
+    }
 
     for (GLuint& shader: token->gl.shaders) {
         if (shader) {
@@ -410,7 +432,7 @@ GLuint ShaderCompilerService::initialize(program_token_t& token) noexcept {
             mCallbackManager.put(token->handle);
 
             if (token->key) {
-                OpenGLBlobCache::insert(mDriver.mPlatform, token->key, token->gl.program);
+                mBlobCache.insert(mDriver.mPlatform, token->key, token->gl.program);
             }
         } else {
             // if we don't have a program yet, block until we get it.
@@ -662,7 +684,7 @@ void ShaderCompilerService::runAtNextTick(CompilerPriorityQueue priority,
     SYSTRACE_VALUE32("ShaderCompilerService Jobs", mRunAtNextTickOps.size());
 }
 
-void ShaderCompilerService::cancelTickOp(program_token_t token) noexcept {
+bool ShaderCompilerService::cancelTickOp(program_token_t token) noexcept {
     // We do a linear search here, but this is rare, and we know the list is pretty small.
     auto& ops = mRunAtNextTickOps;
     auto pos = std::find_if(ops.begin(), ops.end(), [&](const auto& item) {
@@ -670,9 +692,11 @@ void ShaderCompilerService::cancelTickOp(program_token_t token) noexcept {
     });
     if (pos != ops.end()) {
         ops.erase(pos);
+        return true;
     }
     SYSTRACE_CONTEXT();
     SYSTRACE_VALUE32("ShaderCompilerService Jobs", ops.size());
+    return false;
 }
 
 void ShaderCompilerService::executeTickOps() noexcept {

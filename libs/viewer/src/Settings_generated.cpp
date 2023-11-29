@@ -237,8 +237,6 @@ int parse(jsmntok_t const* tokens, int i, const char* jsonChunk, BloomOptions* o
             i = parse(tokens, i + 1, jsonChunk, &out->strength);
         } else if (compare(tok, jsonChunk, "resolution") == 0) {
             i = parse(tokens, i + 1, jsonChunk, &out->resolution);
-        } else if (compare(tok, jsonChunk, "anamorphism") == 0) {
-            i = parse(tokens, i + 1, jsonChunk, &out->anamorphism);
         } else if (compare(tok, jsonChunk, "levels") == 0) {
             i = parse(tokens, i + 1, jsonChunk, &out->levels);
         } else if (compare(tok, jsonChunk, "blendMode") == 0) {
@@ -249,6 +247,8 @@ int parse(jsmntok_t const* tokens, int i, const char* jsonChunk, BloomOptions* o
             i = parse(tokens, i + 1, jsonChunk, &out->enabled);
         } else if (compare(tok, jsonChunk, "highlight") == 0) {
             i = parse(tokens, i + 1, jsonChunk, &out->highlight);
+        } else if (compare(tok, jsonChunk, "quality") == 0) {
+            i = parse(tokens, i + 1, jsonChunk, &out->quality);
         } else if (compare(tok, jsonChunk, "lensFlare") == 0) {
             i = parse(tokens, i + 1, jsonChunk, &out->lensFlare);
         } else if (compare(tok, jsonChunk, "starburst") == 0) {
@@ -285,12 +285,12 @@ std::ostream& operator<<(std::ostream& out, const BloomOptions& in) {
         // JSON serialization for dirtStrength is not supported.
         << "\"strength\": " << (in.strength) << ",\n"
         << "\"resolution\": " << (in.resolution) << ",\n"
-        << "\"anamorphism\": " << (in.anamorphism) << ",\n"
         << "\"levels\": " << int(in.levels) << ",\n"
         << "\"blendMode\": " << (in.blendMode) << ",\n"
         << "\"threshold\": " << to_string(in.threshold) << ",\n"
         << "\"enabled\": " << to_string(in.enabled) << ",\n"
         << "\"highlight\": " << (in.highlight) << ",\n"
+        << "\"quality\": " << (in.quality) << ",\n"
         << "\"lensFlare\": " << to_string(in.lensFlare) << ",\n"
         << "\"starburst\": " << to_string(in.starburst) << ",\n"
         << "\"chromaticAberration\": " << (in.chromaticAberration) << ",\n"
@@ -782,6 +782,7 @@ int parse(jsmntok_t const* tokens, int i, const char* jsonChunk, ShadowType* out
     else if (0 == compare(tokens[i], jsonChunk, "VSM")) { *out = ShadowType::VSM; }
     else if (0 == compare(tokens[i], jsonChunk, "DPCF")) { *out = ShadowType::DPCF; }
     else if (0 == compare(tokens[i], jsonChunk, "PCSS")) { *out = ShadowType::PCSS; }
+    else if (0 == compare(tokens[i], jsonChunk, "PCFd")) { *out = ShadowType::PCFd; }
     else {
         slog.w << "Invalid ShadowType: '" << STR(tokens[i], jsonChunk) << "'" << io::endl;
     }
@@ -794,6 +795,7 @@ std::ostream& operator<<(std::ostream& out, ShadowType in) {
         case ShadowType::VSM: return out << "\"VSM\"";
         case ShadowType::DPCF: return out << "\"DPCF\"";
         case ShadowType::PCSS: return out << "\"PCSS\"";
+        case ShadowType::PCFd: return out << "\"PCFd\"";
     }
     return out << "\"INVALID\"";
 }
@@ -865,6 +867,32 @@ std::ostream& operator<<(std::ostream& out, const SoftShadowOptions& in) {
     return out << "{\n"
         << "\"penumbraScale\": " << (in.penumbraScale) << ",\n"
         << "\"penumbraRatioScale\": " << (in.penumbraRatioScale) << "\n"
+        << "}";
+}
+
+int parse(jsmntok_t const* tokens, int i, const char* jsonChunk, StereoscopicOptions* out) {
+    CHECK_TOKTYPE(tokens[i], JSMN_OBJECT);
+    int size = tokens[i++].size;
+    for (int j = 0; j < size; ++j) {
+        const jsmntok_t tok = tokens[i];
+        CHECK_KEY(tok);
+        if (compare(tok, jsonChunk, "enabled") == 0) {
+            i = parse(tokens, i + 1, jsonChunk, &out->enabled);
+        } else {
+            slog.w << "Invalid StereoscopicOptions key: '" << STR(tok, jsonChunk) << "'" << io::endl;
+            i = parse(tokens, i + 1);
+        }
+        if (i < 0) {
+            slog.e << "Invalid StereoscopicOptions value: '" << STR(tok, jsonChunk) << "'" << io::endl;
+            return i;
+        }
+    }
+    return i;
+}
+
+std::ostream& operator<<(std::ostream& out, const StereoscopicOptions& in) {
+    return out << "{\n"
+        << "\"enabled\": " << to_string(in.enabled) << "\n"
         << "}";
 }
 

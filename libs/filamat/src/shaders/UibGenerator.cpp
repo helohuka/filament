@@ -39,7 +39,7 @@ BufferInterfaceBlock const& UibGenerator::getPerViewUib() noexcept  {
             { "worldFromViewMatrix",    0, Type::MAT4,   Precision::HIGH, FeatureLevel::FEATURE_LEVEL_0 },
             { "clipFromViewMatrix",     0, Type::MAT4,   Precision::HIGH, FeatureLevel::FEATURE_LEVEL_0 },
             { "viewFromClipMatrix",     0, Type::MAT4,   Precision::HIGH, FeatureLevel::FEATURE_LEVEL_0 },
-            { "clipFromWorldMatrix",    CONFIG_STEREOSCOPIC_EYES,
+            { "clipFromWorldMatrix",    CONFIG_MAX_STEREOSCOPIC_EYES,
                                            Type::MAT4,   Precision::HIGH, FeatureLevel::FEATURE_LEVEL_0 },
             { "worldFromClipMatrix",    0, Type::MAT4,   Precision::HIGH, FeatureLevel::FEATURE_LEVEL_0 },
             { "userWorldFromWorldMatrix",0,Type::MAT4,   Precision::HIGH, FeatureLevel::FEATURE_LEVEL_0 },
@@ -93,19 +93,18 @@ BufferInterfaceBlock const& UibGenerator::getPerViewUib() noexcept  {
             { "padding0",               0, Type::FLOAT                   },
             { "lightColorIntensity",    0, Type::FLOAT4, Precision::DEFAULT, FeatureLevel::FEATURE_LEVEL_0 },
             { "sun",                    0, Type::FLOAT4, Precision::DEFAULT, FeatureLevel::FEATURE_LEVEL_0 },
-            { "lightFarAttenuationParams", 0, Type::FLOAT2               },
+            { "shadowFarAttenuationParams", 0, Type::FLOAT2, Precision::HIGH },
 
             // ------------------------------------------------------------------------------------
             // Directional light shadowing [variant: SRE | DIR]
             // ------------------------------------------------------------------------------------
-            { "directionalShadows",     0, Type::INT                     },
-            { "ssContactShadowDistance",0, Type::FLOAT                   },
+            { "directionalShadows",       0, Type::INT                      },
+            { "ssContactShadowDistance",  0, Type::FLOAT                    },
 
-            { "cascadeSplits",          0, Type::FLOAT4, Precision::HIGH },
-            { "cascades",               0, Type::INT                     },
-            { "reserved0",              0, Type::FLOAT                   },
-            { "reserved1",              0, Type::FLOAT                   },
-            { "shadowPenumbraRatioScale", 0, Type::FLOAT                 },
+            { "cascadeSplits",             0, Type::FLOAT4, Precision::HIGH },
+            { "cascades",                  0, Type::INT                     },
+            { "shadowPenumbraRatioScale",  0, Type::FLOAT                   },
+            { "lightFarAttenuationParams", 0, Type::FLOAT2, Precision::HIGH },
 
             // ------------------------------------------------------------------------------------
             // VSM shadows [variant: VSM]

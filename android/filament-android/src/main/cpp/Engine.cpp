@@ -25,15 +25,8 @@
 using namespace filament;
 using namespace utils;
 
-extern "C" JNIEXPORT jlong JNICALL
-Java_com_google_android_filament_Engine_nCreateEngine(JNIEnv*, jclass, jlong backend,
-        jlong sharedContext) {
-    return (jlong) Engine::create((Engine::Backend) backend, nullptr, (void*) sharedContext);
-}
-
 extern "C" JNIEXPORT void JNICALL
-Java_com_google_android_filament_Engine_nDestroyEngine(JNIEnv*, jclass,
-        jlong nativeEngine) {
+Java_com_google_android_filament_Engine_nDestroyEngine(JNIEnv*, jclass, jlong nativeEngine) {
     Engine* engine = (Engine*) nativeEngine;
     Engine::destroy(&engine);
 }
@@ -391,6 +384,13 @@ Java_com_google_android_filament_Engine_nFlushAndWait(JNIEnv*, jclass,
     engine->flushAndWait();
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_Engine_nFlush(JNIEnv*, jclass,
+        jlong nativeEngine) {
+    Engine* engine = (Engine*) nativeEngine;
+    engine->flush();
+}
+
 // Managers...
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -435,6 +435,13 @@ Java_com_google_android_filament_Engine_nIsAutomaticInstancingEnabled(JNIEnv*, j
     return (jboolean)engine->isAutomaticInstancingEnabled();
 }
 
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_google_android_filament_Engine_nGetMaxStereoscopicEyes(JNIEnv*, jclass, jlong nativeEngine) {
+    Engine* engine = (Engine*) nativeEngine;
+    return (jlong) engine->getMaxStereoscopicEyes();
+}
+
+
 extern "C" JNIEXPORT jint JNICALL
 Java_com_google_android_filament_Engine_nGetSupportedFeatureLevel(JNIEnv *, jclass,
         jlong nativeEngine) {
@@ -454,4 +461,57 @@ Java_com_google_android_filament_Engine_nGetActiveFeatureLevel(JNIEnv *, jclass,
         jlong nativeEngine) {
     Engine* engine = (Engine*) nativeEngine;
     return (jint)engine->getActiveFeatureLevel();
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_com_google_android_filament_Engine_nCreateBuilder(JNIEnv*,
+        jclass) {
+    Engine::Builder* builder = new Engine::Builder{};
+    return (jlong) builder;
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_google_android_filament_Engine_nDestroyBuilder(JNIEnv*,
+        jclass, jlong nativeBuilder) {
+    Engine::Builder* builder = (Engine::Builder*) nativeBuilder;
+    delete builder;
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_google_android_filament_Engine_nSetBuilderBackend(
+        JNIEnv*, jclass, jlong nativeBuilder, jlong backend) {
+    Engine::Builder* builder = (Engine::Builder*) nativeBuilder;
+    builder->backend((Engine::Backend) backend);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_google_android_filament_Engine_nSetBuilderConfig(JNIEnv*,
+        jclass, jlong nativeBuilder, jlong commandBufferSizeMB, jlong perRenderPassArenaSizeMB,
+        jlong driverHandleArenaSizeMB, jlong minCommandBufferSizeMB, jlong perFrameCommandsSizeMB,
+        jlong jobSystemThreadCount, jlong stereoscopicEyeCount) {
+    Engine::Builder* builder = (Engine::Builder*) nativeBuilder;
+    Engine::Config config = {
+            .commandBufferSizeMB = (uint32_t) commandBufferSizeMB,
+            .perRenderPassArenaSizeMB = (uint32_t) perRenderPassArenaSizeMB,
+            .driverHandleArenaSizeMB = (uint32_t) driverHandleArenaSizeMB,
+            .minCommandBufferSizeMB = (uint32_t) minCommandBufferSizeMB,
+            .perFrameCommandsSizeMB = (uint32_t) perFrameCommandsSizeMB,
+            .jobSystemThreadCount = (uint32_t) jobSystemThreadCount,
+            .stereoscopicEyeCount = (uint8_t) stereoscopicEyeCount,
+    };
+    builder->config(&config);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_google_android_filament_Engine_nSetBuilderFeatureLevel(
+        JNIEnv*, jclass, jlong nativeBuilder, jint ordinal) {
+    Engine::Builder* builder = (Engine::Builder*) nativeBuilder;
+    builder->featureLevel((Engine::FeatureLevel)ordinal);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_google_android_filament_Engine_nSetBuilderSharedContext(
+        JNIEnv*, jclass, jlong nativeBuilder, jlong sharedContext) {
+    Engine::Builder* builder = (Engine::Builder*) nativeBuilder;
+    builder->sharedContext((void*) sharedContext);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_google_android_filament_Engine_nBuilderBuild(JNIEnv*, jclass, jlong nativeBuilder) {
+    Engine::Builder* builder = (Engine::Builder*) nativeBuilder;
+    return (jlong) builder->build();
 }

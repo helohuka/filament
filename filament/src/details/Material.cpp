@@ -45,9 +45,10 @@ using namespace backend;
 using namespace filaflat;
 using namespace utils;
 
-static MaterialParser* createParser(Backend backend, const void* data, size_t size) {
+static MaterialParser* createParser(Backend backend, ShaderLanguage language,
+                                    const void* data, size_t size) {
     // unique_ptr so we don't leak MaterialParser on failures below
-    auto materialParser = std::make_unique<MaterialParser>(backend, data, size);
+    auto materialParser = std::make_unique<MaterialParser>(language, data, size);
 
     MaterialParser::ParseResult const materialResult = materialParser->parse();
 
@@ -56,7 +57,9 @@ static MaterialParser* createParser(Backend backend, const void* data, size_t si
     }
 
     ASSERT_PRECONDITION(materialResult != MaterialParser::ParseResult::ERROR_MISSING_BACKEND,
-                "the material was not built for the %s backend\n", backendToString(backend));
+                "the material was not built for the %s backend and %s shader language\n",
+                backendToString(backend),
+                shaderLanguageToString(language));
 
     ASSERT_PRECONDITION(materialResult == MaterialParser::ParseResult::SUCCESS,
                 "could not parse the material package");
@@ -110,7 +113,8 @@ template Material::Builder& Material::Builder::constant<bool>(const char*, size_
 
 Material* Material::Builder::build(Engine& engine) {
     std::unique_ptr<MaterialParser> materialParser{ createParser(
-            downcast(engine).getBackend(), mImpl->mPayload, mImpl->mSize) };
+        downcast(engine).getBackend(), downcast(engine).getShaderLanguage(),
+        mImpl->mPayload, mImpl->mSize) };
 
     if (materialParser == nullptr) {
         return nullptr;
@@ -171,11 +175,6 @@ FMaterial::FMaterial(FEngine& engine, const Material::Builder& builder)
         return featureLevel;
     }();
 
-    // TODO: this should probably be checked in build()
-    // if the engine is at feature level 0, so must the material be.
-    assert_invariant((engine.getActiveFeatureLevel() != FeatureLevel::FEATURE_LEVEL_0) ||
-                     (mFeatureLevel == FeatureLevel::FEATURE_LEVEL_0));
-
     UTILS_UNUSED_IN_RELEASE bool success;
 
     success = parser->getCacheId(&mCacheId);
@@ -187,23 +186,13 @@ FMaterial::FMaterial(FEngine& engine, const Material::Builder& builder)
     success = parser->getUIB(&mUniformInterfaceBlock);
     assert_invariant(success);
 
-    // TODO: currently, the feature level used is determined by the material because we
-    //       don't have "feature level" variants. In the future, we could instead pick
-    //       the code path based on the engine's feature level.
-
-    if (mFeatureLevel == FeatureLevel::FEATURE_LEVEL_0) {
-        // these chunks are only needed for materials at feature level 0
-        // TODO: remove this assert when we support feature level variants
-        assert_invariant(engine.getActiveFeatureLevel() == FeatureLevel::FEATURE_LEVEL_0);
-
+    if (UTILS_UNLIKELY(engine.getShaderLanguage() == ShaderLanguage::ESSL1)) {
         success = parser->getBindingUniformInfo(&mBindingUniformInfo);
         assert_invariant(success);
 
         success = parser->getAttributeInfo(&mAttributeInfo);
         assert_invariant(success);
-    }
-
-    if (mFeatureLevel == FeatureLevel::FEATURE_LEVEL_1) {
+    } else if (mFeatureLevel <= FeatureLevel::FEATURE_LEVEL_1) {
         // this chunk is not needed for materials at feature level 2 and above
         success = parser->getUniformBlockBindings(&mUniformBlockBindings);
         assert_invariant(success);
@@ -260,12 +249,21 @@ FMaterial::FMaterial(FEngine& engine, const Material::Builder& builder)
                     +ReservedSpecializationConstants::CONFIG_FROXEL_BUFFER_HEIGHT,
                     (int)maxFroxelBufferHeight });
     mSpecializationConstants.push_back({
+                    +ReservedSpecializationConstants::CONFIG_DEBUG_DIRECTIONAL_SHADOWMAP,
+                    (bool)engine.debug.shadowmap.debug_directional_shadowmap });
+    mSpecializationConstants.push_back({
+                    +ReservedSpecializationConstants::CONFIG_DEBUG_FROXEL_VISUALIZATION,
+                    (bool)engine.debug.lighting.debug_froxel_visualization });
+    mSpecializationConstants.push_back({
                     +ReservedSpecializationConstants::CONFIG_STATIC_TEXTURE_TARGET_WORKAROUND,
                     (bool)staticTextureWorkaround });
     mSpecializationConstants.push_back({
                     +ReservedSpecializationConstants::CONFIG_POWER_VR_SHADER_WORKAROUNDS,
                     (bool)powerVrShaderWorkarounds });
-    if (mFeatureLevel == FeatureLevel::FEATURE_LEVEL_0) {
+    mSpecializationConstants.push_back({
+                    +ReservedSpecializationConstants::CONFIG_STEREO_EYE_COUNT,
+                    (int)engine.getConfig().stereoscopicEyeCount });
+    if (UTILS_UNLIKELY(engine.getShaderLanguage() == ShaderLanguage::ESSL1)) {
         // The actual value of this spec-constant is set in the OpenGLDriver backend.
         mSpecializationConstants.push_back({
             +ReservedSpecializationConstants::CONFIG_SRGB_SWAPCHAIN_EMULATION,
@@ -309,6 +307,7 @@ FMaterial::FMaterial(FEngine& engine, const Material::Builder& builder)
     parser->getInterpolation(&mInterpolation);
     parser->getVertexDomain(&mVertexDomain);
     parser->getMaterialDomain(&mMaterialDomain);
+    parser->getMaterialVariantFilterMask(&mVariantFilterMask);
     parser->getRequiredAttributes(&mRequiredAttributes);
     parser->getRefractionMode(&mRefractionMode);
     parser->getRefractionType(&mRefractionType);
@@ -459,6 +458,48 @@ FMaterial::~FMaterial() noexcept {
     delete mMaterialParser;
 }
 
+void FMaterial::invalidate(Variant::type_t variantMask, Variant::type_t variantValue) noexcept {
+    // update the spec constants that can change
+    // TODO: should we just always update all of them?
+    for (auto& item : mSpecializationConstants) {
+        if (item.id == ReservedSpecializationConstants::CONFIG_DEBUG_DIRECTIONAL_SHADOWMAP) {
+            item.value = mEngine.debug.shadowmap.debug_directional_shadowmap;
+        } else if (item.id == ReservedSpecializationConstants::CONFIG_DEBUG_FROXEL_VISUALIZATION) {
+            item.value = mEngine.debug.lighting.debug_froxel_visualization;
+        }
+    }
+
+    DriverApi& driverApi = mEngine.getDriverApi();
+    auto& cachedPrograms = mCachedPrograms;
+    for (size_t k = 0, n = VARIANT_COUNT; k < n; ++k) {
+        Variant const variant(k);
+        if ((k & variantMask) == variantValue) {
+            if (UTILS_LIKELY(!mIsDefaultMaterial)) {
+                // The depth variants may be shared with the default material, in which case
+                // we should not free it now.
+                bool const isSharedVariant =
+                        Variant::isValidDepthVariant(variant) && !mHasCustomDepthShader;
+                if (isSharedVariant) {
+                    // we don't own this variant, skip.
+                    continue;
+                }
+            }
+            driverApi.destroyProgram(cachedPrograms[k]);
+            cachedPrograms[k].clear();
+        }
+    }
+
+    if (UTILS_UNLIKELY(!mIsDefaultMaterial && !mHasCustomDepthShader)) {
+        FMaterial const* const pDefaultMaterial = mEngine.getDefaultMaterial();
+        for (Variant const variant: pDefaultMaterial->mDepthVariants) {
+            pDefaultMaterial->prepareProgram(variant);
+            if (!cachedPrograms[variant.key]) {
+                cachedPrograms[variant.key] = pDefaultMaterial->getProgram(variant);
+            }
+        }
+    }
+}
+
 void FMaterial::terminate(FEngine& engine) {
 
 #if FILAMENT_ENABLE_MATDBG
@@ -477,6 +518,11 @@ void FMaterial::compile(CompilerPriorityQueue priority,
         UserVariantFilterMask variantSpec,
         backend::CallbackHandler* handler,
         utils::Invocable<void(Material*)>&& callback) noexcept {
+
+    // Turn off the STE variant if stereo is not supported.
+    if (!mEngine.getDriverApi().isStereoSupported()) {
+        variantSpec &= ~UserVariantFilterMask(UserVariantFilterBit::STE);
+    }
 
     UserVariantFilterMask const variantFilter =
             ~variantSpec & UserVariantFilterMask(UserVariantFilterBit::ALL);
@@ -599,7 +645,6 @@ Program FMaterial::getProgramWithVariants(
     FEngine const& engine = mEngine;
     const ShaderModel sm = engine.getShaderModel();
     const bool isNoop = engine.getBackend() == Backend::NOOP;
-    const FeatureLevel engineFeatureLevel = engine.getActiveFeatureLevel();
     /*
      * Vertex shader
      */
@@ -622,12 +667,6 @@ Program FMaterial::getProgramWithVariants(
 
     UTILS_UNUSED_IN_RELEASE bool const fsOK = mMaterialParser->getShader(fsBuilder, sm,
             fragmentVariant, ShaderStage::FRAGMENT);
-
-    ASSERT_POSTCONDITION(
-            (engineFeatureLevel != FeatureLevel::FEATURE_LEVEL_0) ||
-            (mFeatureLevel == FeatureLevel::FEATURE_LEVEL_0),
-            "Engine is running a FEATURE_LEVEL_0 but material '%s' is not.",
-            mName.c_str());
 
     ASSERT_POSTCONDITION(isNoop || (fsOK && !fsBuilder.empty()),
             "The material '%s' has not been compiled to include the required "
@@ -659,7 +698,7 @@ Program FMaterial::getProgramWithVariants(
         }
     }
 
-    if (engineFeatureLevel == FeatureLevel::FEATURE_LEVEL_0) {
+    if (UTILS_UNLIKELY(mEngine.getShaderLanguage() == ShaderLanguage::ESSL1)) {
         assert_invariant(!mBindingUniformInfo.empty());
         for (auto const& [index, uniforms] : mBindingUniformInfo) {
             program.uniforms(uint32_t(index), uniforms);
@@ -732,10 +771,7 @@ size_t FMaterial::getParameters(ParameterInfo* parameters, size_t count) const n
 void FMaterial::applyPendingEdits() noexcept {
     const char* name = mName.c_str();
     slog.d << "Applying edits to " << (name ? name : "(untitled)") << io::endl;
-    destroyPrograms(mEngine);
-    for (auto& program : mCachedPrograms) {
-        program.clear();
-    }
+    destroyPrograms(mEngine); // FIXME: this will not destroy the shared variants
     delete mMaterialParser;
     mMaterialParser = mPendingEdits;
     mPendingEdits = nullptr;
@@ -755,7 +791,8 @@ void FMaterial::onEditCallback(void* userdata, const utils::CString&, const void
 
     // This is called on a web server thread, so we defer clearing the program cache
     // and swapping out the MaterialParser until the next getProgram call.
-    material->mPendingEdits = createParser(engine.getBackend(), packageData, packageSize);
+    material->mPendingEdits = createParser(engine.getBackend(), engine.getShaderLanguage(),
+            packageData, packageSize);
 }
 
 void FMaterial::onQueryCallback(void* userdata, VariantList* pVariants) {
@@ -784,6 +821,7 @@ void FMaterial::destroyPrograms(FEngine& engine) {
             }
         }
         driverApi.destroyProgram(cachedPrograms[k]);
+        cachedPrograms[k].clear();
     }
 }
 

@@ -22,6 +22,8 @@ set(PUBLIC_HDRS
 )
 
 set(SRCS
+    src/ApiHandler.cpp
+    src/ApiHandler.h
     src/CommonWriter.h
     src/CommonWriter.cpp
     src/DebugServer.cpp
@@ -39,8 +41,8 @@ set(SRCS
 set(RESOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
 set(RESOURCE_BINS
-        ${CMAKE_CURRENT_SOURCE_DIR}/web/style.css
-        ${CMAKE_CURRENT_SOURCE_DIR}/web/script.js
+        ${CMAKE_CURRENT_SOURCE_DIR}/web/api.js
+        ${CMAKE_CURRENT_SOURCE_DIR}/web/app.js
         ${CMAKE_CURRENT_SOURCE_DIR}/web/index.html
 )
 
@@ -58,7 +60,6 @@ endif()
 
 set(DUMMY_SRC "${RESOURCE_DIR}/dummy.c")
 add_custom_command(OUTPUT ${DUMMY_SRC} COMMAND echo "//" > ${DUMMY_SRC})
-
 
 add_library(matdbg_resources ${DUMMY_SRC} ${RESGEN_SOURCE})
 set_target_properties(matdbg_resources PROPERTIES FOLDER Libs)

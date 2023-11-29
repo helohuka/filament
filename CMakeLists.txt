@@ -4,6 +4,14 @@
 cmake_minimum_required(VERSION 3.19)
 
 # ==================================================================================================
+# Toolchain configuration
+# ==================================================================================================
+if (APPLE AND NOT IOS)
+    # This must be set before project() is called
+    set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "")
+endif()
+
+# ==================================================================================================
 # Project declaration
 # ==================================================================================================
 #project(TNT) 更换项目根名
@@ -41,6 +49,8 @@ option(FILAMENT_ENABLE_BUILD_BENCHMARK "Build benchmark" OFF)
 
 option(FILAMENT_ENABLE_ASAN_UBSAN "Enable Address and Undefined Behavior Sanitizers" OFF)
 
+option(FILAMENT_ENABLE_FEATURE_LEVEL_0 "Enable Feature Level 0" ON)
+
 set(FILAMENT_NDK_VERSION "" CACHE STRING
     "Android NDK version or version prefix to be used when building for Android."
 )
@@ -64,6 +74,9 @@ set(FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB "4" CACHE STRING
 set(FILAMENT_METAL_HANDLE_ARENA_SIZE_IN_MB "8" CACHE STRING
     "Size of the Metal handle arena, default 8."
 )
+
+# Enable exceptions by default in spirv-cross.
+set(SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS OFF)
 
 set(CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR}/installed/${CMAKE_GENERATOR_PLATFORM})
 
@@ -344,6 +357,7 @@ endif()
 
 if (CYGWIN)
     #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-rtti")
+    set(SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS ON)
 endif()
 
 if (MSVC)
@@ -380,6 +394,7 @@ endif()
 # saved by -fno-exception and 10 KiB saved by -fno-rtti).
 if (ANDROID OR IOS OR WEBGL)
     #set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-exceptions -fno-rtti")
+    set(SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS ON)
 
     if (ANDROID OR WEBGL)
         # Omitting unwind info prevents the generation of readable stack traces in crash reports on iOS
@@ -391,6 +406,7 @@ endif()
 # std::visit, which is not supported on iOS 11.0 when exceptions are enabled.
 if (IOS)
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-exceptions")
+    set(SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS ON)
 endif()
 
 # With WebGL, we disable RTTI even for debug builds because we pass emscripten::val back and forth
@@ -530,6 +546,11 @@ if (FILAMENT_SUPPORTS_VULKAN)
 endif()
 if (FILAMENT_SUPPORTS_METAL)
     set(MATC_API_FLAGS ${MATC_API_FLAGS} -a metal)
+endif()
+
+# Disable ESSL 1.0 code generation.
+if (NOT FILAMENT_ENABLE_FEATURE_LEVEL_0)
+    set(MATC_API_FLAGS ${MATC_API_FLAGS} -1)
 endif()
 
 # Enable debug info (preserves names in SPIR-V)

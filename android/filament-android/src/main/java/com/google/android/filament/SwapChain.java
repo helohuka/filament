@@ -103,6 +103,31 @@ public class SwapChain {
      */
     public static final long CONFIG_SRGB_COLORSPACE = 0x10;
 
+    /**
+     * Indicates that this SwapChain should allocate a stencil buffer in addition to a depth buffer.
+     *
+     * This flag is necessary when using View::setStencilBufferEnabled and rendering directly into
+     * the SwapChain (when post-processing is disabled).
+     *
+     * The specific format of the stencil buffer depends on platform support. The following pixel
+     * formats are tried, in order of preference:
+     *
+     * Depth only (without CONFIG_HAS_STENCIL_BUFFER):
+     * - DEPTH32F
+     * - DEPTH24
+     *
+     * Depth + stencil (with CONFIG_HAS_STENCIL_BUFFER):
+     * - DEPTH32F_STENCIL8
+     * - DEPTH24F_STENCIL8
+     *
+     * Note that enabling the stencil buffer may hinder depth precision and should only be used if
+     * necessary.
+     *
+     * @see View#setStencilBufferEnabled
+     * @see View#setPostProcessingEnabled
+     */
+    public static final long CONFIG_HAS_STENCIL_BUFFER = 0x20;
+
     SwapChain(long nativeSwapChain, Object surface) {
         mNativeObject = nativeSwapChain;
         mSurface = surface;
@@ -134,10 +159,6 @@ public class SwapChain {
      * <p>
      * Use setFrameCompletedCallback to set a callback on an individual SwapChain. Each time a frame
      * completes GPU rendering, the callback will be called.
-     * </p>
-     *
-     * <p>
-     * The FrameCompletedCallback is guaranteed to be called on the main Filament thread.
      * </p>
      *
      * <p>

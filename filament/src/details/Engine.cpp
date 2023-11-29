@@ -67,6 +67,7 @@ struct Engine::BuilderDetails {
     Backend mBackend = Backend::DEFAULT;
     Platform* mPlatform = nullptr;
     Engine::Config mConfig;
+    FeatureLevel mFeatureLevel = FeatureLevel::FEATURE_LEVEL_1;
     void* mSharedContext = nullptr;
     static Config validateConfig(const Config* pConfig) noexcept;
 };
@@ -185,6 +186,7 @@ static const uint16_t sFullScreenTriangleIndices[3] = { 0, 1, 2 };
 
 FEngine::FEngine(Engine::Builder const& builder) :
         mBackend(builder->mBackend),
+        mActiveFeatureLevel(builder->mFeatureLevel),
         mPlatform(builder->mPlatform),
         mSharedGLContext(builder->mSharedContext),
         mPostProcessManager(*this),
@@ -200,7 +202,7 @@ FEngine::FEngine(Engine::Builder const& builder) :
                 "FEngine::mPerRenderPassAllocator",
                 builder->mConfig.perRenderPassArenaSizeMB * MiB),
         mHeapAllocator("FEngine::mHeapAllocator", AreaPolicy::NullArea{}),
-        mJobSystem(getJobSystemThreadPoolSize()),
+        mJobSystem(getJobSystemThreadPoolSize(builder->mConfig)),
         mEngineEpoch(std::chrono::steady_clock::now()),
         mDriverBarrier(1),
         mMainThreadId(ThreadUtils::getThreadId()),
@@ -214,7 +216,11 @@ FEngine::FEngine(Engine::Builder const& builder) :
            << "(threading is " << (UTILS_HAS_THREADING ? "enabled)" : "disabled)") << io::endl;
 }
 
-uint32_t FEngine::getJobSystemThreadPoolSize() noexcept {
+uint32_t FEngine::getJobSystemThreadPoolSize(Engine::Config const& config) noexcept {
+    if (config.jobSystemThreadCount > 0) {
+        return config.jobSystemThreadCount;
+    }
+
     // 1 thread for the user, 1 thread for the backend
     int threadCount = (int)std::thread::hardware_concurrency() - 2;
     // make sure we have at least 1 thread though
@@ -237,6 +243,10 @@ void FEngine::init() {
     DriverApi& driverApi = getDriverApi();
 
     mActiveFeatureLevel = std::min(mActiveFeatureLevel, driverApi.getFeatureLevel());
+
+#ifndef FILAMENT_ENABLE_FEATURE_LEVEL_0
+    assert_invariant(mActiveFeatureLevel > FeatureLevel::FEATURE_LEVEL_0);
+#endif
 
     slog.i << "Backend feature level: " << int(driverApi.getFeatureLevel()) << io::endl;
     slog.i << "FEngine feature level: " << int(mActiveFeatureLevel) << io::endl;
@@ -322,7 +332,7 @@ void FEngine::init() {
     driverApi.update3DImage(mDummyZeroTexture, 0, 0, 0, 0, 1, 1, 1,
             { zeroes, 4, Texture::Format::RGBA, Texture::Type::UBYTE });
 
-#ifdef FILAMENT_TARGET_MOBILE
+#ifdef FILAMENT_ENABLE_FEATURE_LEVEL_0
     if (UTILS_UNLIKELY(mActiveFeatureLevel == FeatureLevel::FEATURE_LEVEL_0)) {
         FMaterial::DefaultMaterialBuilder defaultMaterialBuilder;
         defaultMaterialBuilder.package(
@@ -355,10 +365,33 @@ void FEngine::init() {
         driverApi.update3DImage(mDummyZeroTextureArray, 0, 0, 0, 0, 1, 1, 1,
                 { zeroes, 4, Texture::Format::RGBA, Texture::Type::UBYTE });
 
-        mPostProcessManager.init();
         mLightManager.init(*this);
         mDFG.init(*this);
     }
+
+    mPostProcessManager.init();
+
+    mDebugRegistry.registerProperty("d.shadowmap.debug_directional_shadowmap",
+            &debug.shadowmap.debug_directional_shadowmap, [this]() {
+                mMaterials.forEach([](FMaterial* material) {
+                    if (material->getMaterialDomain() == MaterialDomain::SURFACE) {
+                        material->invalidate(
+                                Variant::DIR | Variant::SRE | Variant::DEP,
+                                Variant::DIR | Variant::SRE);
+                    }
+                });
+            });
+
+    mDebugRegistry.registerProperty("d.lighting.debug_froxel_visualization",
+            &debug.lighting.debug_froxel_visualization, [this]() {
+                mMaterials.forEach([](FMaterial* material) {
+                    if (material->getMaterialDomain() == MaterialDomain::SURFACE) {
+                        material->invalidate(
+                                Variant::DYN | Variant::DEP,
+                                Variant::DYN);
+                    }
+                });
+            });
 }
 
 FEngine::~FEngine() noexcept {
@@ -398,7 +431,7 @@ void FEngine::shutdown() {
     mDFG.terminate(*this);                  // free-up the DFG
     mRenderableManager.terminate();         // free-up all renderables
     mLightManager.terminate();              // free-up all lights
-    mCameraManager.terminate();             // free-up all cameras
+    mCameraManager.terminate(*this);        // free-up all cameras
 
     driver.destroyRenderPrimitive(mFullScreenTriangleRph);
     destroy(mFullScreenTriangleIb);
@@ -511,7 +544,7 @@ void FEngine::gc() {
     mRenderableManager.gc(em);
     mLightManager.gc(em);
     mTransformManager.gc(em);
-    mCameraManager.gc(em);
+    mCameraManager.gc(*this, em);
 }
 
 void FEngine::flush() {
@@ -606,7 +639,10 @@ int FEngine::loop() {
     JobSystem::setThreadName("FEngine::loop");
     JobSystem::setThreadPriority(JobSystem::Priority::DISPLAY);
 
-    DriverConfig const driverConfig { .handleArenaSize = getRequestedDriverHandleArenaSize() };
+    DriverConfig const driverConfig {
+            .handleArenaSize = getRequestedDriverHandleArenaSize(),
+            .textureUseAfterFreePoolSize = mConfig.textureUseAfterFreePoolSize
+    };
     mDriver = mPlatform->createDriver(mSharedGLContext, driverConfig);
 
     mDriverBarrier.latch();
@@ -799,7 +835,7 @@ FSwapChain* FEngine::createSwapChain(uint32_t width, uint32_t height, uint64_t f
 
 
 FCamera* FEngine::createCamera(Entity entity) noexcept {
-    return mCameraManager.create(entity);
+    return mCameraManager.create(*this, entity);
 }
 
 FCamera* FEngine::getCameraComponent(Entity entity) noexcept {
@@ -808,7 +844,7 @@ FCamera* FEngine::getCameraComponent(Entity entity) noexcept {
 }
 
 void FEngine::destroyCameraComponent(utils::Entity entity) noexcept {
-    mCameraManager.destroy(entity);
+    mCameraManager.destroy(*this, entity);
 }
 
 
@@ -1024,7 +1060,7 @@ void FEngine::destroy(Entity e) {
     mRenderableManager.destroy(e);
     mLightManager.destroy(e);
     mTransformManager.destroy(e);
-    mCameraManager.destroy(e);
+    mCameraManager.destroy(*this, e);
 }
 
 bool FEngine::isValid(const FBufferObject* p) {
@@ -1142,6 +1178,8 @@ Engine::FeatureLevel FEngine::getSupportedFeatureLevel() const noexcept {
 Engine::FeatureLevel FEngine::setActiveFeatureLevel(FeatureLevel featureLevel) {
     ASSERT_PRECONDITION(featureLevel <= getSupportedFeatureLevel(),
             "Feature level %u not supported", (unsigned)featureLevel);
+    ASSERT_PRECONDITION(mActiveFeatureLevel >= FeatureLevel::FEATURE_LEVEL_1,
+            "Cannot adjust feature level beyond 0 at runtime");
     return (mActiveFeatureLevel = std::max(mActiveFeatureLevel, featureLevel));
 }
 
@@ -1172,6 +1210,11 @@ Engine::Builder& Engine::Builder::platform(Platform* platform) noexcept {
 
 Engine::Builder& Engine::Builder::config(Engine::Config const* config) noexcept {
     mImpl->mConfig = BuilderDetails::validateConfig(config);
+    return *this;
+}
+
+Engine::Builder& Engine::Builder::featureLevel(FeatureLevel featureLevel) noexcept {
+    mImpl->mFeatureLevel = featureLevel;
     return *this;
 }
 
@@ -1229,6 +1272,9 @@ Engine::Config Engine::BuilderDetails::validateConfig(const Config* const pConfi
 
     // This value gets validated during driver creation, so pass it through
     config.driverHandleArenaSizeMB = config.driverHandleArenaSizeMB;
+
+    config.stereoscopicEyeCount =
+            std::clamp(config.stereoscopicEyeCount, uint8_t(1), CONFIG_MAX_STEREOSCOPIC_EYES);
 
     return config;
 }

@@ -282,7 +282,7 @@ Java_com_google_android_filament_View_nSetSSCTOptions(JNIEnv *, jclass, jlong na
 extern "C" JNIEXPORT void JNICALL
 Java_com_google_android_filament_View_nSetBloomOptions(JNIEnv*, jclass,
         jlong nativeView, jlong nativeTexture,
-        jfloat dirtStrength, jfloat strength, jint resolution, jfloat anamorphism, jint levels,
+        jfloat dirtStrength, jfloat strength, jint resolution, jint levels,
         jint blendMode, jboolean threshold, jboolean enabled, jfloat highlight,
         jboolean lensFlare, jboolean starburst, jfloat chromaticAberration, jint ghostCount,
         jfloat ghostSpacing, jfloat ghostThreshold, jfloat haloThickness, jfloat haloRadius,
@@ -294,7 +294,6 @@ Java_com_google_android_filament_View_nSetBloomOptions(JNIEnv*, jclass,
             .dirtStrength = dirtStrength,
             .strength = strength,
             .resolution = (uint32_t)resolution,
-            .anamorphism = anamorphism,
             .levels = (uint8_t)levels,
             .blendMode = (View::BloomOptions::BlendMode)blendMode,
             .threshold = (bool)threshold,
@@ -479,6 +478,17 @@ JNIEXPORT jboolean JNICALL
 Java_com_google_android_filament_View_nIsStencilBufferEnabled(JNIEnv *, jclass, jlong nativeView) {
     View* view = (View*) nativeView;
     return view->isStencilBufferEnabled();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_google_android_filament_View_nSetStereoscopicOptions(JNIEnv *, jclass, jlong nativeView,
+        jboolean enabled) {
+    View* view = (View*) nativeView;
+    View::StereoscopicOptions options {
+        .enabled = (bool) enabled
+    };
+    view->setStereoscopicOptions(options);
 }
 
 extern "C"

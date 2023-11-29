@@ -20,14 +20,14 @@ layout(location = 0) out highp vec2 outPicking;
 // note: VARIANT_HAS_VSM and VARIANT_HAS_PICKING are mutually exclusive
 //------------------------------------------------------------------------------
 
-highp vec2 computeDepthMomentsVSM(highp float depth);
+highp vec2 computeDepthMomentsVSM(const highp float depth);
 
 void main() {
     filament_lodBias = frameUniforms.lodBias;
 
     initObjectUniforms();
 
-#if defined(BLEND_MODE_MASKED) || ((defined(BLEND_MODE_TRANSPARENT) || defined(BLEND_MODE_FADE)) && defined(MATERIAL_HAS_TRANSPARENT_SHADOW))
+#if defined(MATERIAL_HAS_CUSTOM_DEPTH) || defined(BLEND_MODE_MASKED) || ((defined(BLEND_MODE_TRANSPARENT) || defined(BLEND_MODE_FADE)) && defined(MATERIAL_HAS_TRANSPARENT_SHADOW))
     MaterialInputs inputs;
     initMaterial(inputs);
     material(inputs);
@@ -57,10 +57,10 @@ void main() {
     fragColor.xy = computeDepthMomentsVSM(depth);
     fragColor.zw = computeDepthMomentsVSM(-1.0 / depth); // requires at least RGBA16F
 #elif defined(VARIANT_HAS_PICKING)
-#if MATERIAL_FEATURE_LEVEL == 0
-    outPicking.a = float((object_uniforms_objectId / 65536) % 256) / 255.0;
-    outPicking.b = float((object_uniforms_objectId /   256) % 256) / 255.0;
-    outPicking.g = float( object_uniforms_objectId          % 256) / 255.0;
+#if FILAMENT_EFFECTIVE_VERSION == 100
+    outPicking.a = mod(float(object_uniforms_objectId / 65536), 256.0) / 255.0;
+    outPicking.b = mod(float(object_uniforms_objectId /   256), 256.0) / 255.0;
+    outPicking.g = mod(float(object_uniforms_objectId)        , 256.0) / 255.0;
     outPicking.r = vertex_position.z / vertex_position.w;
 #else
     outPicking.x = intBitsToFloat(object_uniforms_objectId);
@@ -74,7 +74,7 @@ void main() {
 #endif
 }
 
-highp vec2 computeDepthMomentsVSM(highp float depth) {
+highp vec2 computeDepthMomentsVSM(const highp float depth) {
     // computes the moments
     // See GPU Gems 3
     // https://developer.nvidia.com/gpugems/gpugems3/part-ii-light-and-shadows/chapter-8-summed-area-variance-shadow-maps

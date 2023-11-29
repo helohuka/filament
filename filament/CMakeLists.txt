@@ -228,8 +228,9 @@ set(MATERIAL_SRCS
         src/materials/dof/dofMipmap.mat
         src/materials/dof/dofMedian.mat
         src/materials/flare/flare.mat
-        src/materials/blitLow.mat
         src/materials/bloom/bloomDownsample.mat
+        src/materials/bloom/bloomDownsample2x.mat
+        src/materials/bloom/bloomDownsample9.mat
         src/materials/bloom/bloomUpsample.mat
         src/materials/ssao/bilateralBlur.mat
         src/materials/ssao/bilateralBlurBentNormals.mat
@@ -241,9 +242,10 @@ set(MATERIAL_SRCS
         src/materials/antiAliasing/fxaa.mat
         src/materials/antiAliasing/taa.mat
         src/materials/vsmMipmap.mat
+        src/materials/blitLow.mat
 )
 
-set(MATERIAL_ES2_SRCS
+set(MATERIAL_FL0_SRCS
         src/materials/defaultMaterial0.mat
         src/materials/skybox0.mat
 )
@@ -271,6 +273,11 @@ if (NOT DFG_LUT_SIZE)
     endif()
 endif()
 message(STATUS "DFG LUT size set to ${DFG_LUT_SIZE}x${DFG_LUT_SIZE}")
+
+# Whether to include FL0 materials.
+if (FILAMENT_ENABLE_FEATURE_LEVEL_0)
+    add_definitions(-DFILAMENT_ENABLE_FEATURE_LEVEL_0)
+endif()
 
 # ==================================================================================================
 # Definitions
@@ -313,8 +320,8 @@ foreach (mat_src ${MATERIAL_SRCS})
     list(APPEND MATERIAL_BINS ${output_path})
 endforeach()
 
-if (IS_MOBILE_TARGET AND FILAMENT_SUPPORTS_OPENGL)
-    foreach (mat_src ${MATERIAL_ES2_SRCS})
+if (FILAMENT_ENABLE_FEATURE_LEVEL_0 AND FILAMENT_SUPPORTS_OPENGL)
+    foreach (mat_src ${MATERIAL_FL0_SRCS})
         get_filename_component(localname "${mat_src}" NAME_WE)
         get_filename_component(fullname "${mat_src}" ABSOLUTE)
         set(output_path "${MATERIAL_DIR}/${localname}.filamat")
@@ -555,7 +562,7 @@ if (MSVC)
     set(FILAMENT_WARNINGS /W3)
 else()
     set(FILAMENT_WARNINGS
-            -Wall -Wextra -Wno-unused-parameter
+            -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
             -Wextra-semi -Wnewline-eof -Wdeprecated -Wundef
             -Wgnu-conditional-omitted-operand
             -Wweak-vtables -Wnon-virtual-dtor -Wclass-varargs -Wimplicit-fallthrough

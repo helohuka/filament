@@ -60,8 +60,9 @@ enum class ToneMapping : uint8_t
     ACES_LEGACY   = 1,
     ACES          = 2,
     FILMIC        = 3,
-    GENERIC       = 4,
-    DISPLAY_RANGE = 5,
+    AGX           = 4,
+    GENERIC       = 5,
+    DISPLAY_RANGE = 6,
 };
 
 using AmbientOcclusionOptions        = filament::View::AmbientOcclusionOptions;
@@ -75,11 +76,12 @@ using RenderQuality                  = filament::View::RenderQuality;
 using ShadowType                     = filament::View::ShadowType;
 using DynamicResolutionOptions       = filament::View::DynamicResolutionOptions;
 using MultiSampleAntiAliasingOptions = filament::View::MultiSampleAntiAliasingOptions;
-using TemporalAntiAliasingOptions    = filament::View::TemporalAntiAliasingOptions;
-using VignetteOptions                = filament::View::VignetteOptions;
-using VsmShadowOptions               = filament::View::VsmShadowOptions;
-using GuardBandOptions               = filament::View::GuardBandOptions;
-using LightManager                   = filament::LightManager;
+using TemporalAntiAliasingOptions = filament::View::TemporalAntiAliasingOptions;
+using VignetteOptions = filament::View::VignetteOptions;
+using VsmShadowOptions = filament::View::VsmShadowOptions;
+using GuardBandOptions = filament::View::GuardBandOptions;
+using StereoscopicOptions = filament::View::StereoscopicOptions;
+using LightManager = filament::LightManager;
 
 // These functions push all editable property values to their respective Filament objects.
 void applySettings(Engine* engine, const ViewSettings& settings, View* dest);
@@ -116,44 +118,49 @@ struct GenericToneMapperSettings
     float contrast   = 1.55f;
     float midGrayIn  = 0.18f;
     float midGrayOut = 0.215f;
-    float hdrMax     = 10.0f;
-    bool  operator!=(const GenericToneMapperSettings& rhs) const { return !(rhs == *this); }
-    bool  operator==(const GenericToneMapperSettings& rhs) const;
+    float hdrMax = 10.0f;
+    bool operator!=(const GenericToneMapperSettings& rhs) const { return !(rhs == *this); }
+    bool operator==(const GenericToneMapperSettings& rhs) const;
 };
 
-struct ColorGradingSettings
-{
+struct AgxToneMapperSettings {
+    AgxToneMapper::AgxLook look = AgxToneMapper::AgxLook::NONE;
+    bool operator!=(const AgxToneMapperSettings& rhs) const { return !(rhs == *this); }
+    bool operator==(const AgxToneMapperSettings& rhs) const;
+};
+
+struct ColorGradingSettings {
     // fields are ordered to avoid padding
-    bool                                 enabled          = true;
-    bool                                 linkedCurves     = false;
-    bool                                 luminanceScaling = false;
-    bool                                 gamutMapping     = false;
-    filament::ColorGrading::QualityLevel quality          = filament::ColorGrading::QualityLevel::MEDIUM;
-    ToneMapping                          toneMapping      = ToneMapping::ACES_LEGACY;
-    bool                                 padding0{};
-    bool                                 padding1{};
-    color::ColorSpace                    colorspace = Rec709 - sRGB - D65;
-    GenericToneMapperSettings            genericToneMapper;
-    math::float4                         shadows{1.0f, 1.0f, 1.0f, 0.0f};
-    math::float4                         midtones{1.0f, 1.0f, 1.0f, 0.0f};
-    math::float4                         highlights{1.0f, 1.0f, 1.0f, 0.0f};
-    math::float4                         ranges{0.0f, 0.333f, 0.550f, 1.0f};
-    math::float3                         outRed{1.0f, 0.0f, 0.0f};
-    math::float3                         outGreen{0.0f, 1.0f, 0.0f};
-    math::float3                         outBlue{0.0f, 0.0f, 1.0f};
-    math::float3                         slope{1.0f};
-    math::float3                         offset{0.0f};
-    math::float3                         power{1.0f};
-    math::float3                         gamma{1.0f};
-    math::float3                         midPoint{1.0f};
-    math::float3                         scale{1.0f};
-    float                                exposure        = 0.0f;
-    float                                nightAdaptation = 0.0f;
-    float                                temperature     = 0.0f;
-    float                                tint            = 0.0f;
-    float                                contrast        = 1.0f;
-    float                                vibrance        = 1.0f;
-    float                                saturation      = 1.0f;
+    bool enabled = true;
+    bool linkedCurves = false;
+    bool luminanceScaling = false;
+    bool gamutMapping = false;
+    filament::ColorGrading::QualityLevel quality = filament::ColorGrading::QualityLevel::MEDIUM;
+    ToneMapping toneMapping = ToneMapping::ACES_LEGACY;
+    bool padding0{};
+    AgxToneMapperSettings agxToneMapper;
+    color::ColorSpace colorspace = Rec709-sRGB-D65;
+    GenericToneMapperSettings genericToneMapper;
+    math::float4 shadows{1.0f, 1.0f, 1.0f, 0.0f};
+    math::float4 midtones{1.0f, 1.0f, 1.0f, 0.0f};
+    math::float4 highlights{1.0f, 1.0f, 1.0f, 0.0f};
+    math::float4 ranges{0.0f, 0.333f, 0.550f, 1.0f};
+    math::float3 outRed{1.0f, 0.0f, 0.0f};
+    math::float3 outGreen{0.0f, 1.0f, 0.0f};
+    math::float3 outBlue{0.0f, 0.0f, 1.0f};
+    math::float3 slope{1.0f};
+    math::float3 offset{0.0f};
+    math::float3 power{1.0f};
+    math::float3 gamma{1.0f};
+    math::float3 midPoint{1.0f};
+    math::float3 scale{1.0f};
+    float exposure = 0.0f;
+    float nightAdaptation = 0.0f;
+    float temperature = 0.0f;
+    float tint = 0.0f;
+    float contrast = 1.0f;
+    float vibrance = 1.0f;
+    float saturation = 1.0f;
 
     bool operator!=(const ColorGradingSettings& rhs) const { return !(rhs == *this); }
     bool operator==(const ColorGradingSettings& rhs) const;
@@ -192,6 +199,7 @@ struct ViewSettings
     VignetteOptions                vignette;
     VsmShadowOptions               vsmShadowOptions;
     GuardBandOptions               guardBand;
+    StereoscopicOptions stereoscopicOptions;
 
     // Custom View Options
     ColorGradingSettings    colorGrading;
@@ -231,21 +239,21 @@ struct LightSettings
     float                       iblRotation           = 0.0f;
 };
 
-struct ViewerOptions
-{
-    float     cameraAperture        = 16.0f;
-    float     cameraSpeed           = 125.0f;
-    float     cameraISO             = 100.0f;
-    float     cameraNear            = 0.1f;
-    float     cameraFar             = 100.0f;
-    float     groundShadowStrength  = 0.75f;
-    bool      groundPlaneEnabled    = false;
-    bool      skyboxEnabled         = true;
-    sRGBColor backgroundColor       = {0.0f};
-    float     cameraFocalLength     = 28.0f;
-    float     cameraFocusDistance   = 10.0f;
-    bool      autoScaleEnabled      = true;
-    bool      autoInstancingEnabled = false;
+struct ViewerOptions {
+    float cameraAperture = 16.0f;
+    float cameraSpeed = 125.0f;
+    float cameraISO = 100.0f;
+    float cameraNear = 0.1f;
+    float cameraFar = 100.0f;
+    float cameraEyeOcularDistance = 0.0f;
+    float groundShadowStrength = 0.75f;
+    bool groundPlaneEnabled = false;
+    bool skyboxEnabled = true;
+    sRGBColor backgroundColor = { 0.0f };
+    float cameraFocalLength = 28.0f;
+    float cameraFocusDistance = 10.0f;
+    bool autoScaleEnabled = true;
+    bool autoInstancingEnabled = false;
 };
 
 struct Settings

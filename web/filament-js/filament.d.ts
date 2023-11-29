@@ -505,6 +505,7 @@ export class View {
     public setFogOptions(options: View$FogOptions): void;
     public setVignetteOptions(options: View$VignetteOptions): void;
     public setGuardBandOptions(options: View$GuardBandOptions): void;
+    public setStereoscopicOptions(options: View$StereoscopicOptions): void;
     public setAmbientOcclusion(ambientOcclusion: View$AmbientOcclusion): void;
     public getAmbientOcclusion(): View$AmbientOcclusion;
     public setBlendMode(mode: View$BlendMode): void;
@@ -545,6 +546,8 @@ export class Engine {
     public createSwapChain(): SwapChain;
     public createTextureFromJpeg(urlOrBuffer: BufferReference, options?: object): Texture;
     public createTextureFromPng(urlOrBuffer: BufferReference, options?: object): Texture;
+
+    public static getMaxStereoscopicEyes(): number;
 
     public createIblFromKtx1(urlOrBuffer: BufferReference): IndirectLight;
     public createSkyFromKtx1(urlOrBuffer: BufferReference): Skybox;
@@ -1207,8 +1210,6 @@ export enum View$BloomOptions$BlendMode {
  * blendMode:   Whether the bloom effect is purely additive (false) or mixed with the original
  *              image (true).
  *
- * anamorphism: Bloom's aspect ratio (x/y), for artistic purposes.
- *
  * threshold:   When enabled, a threshold at 1.0 is applied on the source image, this is
  *              useful for artistic reasons and is usually needed when a dirt texture is used.
  *
@@ -1230,11 +1231,7 @@ export interface View$BloomOptions {
      */
     resolution?: number;
     /**
-     * bloom x/y aspect-ratio (1/32 to 32)
-     */
-    anamorphism?: number;
-    /**
-     * number of blur levels (3 to 11)
+     * number of blur levels (1 to 11)
      */
     levels?: number;
     /**
@@ -1253,6 +1250,16 @@ export interface View$BloomOptions {
      * limit highlights to this value before bloom [10, +inf]
      */
     highlight?: number;
+    /**
+     * Bloom quality level.
+     * LOW (default): use a more optimized down-sampling filter, however there can be artifacts
+     *      with dynamic resolution, this can be alleviated by using the homogenous mode.
+     * MEDIUM: Good balance between quality and performance.
+     * HIGH: In this mode the bloom resolution is automatically increased to avoid artifacts.
+     *      This mode can be significantly slower on mobile, especially at high resolution.
+     *      This mode greatly improves the anamorphic bloom.
+     */
+    quality?: View$QualityLevel;
     /**
      * enable screen-space lens flare
      */
@@ -1707,7 +1714,7 @@ export enum View$ShadowType {
     PCF, // percentage-closer filtered shadows (default)
     VSM, // variance shadows
     DPCF, // PCF with contact hardening simulation
-    PCSS, // PCF with soft shadows and contact hardening
+    PCSS, // PCF with soft shadows and contact hardening    PCFd,
 }
 
 /**

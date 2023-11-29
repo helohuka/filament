@@ -23,6 +23,9 @@
 
 #include <filament/SwapChain.h>
 
+#include <backend/CallbackHandler.h>
+
+#include <utils/Invocable.h>
 #include <utils/compiler.h>
 
 namespace filament {
@@ -55,13 +58,18 @@ public:
         return (mConfigFlags & CONFIG_READABLE) != 0;
     }
 
+    constexpr bool hasStencilBuffer() const noexcept {
+        return (mConfigFlags & CONFIG_HAS_STENCIL_BUFFER) != 0;
+    }
+
     backend::Handle<backend::HwSwapChain> getHwHandle() const noexcept {
       return mSwapChain;
     }
 
     void setFrameScheduledCallback(FrameScheduledCallback callback, void* user);
 
-    void setFrameCompletedCallback(FrameCompletedCallback callback, void* user);
+    void setFrameCompletedCallback(backend::CallbackHandler* handler,
+                utils::Invocable<void(SwapChain*)>&& callback) noexcept;
 
     static bool isSRGBSwapChainSupported(FEngine& engine) noexcept;
 
