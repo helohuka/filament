@@ -40,9 +40,19 @@ set_option(FLATBUFFERS_CODE_COVERAGE "Enable the code coverage build option." OF
 set_option(FLATBUFFERS_BUILD_TESTS "Enable the build of tests and samples." OFF)
 set_option(FLATBUFFERS_INSTALL "Enable the installation of targets." ON)
 set_option(FLATBUFFERS_BUILD_FLATLIB "Enable the build of the flatbuffers library" ON)
-set_option(FLATBUFFERS_BUILD_FLATC "Enable the build of the flatbuffers compiler" OFF)
+
+
 set_option(FLATBUFFERS_STATIC_FLATC "Build flatbuffers compiler with -static flag" OFF)
-set_option(FLATBUFFERS_BUILD_FLATHASH "Enable the build of flathash" IS_HOST_PLATFORM)
+
+
+if (NOT ANDROID AND NOT WEBGL AND NOT IOS AND NOT FILAMENT_LINUX_IS_MOBILE)
+    set_option(FLATBUFFERS_BUILD_FLATC "Enable the build of the flatbuffers compiler" ON)
+    set_option(FLATBUFFERS_BUILD_FLATHASH "Enable the build of flathash" ON)
+else()
+    set_option(FLATBUFFERS_BUILD_FLATC "Enable the build of the flatbuffers compiler" OFF)
+    set_option(FLATBUFFERS_BUILD_FLATHASH "Enable the build of flathash" OFF)  
+endif()
+
 set_option(FLATBUFFERS_BUILD_BENCHMARKS "Enable the build of flatbenchmark."
        OFF)
 set_option(FLATBUFFERS_BUILD_GRPCTEST "Enable the build of grpctest" OFF)
