@@ -13,10 +13,11 @@ struct Configure
     int height = 768;
 
     float scale = 1.0f;
+    std::string title      = "GameBox";
 
     std::string projectURI = "E:/1/filament/third_party/models/";
-    std::string title      = "GameBox";
-    std::string iblDirectory;
+    std::string iblDirectory = "/sdcard/assets/ibl/lightroom_14b";
+    std::string fontPath     = "/sdcard/assets/fonts/Roboto-Medium.ttf";
     std::string dirt;
     std::string filename = "/sdcard/models/Breakdancer.glb"; //"/sdcard/model/TreeHouse.glb";
     //std::string filename = "E:/1/filament/third_party/models/Breakdancer.glb";

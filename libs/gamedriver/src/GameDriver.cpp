@@ -170,9 +170,8 @@ void GameDriver::initialize()
 
     //gConfigure.iblDirectory = Resource::get().getRootPath() + "assets/ibl/lightroom_14b";
 
-    mFontPath =  "/sdcard/assets/fonts/Roboto-Medium.ttf";
+    mFontPath = gConfigure.fontPath;
 
-    gConfigure.iblDirectory =  "/sdcard/assets/ibl/lightroom_14b";
 
     mBackend      = gConfigure.backend;
     mFeatureLevel = gConfigure.featureLevel;
