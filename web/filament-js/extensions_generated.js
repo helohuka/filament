@@ -138,8 +138,17 @@ Filament.loadGeneratedExtensions = function() {
     Filament.View.prototype.setTemporalAntiAliasingOptionsDefaults = function(overrides) {
         const options = {
             filterWidth: 1.0,
-            feedback: 0.04,
+            feedback: 0.12,
             enabled: false,
+            filterHistory: true,
+            filterInput: true,
+            useYCoCg: false,
+            boxType: Filament.View$TemporalAntiAliasingOptions$BoxType.AABB,
+            boxClipping: Filament.View$TemporalAntiAliasingOptions$BoxClipping.ACCURATE,
+            jitterPattern: Filament.View$TemporalAntiAliasingOptions$JitterPattern.HALTON_23_X16,
+            varianceGamma: 1.0,
+            preventFlickering: false,
+            historyReprojection: true,
         };
         return Object.assign(options, overrides);
     };

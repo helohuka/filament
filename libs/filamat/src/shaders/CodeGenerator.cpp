@@ -778,7 +778,7 @@ io::sstream& CodeGenerator::generateSubpass(io::sstream& out, SubpassInfo subpas
 }
 
 void CodeGenerator::fixupExternalSamplers(
-        std::string& shader, SamplerInterfaceBlock const& sib) noexcept {
+        std::string& shader, SamplerInterfaceBlock const& sib, FeatureLevel featureLevel) noexcept {
     auto const& infos = sib.getSamplerInfoList();
     if (infos.empty()) {
         return;
@@ -813,7 +813,10 @@ void CodeGenerator::fixupExternalSamplers(
         while (shader[index] != '\n') index++;
         index++;
 
-        shader.insert(index, "#extension GL_OES_EGL_image_external_essl3 : require\n");
+        const char *extensionLine = (featureLevel >= FeatureLevel::FEATURE_LEVEL_1)
+                ? "#extension GL_OES_EGL_image_external_essl3 : require\n\n"
+                : "#extension GL_OES_EGL_image_external : require\n\n";
+        shader.insert(index, extensionLine);
     }
 }
 
@@ -1147,13 +1150,12 @@ char const* CodeGenerator::getOutputTypeName(MaterialBuilder::OutputType type) n
 
 char const* CodeGenerator::getSamplerTypeName(SamplerType type, SamplerFormat format,
         bool multisample) const noexcept {
-    assert(!multisample);   // multisample samplers not yet supported.
     switch (type) {
         case SamplerType::SAMPLER_2D:
             switch (format) {
-                case SamplerFormat::INT:    return "isampler2D";
-                case SamplerFormat::UINT:   return "usampler2D";
-                case SamplerFormat::FLOAT:  return "sampler2D";
+                case SamplerFormat::INT:    return multisample ? "isampler2DMS" : "isampler2D";
+                case SamplerFormat::UINT:   return multisample ? "usampler2DMS" : "usampler2D";
+                case SamplerFormat::FLOAT:  return multisample ? "sampler2DMS" : "sampler2D";
                 case SamplerFormat::SHADOW: return "sampler2DShadow";
             }
         case SamplerType::SAMPLER_3D:
@@ -1166,9 +1168,9 @@ char const* CodeGenerator::getSamplerTypeName(SamplerType type, SamplerFormat fo
             }
         case SamplerType::SAMPLER_2D_ARRAY:
             switch (format) {
-                case SamplerFormat::INT:    return "isampler2DArray";
-                case SamplerFormat::UINT:   return "usampler2DArray";
-                case SamplerFormat::FLOAT:  return "sampler2DArray";
+                case SamplerFormat::INT:    return multisample ? "isampler2DMSArray": "isampler2DArray";
+                case SamplerFormat::UINT:   return multisample ? "usampler2DMSArray": "usampler2DArray";
+                case SamplerFormat::FLOAT:  return multisample ? "sampler2DMSArray": "sampler2DArray";
                 case SamplerFormat::SHADOW: return "sampler2DArrayShadow";
             }
         case SamplerType::SAMPLER_CUBEMAP:

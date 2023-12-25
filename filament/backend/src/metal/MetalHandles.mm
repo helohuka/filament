@@ -39,7 +39,15 @@ namespace filament {
 namespace backend {
 
 static inline MTLTextureUsage getMetalTextureUsage(TextureUsage usage) {
-    NSUInteger u = 0;
+    NSUInteger u = MTLTextureUsageUnknown;
+
+    if (any(usage & TextureUsage::SAMPLEABLE)) {
+        u |= MTLTextureUsageShaderRead;
+    }
+    if (any(usage & TextureUsage::UPLOADABLE)) {
+        // This is only needed because of the slowpath is MetalBlitter
+        u |= MTLTextureUsageRenderTarget;
+    }
     if (any(usage & TextureUsage::COLOR_ATTACHMENT)) {
         u |= MTLTextureUsageRenderTarget;
     }
@@ -49,9 +57,13 @@ static inline MTLTextureUsage getMetalTextureUsage(TextureUsage usage) {
     if (any(usage & TextureUsage::STENCIL_ATTACHMENT)) {
         u |= MTLTextureUsageRenderTarget;
     }
-
-    // All textures can be blitted from, so they must have the UsageShaderRead flag.
-    u |= MTLTextureUsageShaderRead;
+    if (any(usage & TextureUsage::BLIT_DST)) {
+        // This is only needed because of the slowpath is MetalBlitter
+        u |= MTLTextureUsageRenderTarget;
+    }
+    if (any(usage & TextureUsage::BLIT_SRC)) {
+        u |= MTLTextureUsageShaderRead;
+    }
 
     return MTLTextureUsage(u);
 }
@@ -233,13 +245,30 @@ void MetalSwapChain::present() {
     }
 }
 
+struct PresentDrawableData {
+    void* drawable = nullptr;
+    MetalDriver* driver = nullptr;
+};
+
 void presentDrawable(bool presentFrame, void* user) {
-    // CFBridgingRelease here is used to balance the CFBridgingRetain inside of acquireDrawable.
-    id<CAMetalDrawable> drawable = (id<CAMetalDrawable>) CFBridgingRelease(user);
+    auto* presentDrawableData = static_cast<PresentDrawableData*>(user);
+
+    // CFBridgingRelease here is used to balance the CFBridgingRetain inside acquireDrawable.
+    id<CAMetalDrawable> drawable =
+            (id<CAMetalDrawable>)CFBridgingRelease(presentDrawableData->drawable);
     if (presentFrame) {
         [drawable present];
     }
-    // The drawable will be released here when the "drawable" variable goes out of scope.
+
+    // Schedule the drawable destruction on the driver thread.
+    void* voidDrawable = (void*) CFBridgingRetain(drawable);
+    MetalDriver* driver = presentDrawableData->driver;
+    driver->runAtNextTick([voidDrawable]() {
+        // The drawable is released here.
+        CFBridgingRelease(voidDrawable);
+    });
+
+    delete presentDrawableData;
 }
 
 void MetalSwapChain::scheduleFrameScheduledCallback() {
@@ -254,13 +283,15 @@ void MetalSwapChain::scheduleFrameScheduledCallback() {
     // capture the _this_ pointer (MetalSwapChain*) instead of the drawable.
     id<CAMetalDrawable> d = drawable;
     void* userData = frameScheduledUserData;
+    MetalDriver* driver = context.driver;
     [getPendingCommandBuffer(&context) addScheduledHandler:^(id<MTLCommandBuffer> cb) {
         // CFBridgingRetain is used here to give the drawable a +1 retain count before
         // casting it to a void*.
-        PresentCallable callable(presentDrawable, (void*) CFBridgingRetain(d));
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-            callback(callable, userData);
-        });
+        auto* presentDrawableData = new PresentDrawableData;
+        presentDrawableData->drawable = (void*) CFBridgingRetain(d);
+        presentDrawableData->driver = driver;
+        PresentCallable callable(presentDrawable, (void*) presentDrawableData);
+        callback(callable, userData);
     }];
 }
 
@@ -756,6 +787,7 @@ void MetalTexture::loadWithBlit(uint32_t level, uint32_t slice, MTLRegion region
 #endif
 
     id<MTLTexture> stagingTexture = [context.device newTextureWithDescriptor:descriptor];
+    // FIXME? Why is this not just `MTLRegion sourceRegion = region;` ?
     MTLRegion sourceRegion = MTLRegionMake3D(0, 0, 0,
             region.size.width, region.size.height, region.size.depth);
     [stagingTexture replaceRegion:sourceRegion
@@ -782,16 +814,16 @@ void MetalTexture::loadWithBlit(uint32_t level, uint32_t slice, MTLRegion region
                                                              slices:NSMakeRange(0, slices)];
     }
 
-    MetalBlitter::BlitArgs args;
+    MetalBlitter::BlitArgs args{};
     args.filter = SamplerMagFilter::NEAREST;
     args.source.level = 0;
     args.source.slice = 0;
     args.source.region = sourceRegion;
+    args.source.texture = stagingTexture;
     args.destination.level = level;
     args.destination.slice = slice;
     args.destination.region = region;
-    args.source.color = stagingTexture;
-    args.destination.color = destinationTexture;
+    args.destination.texture = destinationTexture;
     context.blitter->blit(getPendingCommandBuffer(&context), args, "Texture upload blit");
 }
 

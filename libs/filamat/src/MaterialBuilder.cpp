@@ -250,15 +250,18 @@ MaterialBuilder& MaterialBuilder::parameter(const char* name, UniformType type,
 
 
 MaterialBuilder& MaterialBuilder::parameter(const char* name, SamplerType samplerType,
-        SamplerFormat format, ParameterPrecision precision) noexcept {
-    ASSERT_POSTCONDITION(mParameterCount < MAX_PARAMETERS_COUNT, "Too many parameters");
-    mParameters[mParameterCount++] = { name, samplerType, format, precision };
-    return *this;
-}
+        SamplerFormat format, ParameterPrecision precision, bool multisample) noexcept {
 
-MaterialBuilder& MaterialBuilder::parameter(const char* name, SamplerType samplerType,
-        ParameterPrecision precision) noexcept {
-    return parameter(name, samplerType, SamplerFormat::FLOAT, precision);
+    ASSERT_PRECONDITION(
+            !multisample || (format != SamplerFormat::SHADOW && (
+                                    samplerType == SamplerType::SAMPLER_2D
+                                            || samplerType == SamplerType::SAMPLER_2D_ARRAY)),
+            "multisample samplers only possible with SAMPLER_2D or SAMPLER_2D_ARRAY,"
+            " as long as type is not SHADOW");
+
+    ASSERT_POSTCONDITION(mParameterCount < MAX_PARAMETERS_COUNT, "Too many parameters");
+    mParameters[mParameterCount++] = { name, samplerType, format, precision, multisample };
+    return *this;
 }
 
 template<typename T, typename>
@@ -556,7 +559,7 @@ void MaterialBuilder::prepareToBuild(MaterialInfo& info) noexcept {
         assert_invariant(!param.isSubpass());
         if (param.isSampler()) {
             sbb.add({ param.name.data(), param.name.size() },
-                    param.samplerType, param.format, param.precision);
+                    param.samplerType, param.format, param.precision, param.multisample);
         } else if (param.isUniform()) {
             ibb.add({{{ param.name.data(), param.name.size() },
                       uint32_t(param.size == 1u ? 0u : param.size), param.uniformType,
@@ -912,7 +915,8 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
 
                 if (targetApi == TargetApi::OPENGL) {
                     if (targetLanguage == TargetLanguage::SPIRV) {
-                        ShaderGenerator::fixupExternalSamplers(shaderModel, shader, info);
+                        ShaderGenerator::fixupExternalSamplers(shaderModel, shader, featureLevel,
+                                info);
                     }
                 }
 
@@ -1162,7 +1166,6 @@ error:
         mVariantFilter |= uint32_t(UserVariantFilterBit::DIRECTIONAL_LIGHTING);
         mVariantFilter |= uint32_t(UserVariantFilterBit::DYNAMIC_LIGHTING);
         mVariantFilter |= uint32_t(UserVariantFilterBit::SHADOW_RECEIVER);
-        mVariantFilter |= uint32_t(UserVariantFilterBit::SKINNING);
         mVariantFilter |= uint32_t(UserVariantFilterBit::VSM);
         mVariantFilter |= uint32_t(UserVariantFilterBit::SSR);
         mVariantFilter |= uint32_t(UserVariantFilterBit::STE);

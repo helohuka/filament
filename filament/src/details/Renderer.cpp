@@ -365,18 +365,18 @@ void FRenderer::copyFrame(FSwapChain* dstSwapChain, filament::Viewport const& ds
         params.viewport.bottom = 0;
         params.viewport.width = std::numeric_limits<uint32_t>::max();
         params.viewport.height = std::numeric_limits<uint32_t>::max();
+        driver.beginRenderPass(mRenderTargetHandle, params);
+        driver.endRenderPass();
     }
-    driver.beginRenderPass(mRenderTargetHandle, params);
 
     // Verify that the source swap chain is readable.
     assert_invariant(mSwapChain->isReadable());
-    driver.blit(TargetBufferFlags::COLOR,
-            mRenderTargetHandle, dstViewport, mRenderTargetHandle, srcViewport, SamplerMagFilter::LINEAR);
+    driver.blitDEPRECATED(TargetBufferFlags::COLOR, mRenderTargetHandle,
+            dstViewport, mRenderTargetHandle, srcViewport, SamplerMagFilter::LINEAR);
+
     if (flags & SET_PRESENTATION_TIME) {
         // TODO: Implement this properly, see https://github.com/google/filament/issues/633
     }
-
-    driver.endRenderPass();
 
     if (flags & COMMIT) {
         dstSwapChain->commit(driver);
@@ -491,6 +491,11 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
         hasDithering = false;
         hasFXAA = false;
         scale = 1.0f;
+    } else {
+        // This configures post-process materials by setting constant parameters
+        if (taaOptions.enabled) {
+            ppm.configureTemporalAntiAliasingMaterial(taaOptions);
+        }
     }
 
     const bool blendModeTranslucent = view.getBlendMode() == BlendMode::TRANSLUCENT;
@@ -609,7 +614,7 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
 
     view.prepare(engine, driver, arena, svp, cameraInfo, getShaderUserTime(), needsAlphaChannel);
 
-    view.prepareUpscaler(scale);
+    view.prepareUpscaler(scale, dsrOptions);
 
     /*
      * Allocate command buffer
@@ -813,14 +818,14 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
                 [=, &view](FrameGraphResources const& resources,
                         auto const&, DriverApi& driver) mutable {
                     auto out = resources.getRenderPassInfo();
-                    view.executePickingQueries(driver, out.target, aoOptions.resolution);
+                    view.executePickingQueries(driver, out.target, scale * aoOptions.resolution);
                 });
     }
 
     // Store this frame's camera projection in the frame history.
     if (UTILS_UNLIKELY(taaOptions.enabled)) {
         // Apply the TAA jitter to everything after the structure pass, starting with the color pass.
-        ppm.prepareTaa(fg, svp, view.getFrameHistory(), &FrameHistoryEntry::taa,
+        ppm.prepareTaa(fg, svp, taaOptions, view.getFrameHistory(), &FrameHistoryEntry::taa,
                 &cameraInfo, view.getPerViewUniforms());
     }
 
@@ -984,10 +989,12 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
         view.commitUniforms(driver);
     });
 
-    // resolve depth -- which might be needed because of TAA or DoF. This pass will be culled
-    // if the depth is not used below.
-    auto const depth = ppm.resolveBaseLevel(fg, "Resolved Depth Buffer",
-            blackboard.get<FrameGraphTexture>("depth"));
+    // Resolve depth -- which might be needed because of TAA or DoF. This pass will be culled
+    // if the depth is not used below or if the depth is not MS (e.g. it could have been
+    // auto-resolved).
+    // In practice, this is used on Vulkan and older Metal devices.
+    auto depth = blackboard.get<FrameGraphTexture>("depth");
+    depth = ppm.resolve(fg, "Resolved Depth Buffer", depth, { .levels = 1 });
 
     // Debug: CSM visualisation
     if (UTILS_UNLIKELY(engine.debug.shadowmap.visualize_cascades &&
@@ -1026,7 +1033,7 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
 
         FrameGraphId<FrameGraphTexture> bloom, flare;
         if (bloomOptions.enabled) {
-            // generate the bloom buffer, which is stored in the blackboard as "bloom". This is
+            // Generate the bloom buffer, which is stored in the blackboard as "bloom". This is
             // consumed by the colorGrading pass and will be culled if colorGrading is disabled.
             auto [bloom_, flare_] = ppm.bloom(fg, input, bloomOptions, TextureFormat::R11F_G11F_B10F, scale);
             bloom = bloom_;
@@ -1057,7 +1064,7 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
             auto viewport = DEBUG_DYNAMIC_SCALING ? xvp : vp;
             input = ppm.upscale(fg, needsAlphaChannel, dsrOptions, input, xvp, {
                     .width = viewport.width, .height = viewport.height,
-                    .format = colorGradingConfig.ldrFormat });
+                    .format = colorGradingConfig.ldrFormat }, SamplerMagFilter::LINEAR);
             xvp.left = xvp.bottom = 0;
             svp = xvp;
         }
@@ -1080,7 +1087,8 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
     //   TODO: in that specific scenario it would be better to just not use xvp
     // The intermediate buffer is accomplished with a "fake" opaqueBlit (i.e. blit) operation.
 
-    const bool outputIsSwapChain = (input == colorPassOutput) && (viewRenderTarget == mRenderTargetHandle);
+    const bool outputIsSwapChain =
+            (input == colorPassOutput) && (viewRenderTarget == mRenderTargetHandle);
     if (mightNeedFinalBlit) {
         if (blendModeTranslucent ||
             xvp != svp ||
@@ -1091,8 +1099,9 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
                     ssReflectionsOptions.enabled))) {
             assert_invariant(!scaled);
             input = ppm.blit(fg, blendModeTranslucent, input, xvp, {
-                    .width = vp.width, .height = vp.height,
-                    .format = colorGradingConfig.ldrFormat }, SamplerMagFilter::NEAREST);
+                            .width = vp.width, .height = vp.height,
+                            .format = colorGradingConfig.ldrFormat },
+                    SamplerMagFilter::NEAREST, SamplerMinFilter::NEAREST);
         }
     }
 

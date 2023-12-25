@@ -19,8 +19,8 @@ struct Configure
     std::string iblDirectory = "/sdcard/assets/ibl/lightroom_14b";
     std::string fontPath     = "/sdcard/assets/fonts/Roboto-Medium.ttf";
     std::string dirt;
-    std::string filename = "/sdcard/models/Breakdancer.glb"; //"/sdcard/model/TreeHouse.glb";
-    //std::string filename = "E:/1/filament/third_party/models/Breakdancer.glb";
+    //std::string filename = "/sdcard/models/Breakdancer.glb"; //"/sdcard/model/TreeHouse.glb";
+    std::string filename = "E:/1/filament/third_party/models/Breakdancer.glb";
 
     filament::Engine::Backend       backend      = filament::Engine::Backend::OPENGL;
     filament::backend::FeatureLevel featureLevel = filament::backend::FeatureLevel::FEATURE_LEVEL_3;

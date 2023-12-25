@@ -245,6 +245,21 @@ if (WIN32)
             # we don't need them on CI.
             string(REPLACE "/INCREMENTAL" "/INCREMENTAL:NO" ${LinkerFlag} ${${LinkerFlag}})
         endforeach()
+
+        # We turn off compile-time optimizations for CI, as options that speed up the compile-time
+        # (e.g. /MP) might increase memory usage, leading to instabilities on limited CI machines.
+        option(FILAMENT_SHORTEN_MSVC_COMPILATION "Shorten compile-time in Visual Studio" OFF)
+    else()
+        option(FILAMENT_SHORTEN_MSVC_COMPILATION "Shorten compile-time in Visual Studio" ON)
+    endif()
+
+    if (MSVC)
+        if (FILAMENT_SHORTEN_MSVC_COMPILATION)
+            # enable multi-processor compilation
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+            # disable run-time STL checks to improve tools (e.g. matc) performance
+            set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /D_ITERATOR_DEBUG_LEVEL=0")
+        endif()
     endif()
 endif()
 
@@ -426,7 +441,10 @@ endif()
 if (FILAMENT_ENABLE_ASAN_UBSAN)
    set(EXTRA_SANITIZE_OPTIONS "-fsanitize=address -fsanitize=undefined")
 endif()
-
+if (ANDROID)
+    # keep STL debug infos (mimics what the NDK does)
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-limit-debug-info")
+endif()
 if (NOT MSVC AND NOT WEBGL)
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fstack-protector")
 endif()
@@ -775,6 +793,8 @@ endif()
 if (FILAMENT_SUPPORTS_VULKAN)
     add_subdirectory(${LIBRARIES}/bluevk)
     add_subdirectory(${EXTERNAL}/vkmemalloc/tnt)
+    set(SPIRV_HEADERS_SKIP_EXAMPLES ON)
+    add_subdirectory(${EXTERNAL}/spirv-headers)
 endif()
 
 #set(FILAMENT_SAMPLES_BINARY_DIR ${PROJECT_BINARY_DIR}/samples)
