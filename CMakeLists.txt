@@ -49,6 +49,8 @@ option(FILAMENT_ENABLE_BUILD_BENCHMARK "Build benchmark" OFF)
 
 option(FILAMENT_ENABLE_ASAN_UBSAN "Enable Address and Undefined Behavior Sanitizers" OFF)
 
+option(FILAMENT_ENABLE_TSAN "Enable Thread Sanitizer" OFF)
+
 option(FILAMENT_ENABLE_FEATURE_LEVEL_0 "Enable Feature Level 0" ON)
 
 set(FILAMENT_NDK_VERSION "" CACHE STRING
@@ -441,6 +443,9 @@ endif()
 if (FILAMENT_ENABLE_ASAN_UBSAN)
    set(EXTRA_SANITIZE_OPTIONS "-fsanitize=address -fsanitize=undefined")
 endif()
+if (FILAMENT_ENABLE_TSAN)
+   set(EXTRA_SANITIZE_OPTIONS "-fsanitize=thread")
+endif()
 if (ANDROID)
     # keep STL debug infos (mimics what the NDK does)
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-limit-debug-info")
@@ -646,9 +651,9 @@ function(combine_static_libs TARGET OUTPUT DEPS)
     # Loop through the dependent libraries and query their location on disk.
     set(DEPS_FILES )
     foreach(DEPENDENCY ${DEPS})
-        if(TARGET ${DEPENDENCY})
+        if (TARGET ${DEPENDENCY})
             get_property(dep_type TARGET ${DEPENDENCY} PROPERTY TYPE)
-            if(dep_type STREQUAL "STATIC_LIBRARY")
+            if (dep_type STREQUAL "STATIC_LIBRARY")
                 list(APPEND DEPS_FILES "$<TARGET_FILE:${DEPENDENCY}>")
             endif()
         endif()
@@ -734,7 +739,6 @@ add_subdirectory(${LIBRARIES}/filabridge)
 add_subdirectory(${LIBRARIES}/filaflat)
 #add_subdirectory(${LIBRARIES}/filagui)
 add_subdirectory(${LIBRARIES}/filameshio)
-add_subdirectory(${LIBRARIES}/geometry)
 add_subdirectory(${LIBRARIES}/gltfio)
 add_subdirectory(${LIBRARIES}/ibl)
 add_subdirectory(${LIBRARIES}/iblprefilter)
@@ -775,6 +779,9 @@ add_subdirectory(${EXTERNAL}/libzmq)
 
 #引入flatbuffers 
 add_subdirectory(${EXTERNAL}/flatbuffers)
+
+# Note that this has to be placed after mikktspace in order for combine_static_libs to work.
+add_subdirectory(${LIBRARIES}/geometry)
 
 if (FILAMENT_BUILD_FILAMAT OR IS_HOST_PLATFORM)
     # spirv-tools must come before filamat, as filamat relies on the presence of the
