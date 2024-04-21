@@ -204,6 +204,7 @@ int lua_log(lua_State* L)
 
 //-----------------------------------------------------------------------
 
+
 const char* LuauVM::getLastError()
 {   
     return mLastError.empty() ? nullptr : mLastError.c_str();

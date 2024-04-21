@@ -19,10 +19,11 @@
 #include "gamedriver/BaseLibs.h"
 
 
-class Automation
+class Automation 
 {
-    SINGLE_INSTANCE_FLAG(Automation);
-
+public:
+    Automation();
+    ~Automation();
 public:
     void                                setup();
     void                                tick(filament::View* view, filament::gltfio::FilamentInstance* instance, filament::Renderer* renderer, long long dt);

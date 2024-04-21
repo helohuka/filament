@@ -38,9 +38,20 @@ function(add_envmap SOURCE TARGET)
         COMMENT "Generating environment map ${target_envmap}")
 endfunction()
 
-add_envmap("third_party/environments/lightroom_14b.hdr" "lightroom_14b")
-
-
+add_envmap("third_party/environments/flower_road_2k.hdr"            "flower_road_2k")
+add_envmap("third_party/environments/flower_road_no_sun_2k.hdr"     "flower_road_no_sun_2k")
+add_envmap("third_party/environments/graffiti_shelter_2k.hdr"       "graffiti_shelter_2k")
+add_envmap("third_party/environments/lightroom_14b.hdr"             "lightroom_14b")
+add_envmap("third_party/environments/noon_grass_2k.hdr"             "noon_grass_2k")
+add_envmap("third_party/environments/parking_garage_2k.hdr"         "parking_garage_2k")
+add_envmap("third_party/environments/pillars_2k.hdr"                "pillars_2k")
+add_envmap("third_party/environments/studio_small_02_2k.hdr"        "studio_small_02_2k")
+add_envmap("third_party/environments/syferfontein_18d_clear_2k.hdr" "syferfontein_18d_clear_2k")
+add_envmap("third_party/environments/the_sky_is_on_fire_2k.hdr"     "the_sky_is_on_fire_2k")
+add_envmap("third_party/environments/venetian_crossroads_2k.hdr"    "venetian_crossroads_2k")
+add_envmap("third_party/environments/earth.png"                     "earth")
+add_envmap("assets/environments/debug/debug.png"                    "debug")
+add_envmap("assets/environments/white_furnace/white_furnace.exr"    "white_furnace")
 # ==================================================================================================
 # Compiler flags
 # ==================================================================================================
@@ -54,10 +65,15 @@ else()
             $<$<CONFIG:Release>:-ffast-math>)
 endif()
 
-file(COPY "${ROOT_DIR}/third_party/textures" DESTINATION ${PROJECT_BINARY_DIR})
+file(COPY "${ROOT_DIR}/third_party/textures" DESTINATION ${PROJECT_BINARY_DIR}/assets)
 add_custom_target(textures ALL DEPENDS textures)
 add_dependencies(launcher textures)
 set_target_properties(textures PROPERTIES FOLDER Assets)
+
+file(COPY "${ROOT_DIR}/third_party/models" DESTINATION ${PROJECT_BINARY_DIR}/assets)
+add_custom_target(models ALL DEPENDS models)
+add_dependencies(launcher models)
+set_target_properties(models PROPERTIES FOLDER Assets)
 
 file(COPY "${ROOT_DIR}/assets" DESTINATION ${PROJECT_BINARY_DIR}
         PATTERN "reference" EXCLUDE

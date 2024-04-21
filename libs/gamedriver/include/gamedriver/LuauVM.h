@@ -19,15 +19,14 @@
 
 #include "BaseLibs.h"
 
-
-class LuauVM {
-public:
-	//Inside apis ;
-
-	SINGLE_INSTANCE_FLAG(LuauVM);
-
+class LuauVM 
+{
 public:
 
+    LuauVM();
+    ~LuauVM();
+
+public:
 
 	//Inside apis
 	const char* getLastError();

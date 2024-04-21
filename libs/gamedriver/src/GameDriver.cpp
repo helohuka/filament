@@ -13,9 +13,12 @@
 
 GameDriver::GameDriver() {
     ASSERT_POSTCONDITION(SDL_Init(SDL_INIT_EVENTS) == 0, "SDL_Init Failure");
+
+    mAutomation.reset(new Automation()); // = std::make_unique<Automation>();
 }
 
 GameDriver::~GameDriver() {
+    mAutomation = nullptr;
     SDL_Quit();
 }
 
@@ -164,15 +167,8 @@ void GameDriver::onKeyUp(SDL_Scancode key)
 }
 
 void GameDriver::initialize()
-{
-    
-    //mFontPath = utils::Path::getCurrentExecutable().getParent() + "assets/fonts/Roboto-Medium.ttf";
-
-    //gConfigure.iblDirectory = Resource::get().getRootPath() + "assets/ibl/lightroom_14b";
-
+{    
     mFontPath = gConfigure.fontPath;
-
-
     mBackend      = gConfigure.backend;
     mFeatureLevel = gConfigure.featureLevel;
 
@@ -252,7 +248,6 @@ void GameDriver::initialize()
 
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
-   
 }
 
 void GameDriver::setup()
@@ -283,7 +278,7 @@ void GameDriver::setup()
     mMainView->getView()->setAmbientOcclusionOptions({.upsampling = View::QualityLevel::HIGH});
 
     gSettings.viewer.autoScaleEnabled = !mActualSize;
-    Automation::get().setup();
+    mAutomation->setup();
 
     if (mSettingsFile.size() > 0)
     {
@@ -415,7 +410,10 @@ void GameDriver::mainLoop()
             switch (event.type)
             {
                 case SDL_QUIT:
-                    //mClosed = true;
+#ifdef WIN32
+                    mClosed = true;
+#endif // WINDOWS
+                    
                     break;
                 case SDL_KEYDOWN:
                     if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE)

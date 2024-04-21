@@ -139,21 +139,8 @@ enum MaterialSource
     UBERSHADER,
 };
 
-
-using SceneMask = filament::gltfio::NodeManager::SceneMask;
-
-#define SINGLE_INSTANCE_FLAG(T) \
-public:\
-    static inline T& get(){static T v; return v;} \
-    static inline T* getp(){return &get();}\
-    T(const T& rhs) = delete;\
-    T(T&& rhs) = delete;\
-    T& operator=(const T& rhs) = delete;\
-    T& operator=(T&& rhs) = delete;\
-    ~T();\
-private:\
-	T();
-
+using PrivateAPI = filament::FilamentAPI;
+using SceneMask  = filament::gltfio::NodeManager::SceneMask;
 
 filament::math::mat4f   fitIntoUnitCube(const filament::Aabb& bounds, float zoffset);
 std::ifstream::pos_type getFileSize(const char* filename);

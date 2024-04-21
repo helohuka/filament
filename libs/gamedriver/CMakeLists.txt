@@ -39,9 +39,7 @@ set(PUBLIC_HDRS
 
         include/gamedriver/ImGuiBridge.h
         include/gui/ImGuiExtensions.h
-        include/gui/ImGuiMath.h
-		
-		
+        include/gui/ImGuiMath.h	
 )
 
 set(SRCS
@@ -224,7 +222,6 @@ add_library(gamedriver-resources ${DUMMY_SRC} ${RESGEN_SOURCE})
 set_target_properties(gamedriver-resources PROPERTIES FOLDER Libs/Resources)
 
 
-
 # ==================================================================================================
 # Include and target definitions
 # ==================================================================================================
@@ -232,12 +229,16 @@ set_target_properties(gamedriver-resources PROPERTIES FOLDER Libs/Resources)
 include_directories(${PUBLIC_HDR_DIR})
 include_directories(${FLATBUFFERS_DIR})
 
+source_group(Hdr FILES ${PUBLIC_HDRS})
+source_group(Src FILES ${SRCS})
+source_group(Materials FILES ${MATERIAL_SRCS})
+source_group(Schemas FILES ${SCHEMA_SRCS})
+
+
 add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS} ${MATERIAL_SRCS} ${SCHEMA_SRCS} ${FLATBUFFERS_SRC})
-source_group(Hdr ${PUBLIC_HDRS})
-source_group(Src ${SRCS})
-source_group(Materials ${MATERIAL_SRCS})
-source_group(Schemas ${SCHEMA_SRCS})
 target_link_libraries(${TARGET} PUBLIC ${LIBS} )
+
+message(${MATERIAL_SRCS})
 
 target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR} ${FLATBUFFERS_DIR})
 set_target_properties(${TARGET} PROPERTIES FOLDER Libs)

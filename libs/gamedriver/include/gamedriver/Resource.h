@@ -3,9 +3,11 @@
 
 #include "gamedriver/BaseLibs.h"
 
-class Resource
+class Resource 
 {
-	SINGLE_INSTANCE_FLAG(Resource)
+public:
+    Resource();
+    ~Resource();
 
 public:
 

@@ -45,13 +45,16 @@
  *
  */
 
+class Automation;
 
-class GameDriver
+class GameDriver : public PrivateAPI
 {
 public:
     static bool manipulatorKeyFromKeycode(SDL_Scancode scancode, CameraManipulator::Key& key);
+    
+    GameDriver();
+    ~GameDriver();
 
-    SINGLE_INSTANCE_FLAG(GameDriver)
 public:
     void mainLoop();
 
@@ -124,6 +127,7 @@ private:
     void  customUI();
     void  sceneSelectionUI();
 
+
     filament::Engine::Backend       mBackend             = filament::Engine::Backend::OPENGL;
     filament::backend::FeatureLevel mFeatureLevel        = filament::backend::FeatureLevel::FEATURE_LEVEL_3;
     filament::Engine*               mRenderEngine        = nullptr;
@@ -140,6 +144,8 @@ private:
     filament::MaterialInstance*     mDepthMI             = nullptr;
     size_t                          mSkippedFrames       = 0;
     std::vector<filament::View*>    mOffscreenViews;
+
+    std::unique_ptr<Automation> mAutomation = nullptr;
 
     // Window 相关
     SDL_Window*           mWindow            = nullptr;
@@ -202,7 +208,7 @@ private:
     int                mCurrentVariant     = 0;
     bool               mEnableWireframe    = false;
     int                mVsmMsaaSamplesLog2 = 1;
-    uint32_t           mFlags;
+    uint32_t           mFlags = 0;
     utils::Entity      mCurrentMorphingEntity;
     std::vector<float> mMorphWeights;
     SceneMask          mVisibleScenes;

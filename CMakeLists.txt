@@ -17,6 +17,7 @@ endif()
 #project(TNT) 更换项目根名
 project(GameDriver)
 
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # ==================================================================================================
 # Options

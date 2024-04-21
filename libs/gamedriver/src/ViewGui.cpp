@@ -465,7 +465,7 @@ void GameDriver::applyAnimation(double currentTime )
 
 void GameDriver::customUI()
 {
-    auto& automation = Automation::get().getAutomationEngine();
+    auto& automation = mAutomation->getAutomationEngine();
     auto  view       = mMainView->getView();
  
     const ImVec4 yellow(1.0f, 1.0f, 0.0f, 1.0f);
@@ -547,7 +547,7 @@ void GameDriver::customUI()
         ImGui::Indent();
         ImGui::Text("%zu entities in the asset", mAsset->getEntityCount());
         ImGui::Text("%zu renderables (excluding UI)", mScene->getRenderableCount());
-        ImGui::Text("%zu skipped frames", GameDriver::get().getSkippedFrameCount());
+        ImGui::Text("%zu skipped frames", getSkippedFrameCount());
         ImGui::Unindent();
     }
 
