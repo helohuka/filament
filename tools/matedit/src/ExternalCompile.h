@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,27 +14,19 @@
  * limitations under the License.
  */
 
-#ifndef TNT_FILAMAT_MATERIAL_SPIRV_CHUNK_H
-#define TNT_FILAMAT_MATERIAL_SPIRV_CHUNK_H
+#ifndef TNT_MATEDIT_EXTERNALCOMPILE_H
+#define TNT_MATEDIT_EXTERNALCOMPILE_H
 
-#include "Chunk.h"
-#include "ShaderEntry.h"
+#include <utils/Path.h>
 
+#include <string>
 #include <vector>
 
-namespace filamat {
+namespace matedit {
 
-class MaterialSpirvChunk final : public Chunk {
-public:
-    explicit MaterialSpirvChunk(const std::vector<SpirvEntry>&& entries);
-    ~MaterialSpirvChunk() = default;
+int externalCompile(utils::Path input, utils::Path output, bool preserveTextShaders,
+        std::vector<std::string> args);
 
-private:
-    void flatten(Flattener& f) override;
+} // namespace matedit
 
-    const std::vector<SpirvEntry> mEntries;
-};
-
-} // namespace filamat
-
-#endif // TNT_FILAMAT_MATERIAL_SPIRV_CHUNK_H
+#endif

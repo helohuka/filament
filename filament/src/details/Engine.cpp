@@ -69,6 +69,7 @@ struct Engine::BuilderDetails {
     Engine::Config mConfig;
     FeatureLevel mFeatureLevel = FeatureLevel::FEATURE_LEVEL_1;
     void* mSharedContext = nullptr;
+    bool mPaused = false;
     static Config validateConfig(const Config* pConfig) noexcept;
 };
 
@@ -98,7 +99,11 @@ Engine* FEngine::create(Engine::Builder const& builder) {
             return nullptr;
         }
         DriverConfig const driverConfig{
-            .handleArenaSize = instance->getRequestedDriverHandleArenaSize() };
+                .handleArenaSize = instance->getRequestedDriverHandleArenaSize(),
+                .textureUseAfterFreePoolSize = instance->getConfig().textureUseAfterFreePoolSize,
+                .disableParallelShaderCompile = instance->getConfig().disableParallelShaderCompile,
+                .disableHandleUseAfterFreeCheck = instance->getConfig().disableHandleUseAfterFreeCheck
+        };
         instance->mDriver = platform->createDriver(sharedContext, driverConfig);
 
     } else {
@@ -197,8 +202,9 @@ FEngine::FEngine(Engine::Builder const& builder) :
         mCameraManager(*this),
         mCommandBufferQueue(
                 builder->mConfig.minCommandBufferSizeMB * MiB,
-                builder->mConfig.commandBufferSizeMB * MiB),
-        mPerRenderPassAllocator(
+                builder->mConfig.commandBufferSizeMB * MiB,
+                builder->mPaused),
+        mPerRenderPassArena(
                 "FEngine::mPerRenderPassAllocator",
                 builder->mConfig.perRenderPassArenaSizeMB * MiB),
         mHeapAllocator("FEngine::mHeapAllocator", AreaPolicy::NullArea{}),
@@ -273,7 +279,7 @@ void FEngine::init() {
 
     mFullScreenTriangleRph = driverApi.createRenderPrimitive(
             mFullScreenTriangleVb->getHwHandle(), mFullScreenTriangleIb->getHwHandle(),
-            PrimitiveType::TRIANGLES, 0, 0, 2, (uint32_t)mFullScreenTriangleIb->getIndexCount());
+            PrimitiveType::TRIANGLES);
 
     // Compute a clip-space [-1 to 1] to texture space [0 to 1] matrix, taking into account
     // backend differences.
@@ -336,7 +342,7 @@ void FEngine::init() {
     if (UTILS_UNLIKELY(mActiveFeatureLevel == FeatureLevel::FEATURE_LEVEL_0)) {
         FMaterial::DefaultMaterialBuilder defaultMaterialBuilder;
         defaultMaterialBuilder.package(
-                MATERIALS_DEFAULTMATERIAL0_DATA, MATERIALS_DEFAULTMATERIAL0_SIZE);
+                MATERIALS_DEFAULTMATERIAL_FL0_DATA, MATERIALS_DEFAULTMATERIAL_FL0_SIZE);
         mDefaultMaterial = downcast(defaultMaterialBuilder.build(*const_cast<FEngine*>(this)));
     } else
 #endif
@@ -344,8 +350,20 @@ void FEngine::init() {
         mDefaultColorGrading = downcast(ColorGrading::Builder().build(*this));
 
         FMaterial::DefaultMaterialBuilder defaultMaterialBuilder;
-        defaultMaterialBuilder.package(
-                MATERIALS_DEFAULTMATERIAL_DATA, MATERIALS_DEFAULTMATERIAL_SIZE);
+        switch (mConfig.stereoscopicType) {
+            case StereoscopicType::INSTANCED:
+                defaultMaterialBuilder.package(
+                    MATERIALS_DEFAULTMATERIAL_DATA, MATERIALS_DEFAULTMATERIAL_SIZE);
+                break;
+            case StereoscopicType::MULTIVIEW:
+#ifdef FILAMENT_ENABLE_MULTIVIEW
+                defaultMaterialBuilder.package(
+                    MATERIALS_DEFAULTMATERIAL_MULTIVIEW_DATA, MATERIALS_DEFAULTMATERIAL_MULTIVIEW_SIZE);
+#else
+                assert_invariant(false);
+#endif
+                break;
+        }
         mDefaultMaterial = downcast(defaultMaterialBuilder.build(*const_cast<FEngine*>(this)));
 
         float3 dummyPositions[1] = {};
@@ -563,6 +581,8 @@ void FEngine::flush() {
 }
 
 void FEngine::flushAndWait() {
+    ASSERT_PRECONDITION(!mCommandBufferQueue.isPaused(),
+            "Cannot call flushAndWait() when rendering thread is paused!");
 
 #if defined(__ANDROID__)
 
@@ -651,7 +671,9 @@ int FEngine::loop() {
 
     DriverConfig const driverConfig {
             .handleArenaSize = getRequestedDriverHandleArenaSize(),
-            .textureUseAfterFreePoolSize = mConfig.textureUseAfterFreePoolSize
+            .textureUseAfterFreePoolSize = mConfig.textureUseAfterFreePoolSize,
+            .disableParallelShaderCompile = mConfig.disableParallelShaderCompile,
+            .disableHandleUseAfterFreeCheck = mConfig.disableHandleUseAfterFreeCheck
     };
     mDriver = mPlatform->createDriver(mSharedGLContext, driverConfig);
 
@@ -662,18 +684,7 @@ int FEngine::loop() {
         return 0;
     }
 
-    // Set thread affinity for the backend thread.
-    //  see https://developer.android.com/agi/sys-trace/threads-scheduling#cpu_core_affinity
-    // Certain backends already have some threads pinned, and we can't easily know on which core.
-    const bool disableThreadAffinity
-            = mDriver->isWorkaroundNeeded(Workaround::DISABLE_THREAD_AFFINITY);
-
-    uint32_t const id = std::thread::hardware_concurrency() - 1;
     while (true) {
-        // looks like thread affinity needs to be reset regularly (on Android)
-        if (!disableThreadAffinity) {
-            JobSystem::setThreadAffinityById(id);
-        }
         if (!execute()) {
             break;
         }
@@ -706,9 +717,10 @@ const FMaterial* FEngine::getSkyboxMaterial() const noexcept {
  * Object created from a Builder
  */
 
-template<typename T>
-inline T* FEngine::create(ResourceList<T>& list, typename T::Builder const& builder) noexcept {
-    T* p = mHeapAllocator.make<T>(*this, builder);
+template<typename T, typename ... ARGS>
+inline T* FEngine::create(ResourceList<T>& list,
+        typename T::Builder const& builder, ARGS&& ... args) noexcept {
+    T* p = mHeapAllocator.make<T>(*this, builder, std::forward<ARGS>(args)...);
     if (UTILS_UNLIKELY(p)) { // this should never happen
         list.insert(p);
     }
@@ -747,8 +759,9 @@ FIndirectLight* FEngine::createIndirectLight(const IndirectLight::Builder& build
     return create(mIndirectLights, builder);
 }
 
-FMaterial* FEngine::createMaterial(const Material::Builder& builder) noexcept {
-    return create(mMaterials, builder);
+FMaterial* FEngine::createMaterial(const Material::Builder& builder,
+        std::unique_ptr<MaterialParser> materialParser) noexcept {
+    return create(mMaterials, builder, std::move(materialParser));
 }
 
 FSkybox* FEngine::createSkybox(const Skybox::Builder& builder) noexcept {
@@ -904,8 +917,9 @@ void FEngine::cleanupResourceListLocked(Lock& lock, ResourceList<T>&& list) {
 
 template<typename T>
 UTILS_ALWAYS_INLINE
-inline bool FEngine::isValid(const T* ptr, ResourceList<T>& list) {
-    return list.find(ptr) != list.end();
+inline bool FEngine::isValid(const T* ptr, ResourceList<T> const& list) const {
+    auto& l = const_cast<ResourceList<T>&>(list);
+    return l.find(ptr) != l.end();
 }
 
 template<typename T>
@@ -1075,75 +1089,99 @@ void FEngine::destroy(Entity e) {
     mCameraManager.destroy(*this, e);
 }
 
-bool FEngine::isValid(const FBufferObject* p) {
+bool FEngine::isValid(const FBufferObject* p) const {
     return isValid(p, mBufferObjects);
 }
 
-bool FEngine::isValid(const FVertexBuffer* p) {
+bool FEngine::isValid(const FVertexBuffer* p) const {
     return isValid(p, mVertexBuffers);
 }
 
-bool FEngine::isValid(const FFence* p) {
+bool FEngine::isValid(const FFence* p) const {
     return isValid(p, mFences);
 }
 
-bool FEngine::isValid(const FIndexBuffer* p) {
+bool FEngine::isValid(const FIndexBuffer* p) const {
     return isValid(p, mIndexBuffers);
 }
 
-bool FEngine::isValid(const FSkinningBuffer* p) {
+bool FEngine::isValid(const FSkinningBuffer* p) const {
     return isValid(p, mSkinningBuffers);
 }
 
-bool FEngine::isValid(const FMorphTargetBuffer* p) {
+bool FEngine::isValid(const FMorphTargetBuffer* p) const {
     return isValid(p, mMorphTargetBuffers);
 }
 
-bool FEngine::isValid(const FIndirectLight* p) {
+bool FEngine::isValid(const FIndirectLight* p) const {
     return isValid(p, mIndirectLights);
 }
 
-bool FEngine::isValid(const FMaterial* p) {
+bool FEngine::isValid(const FMaterial* p) const {
     return isValid(p, mMaterials);
 }
 
-bool FEngine::isValid(const FRenderer* p) {
+bool FEngine::isValid(const FMaterial* m, const FMaterialInstance* p) const {
+    // first make sure the material we're given is valid.
+    if (!isValid(m)) {
+        return false;
+    }
+
+    // then find the material instance list for that material
+    auto it = mMaterialInstances.find(m);
+    if (it == mMaterialInstances.end()) {
+        // this could happen if this material has no material instances at all
+        return false;
+    }
+
+    // finally validate the material instance
+    return isValid(p, it->second);
+}
+
+bool FEngine::isValidExpensive(const FMaterialInstance* p) const {
+    return std::any_of(mMaterialInstances.cbegin(), mMaterialInstances.cend(),
+            [this, p](auto&& entry) {
+        return isValid(p, entry.second);
+    });
+}
+
+bool FEngine::isValid(const FRenderer* p) const {
     return isValid(p, mRenderers);
 }
 
-bool FEngine::isValid(const FScene* p) {
+bool FEngine::isValid(const FScene* p) const {
     return isValid(p, mScenes);
 }
 
-bool FEngine::isValid(const FSkybox* p) {
+bool FEngine::isValid(const FSkybox* p) const {
     return isValid(p, mSkyboxes);
 }
 
-bool FEngine::isValid(const FColorGrading* p) {
+bool FEngine::isValid(const FColorGrading* p) const {
     return isValid(p, mColorGradings);
 }
 
-bool FEngine::isValid(const FSwapChain* p) {
+bool FEngine::isValid(const FSwapChain* p) const {
     return isValid(p, mSwapChains);
 }
 
-bool FEngine::isValid(const FStream* p) {
+bool FEngine::isValid(const FStream* p) const {
     return isValid(p, mStreams);
 }
 
-bool FEngine::isValid(const FTexture* p) {
+bool FEngine::isValid(const FTexture* p) const {
     return isValid(p, mTextures);
 }
 
-bool FEngine::isValid(const FRenderTarget* p) {
+bool FEngine::isValid(const FRenderTarget* p) const {
     return isValid(p, mRenderTargets);
 }
 
-bool FEngine::isValid(const FView* p) {
+bool FEngine::isValid(const FView* p) const {
     return isValid(p, mViews);
 }
 
-bool FEngine::isValid(const FInstanceBuffer* p) {
+bool FEngine::isValid(const FInstanceBuffer* p) const {
     return isValid(p, mInstanceBuffers);
 }
 
@@ -1180,6 +1218,14 @@ void FEngine::destroy(FEngine* engine) {
         engine->shutdown();
         delete engine;
     }
+}
+
+bool FEngine::isPaused() const noexcept {
+    return mCommandBufferQueue.isPaused();
+}
+
+void FEngine::setPaused(bool paused) {
+    mCommandBufferQueue.setPaused(paused);
 }
 
 Engine::FeatureLevel FEngine::getSupportedFeatureLevel() const noexcept {
@@ -1232,6 +1278,11 @@ Engine::Builder& Engine::Builder::featureLevel(FeatureLevel featureLevel) noexce
 
 Engine::Builder& Engine::Builder::sharedContext(void* sharedContext) noexcept {
     mImpl->mSharedContext = sharedContext;
+    return *this;
+}
+
+Engine::Builder& Engine::Builder::paused(bool paused) noexcept {
+    mImpl->mPaused = paused;
     return *this;
 }
 

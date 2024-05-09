@@ -369,8 +369,8 @@ using EntityVector = std::vector<utils::Entity>;
 
 register_vector<std::string>("RegistryKeys");
 register_vector<utils::Entity>("EntityVector");
-register_vector<FilamentInstance*>("AssetInstanceVector");
-register_vector<MaterialInstance*>("MaterialInstanceVector");
+register_vector<allow_raw_pointer<FilamentInstance*>>("AssetInstanceVector");
+register_vector<allow_raw_pointer<MaterialInstance*>>("MaterialInstanceVector");
 
 // CORE FILAMENT CLASSES
 // ---------------------
@@ -576,6 +576,12 @@ class_<Engine>("Engine")
     .function("isValidMaterial", EMBIND_LAMBDA(bool, (Engine* engine, Material* object), {
                 return engine->isValid(object);
             }), allow_raw_pointers())
+    .function("isValidMaterialInstance", EMBIND_LAMBDA(bool, (Engine* engine, Material* ma, MaterialInstance* mi), {
+                return engine->isValid(ma, mi);
+            }), allow_raw_pointers())
+    .function("isValidExpensiveMaterialInstance", EMBIND_LAMBDA(bool, (Engine* engine, MaterialInstance* object), {
+                return engine->isValidExpensive(object);
+            }), allow_raw_pointers())
     .function("isValidSkybox", EMBIND_LAMBDA(bool, (Engine* engine, Skybox* object), {
                 return engine->isValid(object);
             }), allow_raw_pointers())
@@ -640,6 +646,7 @@ class_<View>("View")
 
     .function("setScene", &View::setScene, allow_raw_pointers())
     .function("setCamera", &View::setCamera, allow_raw_pointers())
+    .function("hasCamera", &View::hasCamera)
     .function("setColorGrading", &View::setColorGrading, allow_raw_pointers())
     .function("setBlendMode", &View::setBlendMode)
     .function("getBlendMode", &View::getBlendMode)
@@ -937,6 +944,10 @@ class_<RenderableBuilder>("RenderableManager$Builder")
             size_t maxIndex,
             size_t count), {
         return &builder->geometry(index, type, vertices, indices, offset, minIndex, maxIndex, count); })
+
+    .BUILDER_FUNCTION("geometryType", RenderableBuilder, (RenderableBuilder* builder,
+            RenderableManager::Builder::GeometryType type), {
+        return &builder->geometryType(type); })
 
     .BUILDER_FUNCTION("material", RenderableBuilder, (RenderableBuilder* builder,
             size_t index, MaterialInstance* mi), {

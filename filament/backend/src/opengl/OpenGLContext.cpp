@@ -16,9 +16,24 @@
 
 #include "OpenGLContext.h"
 
-#include <backend/platforms/OpenGLPlatform.h>
+#include "GLUtils.h"
+#include "OpenGLTimerQuery.h"
 
+#include <backend/platforms/OpenGLPlatform.h>
+#include <backend/DriverEnums.h>
+
+#include <utils/compiler.h>
+#include <utils/debug.h>
+#include <utils/Log.h>
+#include <utils/ostream.h>
+
+#include <functional>
+#include <string_view>
 #include <utility>
+
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
 
 // change to true to display all GL extensions in the console on start-up
 #define DEBUG_PRINT_EXTENSIONS true
@@ -48,7 +63,9 @@ bool OpenGLContext::queryOpenGLVersion(GLint* major, GLint* minor) noexcept {
 #endif
 }
 
-OpenGLContext::OpenGLContext() noexcept {
+OpenGLContext::OpenGLContext(OpenGLPlatform& platform) noexcept
+        : mPlatform(platform),
+          mSamplerMap(32) {
 
     state.vao.p = &mDefaultVAO;
 
@@ -233,6 +250,63 @@ OpenGLContext::OpenGLContext() noexcept {
         glDebugMessageCallback(cb, nullptr);
     }
 #endif
+
+    mTimerQueryFactory = TimerQueryFactory::init(platform, *this);
+}
+
+OpenGLContext::~OpenGLContext() noexcept {
+    // note: this is called from the main thread. Can't do any GL calls.
+    delete mTimerQueryFactory;
+}
+
+void OpenGLContext::terminate() noexcept {
+    // note: this is called from the backend thread
+#ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+    if (!isES2()) {
+        for (auto& item: mSamplerMap) {
+            unbindSampler(item.second);
+            glDeleteSamplers(1, &item.second);
+        }
+        mSamplerMap.clear();
+    }
+#endif
+}
+
+void OpenGLContext::destroyWithContext(
+        size_t index, std::function<void(OpenGLContext&)> const& closure) noexcept {
+    if (index == 0) {
+        // Note: we only need to delay the destruction of objects on the unprotected context
+        // (index 0) because the protected context is always immediately destroyed and all its
+        // active objects and bindings are then automatically destroyed.
+        // TODO: this is only guaranteed for EGLPlatform, but that's the only one we care about.
+        mDestroyWithNormalContext.push_back(closure);
+    }
+}
+
+void OpenGLContext::unbindEverything() noexcept {
+    // TODO:  we're supposed to unbind everything here so that resources don't get
+    //        stuck in this context (contextIndex) when destroyed in the other context.
+    //        However, because EGLPlatform always immediately destroys the protected context (1),
+    //        the bindings will automatically be severed when we switch back to the default context.
+    //        Since bindings now only exist in one context, we don't have a ref-counting issue to
+    //        worry about.
+}
+
+void OpenGLContext::synchronizeStateAndCache(size_t index) noexcept {
+
+    // if we're just switching back to context 0, run all the pending destructors
+    if (index == 0) {
+        auto list = std::move(mDestroyWithNormalContext);
+        for (auto&& fn: list) {
+            fn(*this);
+        }
+    }
+
+    // the default FBO could be invalid
+    mDefaultFbo[index].reset();
+
+    contextIndex = index;
+    resetState();
 }
 
 void OpenGLContext::setDefaultState() noexcept {
@@ -459,8 +533,6 @@ void OpenGLContext::initBugs(Bugs* bugs, Extensions const& exts,
             bugs->delay_fbo_destruction = true;
             // PowerVR seems to have no problem with this (which is good for us)
             bugs->allow_read_only_ancillary_feedback_loop = true;
-            // PowerVR has a shader compiler thread pinned on the last core
-            bugs->disable_thread_affinity = true;
         } else if (strstr(renderer, "Apple")) {
             // Apple GPU
         } else if (strstr(renderer, "Tegra") ||
@@ -601,6 +673,7 @@ void OpenGLContext::initExtensionsGLES(Extensions* ext, GLint major, GLint minor
     ext->EXT_disjoint_timer_query = exts.has("GL_EXT_disjoint_timer_query"sv);
     ext->EXT_multisampled_render_to_texture = exts.has("GL_EXT_multisampled_render_to_texture"sv);
     ext->EXT_multisampled_render_to_texture2 = exts.has("GL_EXT_multisampled_render_to_texture2"sv);
+    ext->EXT_protected_textures = exts.has("GL_EXT_protected_textures"sv);
 #endif
     ext->EXT_shader_framebuffer_fetch = exts.has("GL_EXT_shader_framebuffer_fetch"sv);
 #ifndef __EMSCRIPTEN__
@@ -624,6 +697,7 @@ void OpenGLContext::initExtensionsGLES(Extensions* ext, GLint major, GLint minor
     ext->OES_standard_derivatives = exts.has("GL_OES_standard_derivatives"sv);
     ext->OES_texture_npot = exts.has("GL_OES_texture_npot"sv);
     ext->OES_vertex_array_object = exts.has("GL_OES_vertex_array_object"sv);
+    ext->OVR_multiview2 = exts.has("GL_OVR_multiview2"sv);
     ext->WEBGL_compressed_texture_etc = exts.has("WEBGL_compressed_texture_etc"sv);
     ext->WEBGL_compressed_texture_s3tc = exts.has("WEBGL_compressed_texture_s3tc"sv);
     ext->WEBGL_compressed_texture_s3tc_srgb = exts.has("WEBGL_compressed_texture_s3tc_srgb"sv);
@@ -688,6 +762,7 @@ void OpenGLContext::initExtensionsGL(Extensions* ext, GLint major, GLint minor) 
     ext->OES_standard_derivatives = true;
     ext->OES_texture_npot = true;
     ext->OES_vertex_array_object = true;
+    ext->OVR_multiview2 = exts.has("GL_OVR_multiview2"sv);
     ext->WEBGL_compressed_texture_etc = false;
     ext->WEBGL_compressed_texture_s3tc = false;
     ext->WEBGL_compressed_texture_s3tc_srgb = false;
@@ -708,6 +783,51 @@ void OpenGLContext::initExtensionsGL(Extensions* ext, GLint major, GLint minor) 
 }
 
 #endif // BACKEND_OPENGL_VERSION_GL
+
+
+GLuint OpenGLContext::bindFramebuffer(GLenum target, GLuint buffer) noexcept {
+    if (UTILS_UNLIKELY(buffer == 0)) {
+        // we're binding the default frame buffer, resolve its actual name
+        auto& defaultFboForThisContext = mDefaultFbo[contextIndex];
+        if (UTILS_UNLIKELY(!defaultFboForThisContext.has_value())) {
+            defaultFboForThisContext = GLuint(mPlatform.getDefaultFramebufferObject());
+        }
+        buffer = defaultFboForThisContext.value();
+    }
+    bindFramebufferResolved(target, buffer);
+    return buffer;
+}
+
+void OpenGLContext::unbindFramebuffer(GLenum target) noexcept {
+    bindFramebufferResolved(target, 0);
+}
+
+void OpenGLContext::bindFramebufferResolved(GLenum target, GLuint buffer) noexcept {
+    switch (target) {
+        case GL_FRAMEBUFFER:
+            if (state.draw_fbo != buffer || state.read_fbo != buffer) {
+                state.draw_fbo = state.read_fbo = buffer;
+                glBindFramebuffer(target, buffer);
+            }
+            break;
+#ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+        case GL_DRAW_FRAMEBUFFER:
+            if (state.draw_fbo != buffer) {
+                state.draw_fbo = buffer;
+                glBindFramebuffer(target, buffer);
+            }
+            break;
+        case GL_READ_FRAMEBUFFER:
+            if (state.read_fbo != buffer) {
+                state.read_fbo = buffer;
+                glBindFramebuffer(target, buffer);
+            }
+            break;
+#endif
+        default:
+            break;
+    }
+}
 
 void OpenGLContext::bindBuffer(GLenum target, GLuint buffer) noexcept {
     if (target == GL_ELEMENT_ARRAY_BUFFER) {
@@ -763,17 +883,26 @@ default_case:
     }
 }
 
-void OpenGLContext::unbindTexture(GLenum target, GLuint texture_id) noexcept {
+void OpenGLContext::unbindTexture(
+        UTILS_UNUSED_IN_RELEASE GLenum target, GLuint texture_id) noexcept {
     // unbind this texture from all the units it might be bound to
     // no need unbind the texture from FBOs because we're not tracking that state (and there is
     // no need to).
-    const size_t index = getIndexForTextureTarget(target);
     UTILS_NOUNROLL
     for (GLuint unit = 0; unit < MAX_TEXTURE_UNIT_COUNT; unit++) {
-        if (state.textures.units[unit].targets[index].texture_id == texture_id) {
-            bindTexture(unit, target, (GLuint)0, index);
+        if (state.textures.units[unit].id == texture_id) {
+            // if this texture is bound, it should be at the same target
+            assert_invariant(state.textures.units[unit].target == target);
+            unbindTextureUnit(unit);
         }
     }
+}
+
+void OpenGLContext::unbindTextureUnit(GLuint unit) noexcept {
+    update_state(state.textures.units[unit].id, 0u, [&]() {
+        activeTexture(unit);
+        glBindTexture(state.textures.units[unit].target, 0u);
+    });
 }
 
 void OpenGLContext::unbindSampler(GLuint sampler) noexcept {
@@ -819,19 +948,53 @@ void OpenGLContext::deleteBuffers(GLsizei n, const GLuint* buffers, GLenum targe
 #endif
 }
 
-void OpenGLContext::deleteVertexArrays(GLsizei n, const GLuint* arrays) noexcept {
-    procs.deleteVertexArrays(n, arrays);
-    // if one of the destroyed VAO is bound, clear the binding.
-    for (GLsizei i = 0; i < n; ++i) {
-        if (state.vao.p->vao == arrays[i]) {
+void OpenGLContext::deleteVertexArray(GLuint vao) noexcept {
+    if (UTILS_LIKELY(vao)) {
+        procs.deleteVertexArrays(1, &vao);
+        // if the destroyed VAO is bound, clear the binding.
+        if (state.vao.p->vao[contextIndex] == vao) {
             bindVertexArray(nullptr);
-            break;
         }
     }
 }
 
+#ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+GLuint OpenGLContext::getSamplerSlow(SamplerParams params) const noexcept {
+    assert_invariant(mSamplerMap.find(params) == mSamplerMap.end());
+
+    using namespace GLUtils;
+
+    GLuint s;
+    glGenSamplers(1, &s);
+    glSamplerParameteri(s, GL_TEXTURE_MIN_FILTER,   (GLint)getTextureFilter(params.filterMin));
+    glSamplerParameteri(s, GL_TEXTURE_MAG_FILTER,   (GLint)getTextureFilter(params.filterMag));
+    glSamplerParameteri(s, GL_TEXTURE_WRAP_S,       (GLint)getWrapMode(params.wrapS));
+    glSamplerParameteri(s, GL_TEXTURE_WRAP_T,       (GLint)getWrapMode(params.wrapT));
+    glSamplerParameteri(s, GL_TEXTURE_WRAP_R,       (GLint)getWrapMode(params.wrapR));
+    glSamplerParameteri(s, GL_TEXTURE_COMPARE_MODE, (GLint)getTextureCompareMode(params.compareMode));
+    glSamplerParameteri(s, GL_TEXTURE_COMPARE_FUNC, (GLint)getTextureCompareFunc(params.compareFunc));
+
+#if defined(GL_EXT_texture_filter_anisotropic)
+    if (ext.EXT_texture_filter_anisotropic &&
+        !bugs.texture_filter_anisotropic_broken_on_sampler) {
+        GLfloat const anisotropy = float(1u << params.anisotropyLog2);
+        glSamplerParameterf(s, GL_TEXTURE_MAX_ANISOTROPY_EXT,
+                std::min(gets.max_anisotropy, anisotropy));
+    }
+#endif
+    CHECK_GL_ERROR(utils::slog.e)
+    mSamplerMap[params] = s;
+    return s;
+}
+#endif
+
+
 void OpenGLContext::resetState() noexcept {
     // Force GL state to match the Filament state
+
+    // increase the state version so other parts of the state know to reset
+    state.age++;
+
     if (state.major > 2) {
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, state.draw_fbo);
@@ -848,11 +1011,8 @@ void OpenGLContext::resetState() noexcept {
     glUseProgram(state.program.use);
 
     // state.vao
-    if (state.vao.p) {
-        procs.bindVertexArray(state.vao.p->vao);
-    } else {
-        bindVertexArray(nullptr);
-    }
+    state.vao.p = nullptr;
+    bindVertexArray(nullptr);
 
     // state.raster
     glFrontFace(state.raster.frontFace);
@@ -1008,7 +1168,22 @@ void OpenGLContext::resetState() noexcept {
         state.window.viewport.w
     );
     glDepthRangef(state.window.depthRange.x, state.window.depthRange.y);
-    
+}
+
+void OpenGLContext::createTimerQuery(GLTimerQuery* query) {
+    mTimerQueryFactory->createTimerQuery(query);
+}
+
+void OpenGLContext::destroyTimerQuery(GLTimerQuery* query) {
+    mTimerQueryFactory->destroyTimerQuery(query);
+}
+
+void OpenGLContext::beginTimeElapsedQuery(GLTimerQuery* query) {
+    mTimerQueryFactory->beginTimeElapsedQuery(query);
+}
+
+void OpenGLContext::endTimeElapsedQuery(OpenGLDriver& driver, GLTimerQuery* query) {
+    mTimerQueryFactory->endTimeElapsedQuery(driver, query);
 }
 
 } // namesapce filament

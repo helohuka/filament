@@ -343,6 +343,21 @@ Java_com_google_android_filament_Engine_nIsValidMaterial(JNIEnv*, jclass,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_com_google_android_filament_Engine_nIsValidMaterialInstance(JNIEnv*, jclass,
+        jlong nativeEngine, jlong nativeMaterial, jlong nativeMaterialInstance) {
+    Engine* engine = (Engine *)nativeEngine;
+    return (jboolean)engine->isValid((Material*)nativeMaterial,
+            (MaterialInstance*)nativeMaterialInstance);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+        Java_com_google_android_filament_Engine_nIsValidExpensiveMaterialInstance(JNIEnv*, jclass,
+        jlong nativeEngine, jlong nativeMaterialInstance) {
+    Engine* engine = (Engine *)nativeEngine;
+    return (jboolean)engine->isValidExpensive((MaterialInstance*)nativeMaterialInstance);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_com_google_android_filament_Engine_nIsValidSkybox(JNIEnv*, jclass,
         jlong nativeEngine, jlong nativeSkybox) {
     Engine* engine = (Engine *)nativeEngine;
@@ -389,6 +404,20 @@ Java_com_google_android_filament_Engine_nFlush(JNIEnv*, jclass,
         jlong nativeEngine) {
     Engine* engine = (Engine*) nativeEngine;
     engine->flush();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_google_android_filament_Engine_nIsPaused(JNIEnv*, jclass,
+        jlong nativeEngine) {
+    Engine* engine = (Engine*) nativeEngine;
+    return (jboolean)engine->isPaused();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_Engine_nSetPaused(JNIEnv*, jclass,
+        jlong nativeEngine, jboolean paused) {
+    Engine* engine = (Engine*) nativeEngine;
+    engine->setPaused(paused);
 }
 
 // Managers...
@@ -484,8 +513,11 @@ extern "C" JNIEXPORT void JNICALL Java_com_google_android_filament_Engine_nSetBu
 extern "C" JNIEXPORT void JNICALL Java_com_google_android_filament_Engine_nSetBuilderConfig(JNIEnv*,
         jclass, jlong nativeBuilder, jlong commandBufferSizeMB, jlong perRenderPassArenaSizeMB,
         jlong driverHandleArenaSizeMB, jlong minCommandBufferSizeMB, jlong perFrameCommandsSizeMB,
-        jlong jobSystemThreadCount, jlong stereoscopicEyeCount,
-        jlong resourceAllocatorCacheSizeMB, jlong resourceAllocatorCacheMaxAge) {
+        jlong jobSystemThreadCount,
+        jlong textureUseAfterFreePoolSize, jboolean disableParallelShaderCompile,
+        jint stereoscopicType, jlong stereoscopicEyeCount,
+        jlong resourceAllocatorCacheSizeMB, jlong resourceAllocatorCacheMaxAge,
+        jboolean disableHandleUseAfterFreeCheck) {
     Engine::Builder* builder = (Engine::Builder*) nativeBuilder;
     Engine::Config config = {
             .commandBufferSizeMB = (uint32_t) commandBufferSizeMB,
@@ -494,9 +526,13 @@ extern "C" JNIEXPORT void JNICALL Java_com_google_android_filament_Engine_nSetBu
             .minCommandBufferSizeMB = (uint32_t) minCommandBufferSizeMB,
             .perFrameCommandsSizeMB = (uint32_t) perFrameCommandsSizeMB,
             .jobSystemThreadCount = (uint32_t) jobSystemThreadCount,
+            .textureUseAfterFreePoolSize = (uint32_t) textureUseAfterFreePoolSize,
+            .disableParallelShaderCompile = (bool) disableParallelShaderCompile,
+            .stereoscopicType = (Engine::StereoscopicType) stereoscopicType,
             .stereoscopicEyeCount = (uint8_t) stereoscopicEyeCount,
             .resourceAllocatorCacheSizeMB = (uint32_t) resourceAllocatorCacheSizeMB,
             .resourceAllocatorCacheMaxAge = (uint8_t) resourceAllocatorCacheMaxAge,
+            .disableHandleUseAfterFreeCheck = (bool) disableHandleUseAfterFreeCheck,
     };
     builder->config(&config);
 }
@@ -511,6 +547,12 @@ extern "C" JNIEXPORT void JNICALL Java_com_google_android_filament_Engine_nSetBu
         JNIEnv*, jclass, jlong nativeBuilder, jlong sharedContext) {
     Engine::Builder* builder = (Engine::Builder*) nativeBuilder;
     builder->sharedContext((void*) sharedContext);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_google_android_filament_Engine_nSetBuilderPaused(
+        JNIEnv*, jclass, jlong nativeBuilder, jboolean paused) {
+    Engine::Builder* builder = (Engine::Builder*) nativeBuilder;
+    builder->paused((bool) paused);
 }
 
 extern "C" JNIEXPORT jlong JNICALL

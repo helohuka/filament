@@ -160,7 +160,7 @@ TEST_F(BackendTest, FeedbackLoops) {
             slog.i << "Level " << int(level) << ": " <<
                     (kTexWidth >> level) << "x" << (kTexHeight >> level) << io::endl;
             renderTargets[level] = api.createRenderTarget( TargetBufferFlags::COLOR,
-                    kTexWidth >> level, kTexHeight >> level, 1, { texture, level, 0 }, {}, {});
+                    kTexWidth >> level, kTexHeight >> level, 1, 0, { texture, level, 0 }, {}, {});
         }
 
         // Fill the base level of the texture with interesting colors.
@@ -200,7 +200,7 @@ TEST_F(BackendTest, FeedbackLoops) {
             auto ubuffer = api.createBufferObject(sizeof(MaterialParams),
                     BufferObjectBinding::UNIFORM, BufferUsage::STATIC);
             api.makeCurrent(swapChain, swapChain);
-            api.beginFrame(0, 0);
+            api.beginFrame(0, 0, 0);
             api.bindSamplers(0, sgroup);
             api.bindUniformBuffer(0, ubuffer);
 
@@ -218,7 +218,7 @@ TEST_F(BackendTest, FeedbackLoops) {
                     .sourceLevel = float(sourceLevel),
                 });
                 api.beginRenderPass(renderTargets[targetLevel], params);
-                api.draw(state, triangle.getRenderPrimitive(), 1);
+                api.draw(state, triangle.getRenderPrimitive(), 0, 3, 1);
                 api.endRenderPass();
             }
 
@@ -237,7 +237,7 @@ TEST_F(BackendTest, FeedbackLoops) {
                     .sourceLevel = float(sourceLevel),
                 });
                 api.beginRenderPass(renderTargets[targetLevel], params);
-                api.draw(state, triangle.getRenderPrimitive(), 1);
+                api.draw(state, triangle.getRenderPrimitive(), 0, 3, 1);
                 api.endRenderPass();
             }
 

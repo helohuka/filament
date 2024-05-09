@@ -23,6 +23,7 @@
 
 #include <bluevk/BlueVK.h>
 #include <utils/PrivateImplementation-impl.h>
+#include <utils/Panic.h>
 
 #define SWAPCHAIN_RET_FUNC(func, handle, ...)                                                      \
     if (mImpl->mSurfaceSwapChains.find(handle) != mImpl->mSurfaceSwapChains.end()) {               \
@@ -136,18 +137,14 @@ void printDepthFormats(VkPhysicalDevice device) {
     const VkFormatFeatureFlags required = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
                                               | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
     utils::slog.i << "Sampleable depth formats: ";
-    for (VkFormat format = (VkFormat) 1;;) {
+    for (VkFormat format : ALL_VK_FORMATS) {
         VkFormatProperties props;
         vkGetPhysicalDeviceFormatProperties(device, format, &props);
         if ((props.optimalTilingFeatures & required) == required) {
             utils::slog.i << format << " ";
         }
-        if (format == VK_FORMAT_ASTC_12x12_SRGB_BLOCK) {
-            utils::slog.i << utils::io::endl;
-            break;
-        }
-        format = (VkFormat) (1 + (int) format);
     }
+    utils::slog.i << utils::io::endl;
 }
 #endif
 
@@ -158,7 +155,9 @@ ExtensionSet getInstanceExtensions() {
             VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
 
             // Request these if available.
+#if FVK_ENABLED(FVK_DEBUG_DEBUG_UTILS)
             VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+#endif
             VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
 
 #if FVK_ENABLED(FVK_DEBUG_VALIDATION)
@@ -181,7 +180,9 @@ ExtensionSet getInstanceExtensions() {
 
 ExtensionSet getDeviceExtensions(VkPhysicalDevice device) {
     std::string_view const TARGET_EXTS[] = {
+#if FVK_ENABLED(FVK_DEBUG_DEBUG_UTILS)
             VK_EXT_DEBUG_MARKER_EXTENSION_NAME,
+#endif
             VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME,
             VK_KHR_MAINTENANCE1_EXTENSION_NAME,
             VK_KHR_MAINTENANCE2_EXTENSION_NAME,
@@ -252,6 +253,7 @@ VkInstance createInstance(ExtensionSet const& requiredExts) {
     // Create the Vulkan instance.
     VkApplicationInfo appInfo = {};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pEngineName = "Filament";
     appInfo.apiVersion
             = VK_MAKE_API_VERSION(0, FVK_REQUIRED_VERSION_MAJOR, FVK_REQUIRED_VERSION_MINOR, 0);
     instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -337,36 +339,22 @@ std::tuple<ExtensionSet, ExtensionSet> pruneExtensions(VkPhysicalDevice device,
         ExtensionSet const& instExts, ExtensionSet const& deviceExts) {
     ExtensionSet newInstExts = instExts;
     ExtensionSet newDeviceExts = deviceExts;
-    if (vkGetPhysicalDeviceProperties2KHR) {
-        VkPhysicalDeviceDriverProperties driverProperties = {
-                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
-        };
-        VkPhysicalDeviceProperties2 physicalDeviceProperties2 = {
-                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
-                .pNext = &driverProperties,
-        };
-        vkGetPhysicalDeviceProperties2KHR(device, &physicalDeviceProperties2);
-        char* driverInfo = driverProperties.driverInfo;
 
-        if (newInstExts.find(VK_EXT_DEBUG_UTILS_EXTENSION_NAME) != newInstExts.end()) {
-            // Workaround for Mesa drivers. See issue #6192
-            if ((driverInfo && strstr(driverInfo, "Mesa"))) {
-                newInstExts.erase(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-            }
-        }
-    }
-
+#if FVK_ENABLED(FVK_DEBUG_DEBUG_UTILS)
     // debugUtils and debugMarkers extensions are used mutually exclusively.
     if (newInstExts.find(VK_EXT_DEBUG_UTILS_EXTENSION_NAME) != newInstExts.end()
             && newDeviceExts.find(VK_EXT_DEBUG_MARKER_EXTENSION_NAME) != newDeviceExts.end()) {
         newDeviceExts.erase(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
     }
+#endif
 
+#if FVK_ENABLED(FVK_DEBUG_VALIDATION)
     // debugMarker must also request debugReport the instance extension. So check if that's present.
     if (newDeviceExts.find(VK_EXT_DEBUG_MARKER_EXTENSION_NAME) != newDeviceExts.end()
             && newInstExts.find(VK_EXT_DEBUG_REPORT_EXTENSION_NAME) == newInstExts.end()) {
         newDeviceExts.erase(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
     }
+#endif
 
     return std::tuple(newInstExts, newDeviceExts);
 }
@@ -413,7 +401,7 @@ inline int deviceTypeOrder(VkPhysicalDeviceType deviceType) {
         case VK_PHYSICAL_DEVICE_TYPE_OTHER:
             return 1;
         default:
-            utils::slog.w << "devcieTypeOrder: Unexpected deviceType: " << deviceType
+            utils::slog.w << "deviceTypeOrder: Unexpected deviceType: " << deviceType
                           << utils::io::endl;
             return -1;
     }
@@ -508,7 +496,7 @@ VkPhysicalDevice selectPhysicalDevice(VkInstance instance,
     return device;
 }
 
-VkFormatList findAttachmentDepthFormats(VkPhysicalDevice device) {
+VkFormatList findAttachmentDepthStencilFormats(VkPhysicalDevice device) {
     VkFormatFeatureFlags const features = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
     // The ordering here indicates the preference of choosing depth+stencil format.
@@ -525,6 +513,24 @@ VkFormatList findAttachmentDepthFormats(VkPhysicalDevice device) {
         vkGetPhysicalDeviceFormatProperties(device, format, &props);
         if ((props.optimalTilingFeatures & features) == features) {
             selectedFormats.push_back(format);
+        }
+    }
+    VkFormatList ret(selectedFormats.size());
+    std::copy(selectedFormats.begin(), selectedFormats.end(), ret.begin());
+    return ret;
+}
+
+VkFormatList findBlittableDepthStencilFormats(VkPhysicalDevice device) {
+    std::vector<VkFormat> selectedFormats;
+    VkFormatFeatureFlags const required = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT |
+            VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
+    for (VkFormat format : ALL_VK_FORMATS) {
+        if (isVkDepthFormat(format)) {
+            VkFormatProperties props;
+            vkGetPhysicalDeviceFormatProperties(device, format, &props);
+            if ((props.optimalTilingFeatures & required) == required) {
+                selectedFormats.push_back(format);
+            }
         }
     }
     VkFormatList ret(selectedFormats.size());
@@ -671,9 +677,17 @@ Driver* VulkanPlatform::createDriver(void* sharedContext,
     context.mDebugMarkersSupported
             = deviceExts.find(VK_EXT_DEBUG_MARKER_EXTENSION_NAME) != deviceExts.end();
 
-    context.mDepthFormats = findAttachmentDepthFormats(mImpl->mPhysicalDevice);
+#ifdef NDEBUG
+    // If we are in release build, we should not have turned on debug extensions
+    ASSERT_POSTCONDITION(!context.mDebugUtilsSupported && !context.mDebugMarkersSupported,
+            "Debug utils should not be enabled in release build.");
+#endif
 
-    assert_invariant(context.mDepthFormats.size() > 0);
+    context.mDepthStencilFormats = findAttachmentDepthStencilFormats(mImpl->mPhysicalDevice);
+    context.mBlittableDepthStencilFormats =
+            findBlittableDepthStencilFormats(mImpl->mPhysicalDevice);
+
+    assert_invariant(context.mDepthStencilFormats.size() > 0);
 
 #if FVK_ENABLED(FVK_DEBUG_VALIDATION)
     printDepthFormats(mImpl->mPhysicalDevice);

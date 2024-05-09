@@ -178,6 +178,7 @@ public:
     using Backend = backend::Backend;
     using DriverConfig = backend::Platform::DriverConfig;
     using FeatureLevel = backend::FeatureLevel;
+    using StereoscopicType = backend::StereoscopicType;
 
     /**
      * Config is used to define the memory footprint used by the engine, such as the
@@ -297,6 +298,25 @@ public:
          */
         size_t textureUseAfterFreePoolSize = 0;
 
+        /**
+         * Set to `true` to forcibly disable parallel shader compilation in the backend.
+         * Currently only honored by the GL and Metal backends.
+         */
+        bool disableParallelShaderCompile = false;
+
+        /*
+         * The type of technique for stereoscopic rendering.
+         *
+         * This setting determines the algorithm used when stereoscopic rendering is enabled. This
+         * decision applies to the entire Engine for the lifetime of the Engine. E.g., multiple
+         * Views created from the Engine must use the same stereoscopic type.
+         *
+         * Each view can enable stereoscopic rendering via the StereoscopicOptions::enable flag.
+         *
+         * @see View::setStereoscopicOptions
+         */
+        StereoscopicType stereoscopicType = StereoscopicType::INSTANCED;
+
         /*
          * The number of eyes to render when stereoscopic rendering is enabled. Supported values are
          * between 1 and Engine::getMaxStereoscopicEyes() (inclusive).
@@ -307,16 +327,41 @@ public:
         uint8_t stereoscopicEyeCount = 2;
 
         /*
-         * Size in MiB of the frame graph texture cache. This should be adjusted based on the
-         * size of used render targets (typically the screen).
+         * @deprecated This value is no longer used.
          */
         uint32_t resourceAllocatorCacheSizeMB = 64;
 
         /*
          * This value determines for how many frames are texture entries kept in the cache.
-         * The default value of 30 corresponds to about half a second at 60 fps.
          */
-        uint32_t resourceAllocatorCacheMaxAge = 30;
+        uint32_t resourceAllocatorCacheMaxAge = 2;
+
+        /*
+         * Disable backend handles use-after-free checks.
+         */
+        bool disableHandleUseAfterFreeCheck = false;
+
+        /*
+         * Sets a preferred shader language for Filament to use.
+         *
+         * The Metal backend supports two shader languages: MSL (Metal Shading Language) and
+         * METAL_LIBRARY (precompiled .metallib). This option controls which shader language is
+         * used when materials contain both.
+         *
+         * By default, when preferredShaderLanguage is unset, Filament will prefer METAL_LIBRARY
+         * shaders if present within a material, falling back to MSL. Setting
+         * preferredShaderLanguage to ShaderLanguage::MSL will instead instruct Filament to check
+         * for the presence of MSL in a material first, falling back to METAL_LIBRARY if MSL is not
+         * present.
+         *
+         * When using a non-Metal backend, setting this has no effect.
+         */
+        enum class ShaderLanguage {
+            DEFAULT = 0,
+            MSL = 1,
+            METAL_LIBRARY = 2,
+        };
+        ShaderLanguage preferredShaderLanguage = ShaderLanguage::DEFAULT;
     };
 
 
@@ -383,6 +428,14 @@ public:
          * @return A reference to this Builder for chaining calls.
          */
         Builder& featureLevel(FeatureLevel featureLevel) noexcept;
+
+        /**
+         * Warning: This is an experimental API. See Engine::setPaused(bool) for caveats.
+         *
+         * @param paused Whether to start the rendering thread paused.
+         * @return A reference to this Builder for chaining calls.
+         */
+        Builder& paused(bool paused) noexcept;
 
 #if UTILS_HAS_THREADING
         /**
@@ -576,12 +629,12 @@ public:
     size_t getMaxAutomaticInstances() const noexcept;
 
     /**
-     * Queries the device and platform for instanced stereo rendering support.
+     * Queries the device and platform for support of the given stereoscopic type.
      *
-     * @return true if stereo rendering is supported, false otherwise
+     * @return true if the given stereo rendering is supported, false otherwise
      * @see View::setStereoscopicOptions
      */
-    bool isStereoSupported() const noexcept;
+    bool isStereoSupported(StereoscopicType stereoscopicType) const noexcept;
 
     /**
      * Retrieves the configuration settings of this Engine.
@@ -769,24 +822,51 @@ public:
     bool destroy(const InstanceBuffer* UTILS_NULLABLE p);   //!< Destroys an InstanceBuffer object.
     void destroy(utils::Entity e);    //!< Destroys all filament-known components from this entity
 
-    bool isValid(const BufferObject* UTILS_NULLABLE p);        //!< Tells whether a BufferObject object is valid
-    bool isValid(const VertexBuffer* UTILS_NULLABLE p);        //!< Tells whether an VertexBuffer object is valid
-    bool isValid(const Fence* UTILS_NULLABLE p);               //!< Tells whether a Fence object is valid
-    bool isValid(const IndexBuffer* UTILS_NULLABLE p);         //!< Tells whether an IndexBuffer object is valid
-    bool isValid(const SkinningBuffer* UTILS_NULLABLE p);      //!< Tells whether a SkinningBuffer object is valid
-    bool isValid(const MorphTargetBuffer* UTILS_NULLABLE p);   //!< Tells whether a MorphTargetBuffer object is valid
-    bool isValid(const IndirectLight* UTILS_NULLABLE p);       //!< Tells whether an IndirectLight object is valid
-    bool isValid(const Material* UTILS_NULLABLE p);            //!< Tells whether an IndirectLight object is valid
-    bool isValid(const Renderer* UTILS_NULLABLE p);            //!< Tells whether a Renderer object is valid
-    bool isValid(const Scene* UTILS_NULLABLE p);               //!< Tells whether a Scene object is valid
-    bool isValid(const Skybox* UTILS_NULLABLE p);              //!< Tells whether a SkyBox object is valid
-    bool isValid(const ColorGrading* UTILS_NULLABLE p);        //!< Tells whether a ColorGrading object is valid
-    bool isValid(const SwapChain* UTILS_NULLABLE p);           //!< Tells whether a SwapChain object is valid
-    bool isValid(const Stream* UTILS_NULLABLE p);              //!< Tells whether a Stream object is valid
-    bool isValid(const Texture* UTILS_NULLABLE p);             //!< Tells whether a Texture object is valid
-    bool isValid(const RenderTarget* UTILS_NULLABLE p);        //!< Tells whether a RenderTarget object is valid
-    bool isValid(const View* UTILS_NULLABLE p);                //!< Tells whether a View object is valid
-    bool isValid(const InstanceBuffer* UTILS_NULLABLE p);      //!< Tells whether an InstanceBuffer object is valid
+    /** Tells whether a BufferObject object is valid */
+    bool isValid(const BufferObject* UTILS_NULLABLE p) const;
+    /** Tells whether an VertexBuffer object is valid */
+    bool isValid(const VertexBuffer* UTILS_NULLABLE p) const;
+    /** Tells whether a Fence object is valid */
+    bool isValid(const Fence* UTILS_NULLABLE p) const;
+    /** Tells whether an IndexBuffer object is valid */
+    bool isValid(const IndexBuffer* UTILS_NULLABLE p) const;
+    /** Tells whether a SkinningBuffer object is valid */
+    bool isValid(const SkinningBuffer* UTILS_NULLABLE p) const;
+    /** Tells whether a MorphTargetBuffer object is valid */
+    bool isValid(const MorphTargetBuffer* UTILS_NULLABLE p) const;
+    /** Tells whether an IndirectLight object is valid */
+    bool isValid(const IndirectLight* UTILS_NULLABLE p) const;
+    /** Tells whether an Material object is valid */
+    bool isValid(const Material* UTILS_NULLABLE p) const;
+    /** Tells whether an MaterialInstance object is valid. Use this if you already know
+     * which Material this MaterialInstance belongs to. DO NOT USE getMaterial(), this would
+     * defeat the purpose of validating the MaterialInstance.
+     */
+    bool isValid(const Material* UTILS_NONNULL m, const MaterialInstance* UTILS_NULLABLE p) const;
+    /** Tells whether an MaterialInstance object is valid. Use this if the Material the
+     * MaterialInstance belongs to is not known. This method can be expensive.
+     */
+    bool isValidExpensive(const MaterialInstance* UTILS_NULLABLE p) const;
+    /** Tells whether a Renderer object is valid */
+    bool isValid(const Renderer* UTILS_NULLABLE p) const;
+    /** Tells whether a Scene object is valid */
+    bool isValid(const Scene* UTILS_NULLABLE p) const;
+    /** Tells whether a SkyBox object is valid */
+    bool isValid(const Skybox* UTILS_NULLABLE p) const;
+    /** Tells whether a ColorGrading object is valid */
+    bool isValid(const ColorGrading* UTILS_NULLABLE p) const;
+    /** Tells whether a SwapChain object is valid */
+    bool isValid(const SwapChain* UTILS_NULLABLE p) const;
+    /** Tells whether a Stream object is valid */
+    bool isValid(const Stream* UTILS_NULLABLE p) const;
+    /** Tells whether a Texture object is valid */
+    bool isValid(const Texture* UTILS_NULLABLE p) const;
+    /** Tells whether a RenderTarget object is valid */
+    bool isValid(const RenderTarget* UTILS_NULLABLE p) const;
+    /** Tells whether a View object is valid */
+    bool isValid(const View* UTILS_NULLABLE p) const;
+    /** Tells whether an InstanceBuffer object is valid */
+    bool isValid(const InstanceBuffer* UTILS_NULLABLE p) const;
 
     /**
      * Kicks the hardware thread (e.g. the OpenGL, Vulkan or Metal thread) and blocks until
@@ -808,6 +888,30 @@ public:
      * queue which has a limited size.</p>
       */
     void flush();
+
+    /**
+     * Get paused state of rendering thread.
+     *
+     * <p>Warning: This is an experimental API.
+     *
+     * @see setPaused
+     */
+    bool isPaused() const noexcept;
+
+    /**
+     * Pause or resume rendering thread.
+     *
+     * <p>Warning: This is an experimental API. In particular, note the following caveats.
+     *
+     * <ul><li>
+     * Buffer callbacks will never be called as long as the rendering thread is paused.
+     * Do not rely on a buffer callback to unpause the thread.
+     * </li><li>
+     * While the rendering thread is paused, rendering commands will continue to be queued until the
+     * buffer limit is reached. When the limit is reached, the program will abort.
+     * </li></ul>
+     */
+    void setPaused(bool paused);
 
     /**
      * Drains the user callback message queue and immediately execute all pending callbacks.

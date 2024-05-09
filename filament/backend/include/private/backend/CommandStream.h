@@ -134,7 +134,7 @@ struct CommandType<void (Driver::*)(ARGS...)> {
 
     public:
         template<typename M, typename D>
-        static inline void execute(M&& method, D&& driver, CommandBase* base, intptr_t* next) noexcept {
+        static inline void execute(M&& method, D&& driver, CommandBase* base, intptr_t* next) {
             Command* self = static_cast<Command*>(base);
             *next = align(sizeof(Command));
 #if DEBUG_COMMAND_STREAM
@@ -168,7 +168,7 @@ struct CommandType<void (Driver::*)(ARGS...)> {
 
 class CustomCommand : public CommandBase {
     std::function<void()> mCommand;
-    static void execute(Driver&, CommandBase* base, intptr_t* next) noexcept;
+    static void execute(Driver&, CommandBase* base, intptr_t* next);
 public:
     inline CustomCommand(CustomCommand&& rhs) = default;
     inline explicit CustomCommand(std::function<void()> cmd)
@@ -212,6 +212,8 @@ public:
 
     CommandStream(CommandStream const& rhs) noexcept = delete;
     CommandStream& operator=(CommandStream const& rhs) noexcept = delete;
+
+    CircularBuffer const& getCircularBuffer() const noexcept { return mCurrentBuffer; }
 
 public:
 #define DECL_DRIVER_API(methodName, paramsDecl, params)                                         \

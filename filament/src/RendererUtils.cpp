@@ -16,16 +16,34 @@
 
 #include "RendererUtils.h"
 
+#include "PostProcessManager.h"
+
 #include "details/Engine.h"
 #include "details/View.h"
 
 #include "fg/FrameGraph.h"
 #include "fg/FrameGraphId.h"
 #include "fg/FrameGraphResources.h"
+#include "fg/FrameGraphTexture.h"
 
+#include <filament/Options.h>
+#include <filament/RenderableManager.h>
+#include <filament/Viewport.h>
+
+#include <backend/DriverEnums.h>
+#include <backend/Handle.h>
+#include <backend/PixelBufferDescriptor.h>
+
+#include <utils/BitmaskEnum.h>
 #include <utils/compiler.h>
 #include <utils/debug.h>
 #include <utils/Panic.h>
+
+#include <algorithm>
+#include <utility>
+
+#include <stddef.h>
+#include <stdint.h>
 
 namespace filament {
 
@@ -36,7 +54,7 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
         FrameGraph& fg, const char* name, FEngine& engine, FView const& view,
         FrameGraphTexture::Descriptor const& colorBufferDesc,
         ColorPassConfig const& config, PostProcessManager::ColorGradingConfig colorGradingConfig,
-        RenderPass::Executor const& passExecutor) noexcept {
+        RenderPass::Executor passExecutor) noexcept {
 
     struct ColorPassData {
         FrameGraphId<FrameGraphTexture> shadows;
@@ -57,6 +75,7 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
                 TargetBufferFlags const clearColorFlags = config.clearFlags & TargetBufferFlags::COLOR;
                 TargetBufferFlags clearDepthFlags = config.clearFlags & TargetBufferFlags::DEPTH;
                 TargetBufferFlags clearStencilFlags = config.clearFlags & TargetBufferFlags::STENCIL;
+                uint8_t layerCount = 0;
 
                 data.shadows = blackboard.get<FrameGraphTexture>("shadows");
                 data.ssao = blackboard.get<FrameGraphTexture>("ssao");
@@ -124,7 +143,9 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
                             // depth auto-resolve, in which case we must allocate the depth
                             // buffer with MS and manually resolve it (see "Resolved Depth Buffer"
                             // pass).
+                            .depth = colorBufferDesc.depth,
                             .samples = canAutoResolveDepth ? colorBufferDesc.samples : uint8_t(config.msaa),
+                            .type = colorBufferDesc.type,
                             .format = format,
                     });
                     if (config.enabledStencilBuffer) {
@@ -151,6 +172,9 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
 
                 data.color = builder.write(data.color, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
                 data.depth = builder.write(data.depth, FrameGraphTexture::Usage::DEPTH_ATTACHMENT);
+                if (engine.getConfig().stereoscopicType == StereoscopicType::MULTIVIEW) {
+                    layerCount = engine.getConfig().stereoscopicEyeCount;
+                }
 
                 /*
                  * There is a bit of magic happening here regarding the viewport used.
@@ -172,10 +196,11 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
                         .stencil = data.stencil },
                         .clearColor = config.clearColor,
                         .samples = config.msaa,
-                        .clearFlags = clearColorFlags | clearDepthFlags | clearStencilFlags });
+                        .layerCount = layerCount,
+                        .clearFlags = clearColorFlags | clearDepthFlags | clearStencilFlags});
                 blackboard["depth"] = data.depth;
             },
-            [=, &view, &engine](FrameGraphResources const& resources,
+            [=, passExecutor = std::move(passExecutor), &view, &engine](FrameGraphResources const& resources,
                     ColorPassData const& data, DriverApi& driver) {
                 auto out = resources.getRenderPassInfo();
 
@@ -228,10 +253,6 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
                     out.params.subpassMask = 1;
                 }
 
-                // this is a good time to flush the CommandStream, because we're about to potentially
-                // output a lot of commands. This guarantees here that we have at least
-                // FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB bytes (1MiB by default).
-                engine.flush();
                 driver.beginRenderPass(out.target, out.params);
                 passExecutor.execute(engine, resources.getPassName());
                 driver.endRenderPass();

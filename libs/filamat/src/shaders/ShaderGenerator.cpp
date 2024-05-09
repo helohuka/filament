@@ -51,8 +51,8 @@ void ShaderGenerator::generateSurfaceMaterialVariantDefines(utils::io::sstream& 
             litVariants && filament::Variant::isShadowReceiverVariant(variant));
     CodeGenerator::generateDefine(out, "VARIANT_HAS_VSM",
             filament::Variant::isVSMVariant(variant));
-    CodeGenerator::generateDefine(out, "VARIANT_HAS_INSTANCED_STEREO",
-            hasInstancedStereo(variant, featureLevel));
+    CodeGenerator::generateDefine(out, "VARIANT_HAS_STEREO",
+            hasStereo(variant, featureLevel));
 
     switch (stage) {
         case ShaderStage::VERTEX:
@@ -157,6 +157,9 @@ void ShaderGenerator::generateSurfaceMaterialVariantDefines(utils::io::sstream& 
             case BlendingMode::SCREEN:
                 CodeGenerator::generateDefine(out, "BLEND_MODE_SCREEN", true);
                 break;
+            case BlendingMode::CUSTOM:
+                CodeGenerator::generateDefine(out, "BLEND_MODE_CUSTOM", true);
+                break;
         }
 
         switch (material.postLightingBlendingMode) {
@@ -174,6 +177,9 @@ void ShaderGenerator::generateSurfaceMaterialVariantDefines(utils::io::sstream& 
                 break;
             case BlendingMode::SCREEN:
                 CodeGenerator::generateDefine(out, "POST_LIGHTING_BLEND_MODE_SCREEN", true);
+                break;
+            case BlendingMode::CUSTOM:
+                CodeGenerator::generateDefine(out, "POST_LIGHTING_BLEND_MODE_CUSTOM", true);
                 break;
             default:
                 break;
@@ -758,9 +764,9 @@ bool ShaderGenerator::hasSkinningOrMorphing(
             && featureLevel > MaterialBuilder::FeatureLevel::FEATURE_LEVEL_0;
 }
 
-bool ShaderGenerator::hasInstancedStereo(
+bool ShaderGenerator::hasStereo(
         filament::Variant variant, MaterialBuilder::FeatureLevel featureLevel) noexcept {
-    return variant.hasInstancedStereo()
+    return variant.hasStereo()
             // HACK(exv): Ignore stereo variant when targeting ESSL 1.0. We should properly build a
             // system in matc which allows the set of included variants to differ per-feature level.
             && featureLevel > MaterialBuilder::FeatureLevel::FEATURE_LEVEL_0;

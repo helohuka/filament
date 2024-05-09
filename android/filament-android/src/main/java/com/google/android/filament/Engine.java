@@ -159,6 +159,16 @@ public class Engine {
     };
 
     /**
+     * The type of technique for stereoscopic rendering
+     */
+    public enum StereoscopicType {
+        /** Stereoscopic rendering is performed using instanced rendering technique. */
+        INSTANCED,
+        /** Stereoscopic rendering is performed using the multiview feature from the graphics backend. */
+        MULTIVIEW,
+    };
+
+    /**
      * Constructs <code>Engine</code> objects using a builder pattern.
      */
     public static class Builder {
@@ -211,8 +221,11 @@ public class Engine {
             nSetBuilderConfig(mNativeBuilder, config.commandBufferSizeMB,
                     config.perRenderPassArenaSizeMB, config.driverHandleArenaSizeMB,
                     config.minCommandBufferSizeMB, config.perFrameCommandsSizeMB,
-                    config.jobSystemThreadCount, config.stereoscopicEyeCount,
-                    config.resourceAllocatorCacheSizeMB, config.resourceAllocatorCacheMaxAge);
+                    config.jobSystemThreadCount,
+                    config.textureUseAfterFreePoolSize, config.disableParallelShaderCompile,
+                    config.stereoscopicType.ordinal(), config.stereoscopicEyeCount,
+                    config.resourceAllocatorCacheSizeMB, config.resourceAllocatorCacheMaxAge,
+                    config.disableHandleUseAfterFreeCheck);
             return this;
         }
 
@@ -224,6 +237,20 @@ public class Engine {
          */
         public Builder featureLevel(FeatureLevel featureLevel) {
             nSetBuilderFeatureLevel(mNativeBuilder, featureLevel.ordinal());
+            return this;
+        }
+
+        /**
+         * Sets the initial paused state of the rendering thread.
+         *
+         * <p>Warning: This is an experimental API. See {@link Engine#setPaused(boolean)} for
+         * caveats.
+         *
+         * @param paused Whether to start the rendering thread paused.
+         * @return A reference to this Builder for chaining calls.
+         */
+        public Builder paused(boolean paused) {
+            nSetBuilderPaused(mNativeBuilder, paused);
             return this;
         }
 
@@ -350,6 +377,35 @@ public class Engine {
         public long jobSystemThreadCount = 0;
 
         /**
+         * Number of most-recently destroyed textures to track for use-after-free.
+         *
+         * This will cause the backend to throw an exception when a texture is freed but still bound
+         * to a SamplerGroup and used in a draw call. 0 disables completely.
+         *
+         * Currently only respected by the Metal backend.
+         */
+        public long textureUseAfterFreePoolSize = 0;
+
+        /**
+         * Set to `true` to forcibly disable parallel shader compilation in the backend.
+         * Currently only honored by the GL backend.
+         */
+        public boolean disableParallelShaderCompile = false;
+
+        /**
+         * The type of technique for stereoscopic rendering.
+         *
+         * This setting determines the algorithm used when stereoscopic rendering is enabled. This
+         * decision applies to the entire Engine for the lifetime of the Engine. E.g., multiple
+         * Views created from the Engine must use the same stereoscopic type.
+         *
+         * Each view can enable stereoscopic rendering via the StereoscopicOptions::enable flag.
+         *
+         * @see View#setStereoscopicOptions
+         */
+        public StereoscopicType stereoscopicType = StereoscopicType.INSTANCED;
+
+        /**
          * The number of eyes to render when stereoscopic rendering is enabled. Supported values are
          * between 1 and Engine#getMaxStereoscopicEyes() (inclusive).
          *
@@ -359,16 +415,19 @@ public class Engine {
         public long stereoscopicEyeCount = 2;
 
         /*
-         * Size in MiB of the frame graph texture cache. This should be adjusted based on the
-         * size of used render targets (typically the screen).
+         * @Deprecated This value is no longer used.
          */
         public long resourceAllocatorCacheSizeMB = 64;
 
         /*
          * This value determines for how many frames are texture entries kept in the cache.
-         * The default value of 30 corresponds to about half a second at 60 fps.
          */
-        public long resourceAllocatorCacheMaxAge = 30;
+        public long resourceAllocatorCacheMaxAge = 2;
+
+        /*
+         * Disable backend handles use-after-free checks.
+         */
+        public boolean disableHandleUseAfterFreeCheck = false;
     }
 
     private Engine(long nativeEngine, Config config) {
@@ -615,7 +674,7 @@ public class Engine {
      */
     @NonNull
     public SwapChain createSwapChain(@NonNull Object surface) {
-        return createSwapChain(surface, SwapChain.CONFIG_DEFAULT);
+        return createSwapChain(surface, SwapChainFlags.CONFIG_DEFAULT);
     }
 
     /**
@@ -623,15 +682,15 @@ public class Engine {
      *
      * @param surface on Android, <b>must be</b> an instance of {@link android.view.Surface}
      *
-     * @param flags configuration flags, see {@link SwapChain}
+     * @param flags configuration flags, see {@link SwapChainFlags}
      *
      * @return a newly created {@link SwapChain} object
      *
      * @exception IllegalStateException can be thrown if the SwapChain couldn't be created
      *
-     * @see SwapChain#CONFIG_DEFAULT
-     * @see SwapChain#CONFIG_TRANSPARENT
-     * @see SwapChain#CONFIG_READABLE
+     * @see SwapChainFlags#CONFIG_DEFAULT
+     * @see SwapChainFlags#CONFIG_TRANSPARENT
+     * @see SwapChainFlags#CONFIG_READABLE
      *
      */
     @NonNull
@@ -649,21 +708,22 @@ public class Engine {
      *
      * @param width  width of the rendering buffer
      * @param height height of the rendering buffer
-     * @param flags  configuration flags, see {@link SwapChain}
+     * @param flags  configuration flags, see {@link SwapChainFlags}
      *
      * @return a newly created {@link SwapChain} object
      *
      * @exception IllegalStateException can be thrown if the SwapChain couldn't be created
      *
-     * @see SwapChain#CONFIG_DEFAULT
-     * @see SwapChain#CONFIG_TRANSPARENT
-     * @see SwapChain#CONFIG_READABLE
+     * @see SwapChainFlags#CONFIG_DEFAULT
+     * @see SwapChainFlags#CONFIG_TRANSPARENT
+     * @see SwapChainFlags#CONFIG_READABLE
      *
      */
     @NonNull
     public SwapChain createSwapChain(int width, int height, long flags) {
         if (width >= 0 && height >= 0) {
-            long nativeSwapChain = nCreateSwapChainHeadless(getNativeObject(), width, height, flags);
+            long nativeSwapChain =
+                nCreateSwapChainHeadless(getNativeObject(), width, height, flags);
             if (nativeSwapChain == 0) throw new IllegalStateException("Couldn't create SwapChain");
             return new SwapChain(nativeSwapChain, null);
         }
@@ -675,11 +735,12 @@ public class Engine {
      *
      * @param surface a properly initialized {@link NativeSurface}
      *
-     * @param flags configuration flags, see {@link SwapChain}
+     * @param flags configuration flags, see {@link SwapChainFlags}
      *
      * @return a newly created {@link SwapChain} object
      *
-     * @exception IllegalStateException can be thrown if the {@link SwapChain} couldn't be created
+     * @exception IllegalStateException can be thrown if the {@link SwapChainFlags} couldn't be
+     *            created
      */
     @NonNull
     public SwapChain createSwapChainFromNativeSurface(@NonNull NativeSurface surface, long flags) {
@@ -786,6 +847,24 @@ public class Engine {
      */
     public boolean isValidMaterial(@NonNull Material object) {
         return nIsValidMaterial(getNativeObject(), object.getNativeObject());
+    }
+
+    /**
+     * Returns whether the object is valid.
+     * @param object Object to check for validity
+     * @return returns true if the specified object is valid.
+     */
+    public boolean isValidMaterialInstance(@NonNull Material ma, MaterialInstance mi) {
+        return nIsValidMaterialInstance(getNativeObject(), ma.getNativeObject(), mi.getNativeObject());
+    }
+
+    /**
+     * Returns whether the object is valid.
+     * @param object Object to check for validity
+     * @return returns true if the specified object is valid.
+     */
+    public boolean isValidExpensiveMaterialInstance(@NonNull MaterialInstance object) {
+        return nIsValidExpensiveMaterialInstance(getNativeObject(), object.getNativeObject());
     }
 
     /**
@@ -1148,6 +1227,33 @@ public class Engine {
         nFlush(getNativeObject());
     }
 
+    /**
+     * Get paused state of rendering thread.
+     *
+     * <p>Warning: This is an experimental API.
+     *
+     * @see #setPaused
+     */
+    public boolean isPaused() {
+        return nIsPaused(getNativeObject());
+    }
+
+    /**
+     * Pause or resume the rendering thread.
+     *
+     * <p>Warning: This is an experimental API. In particular, note the following caveats.
+     *
+     * <ul><li>
+     * Buffer callbacks will never be called as long as the rendering thread is paused.
+     * Do not rely on a buffer callback to unpause the thread.
+     * </li><li>
+     * While the rendering thread is paused, rendering commands will continue to be queued until the
+     * buffer limit is reached. When the limit is reached, the program will abort.
+     * </li></ul>
+     */
+    public void setPaused(boolean paused) {
+        nSetPaused(getNativeObject(), paused);
+    }
 
     @UsedByReflection("TextureHelper.java")
     public long getNativeObject() {
@@ -1214,6 +1320,8 @@ public class Engine {
     private static native boolean nIsValidSkinningBuffer(long nativeEngine, long nativeSkinningBuffer);
     private static native boolean nIsValidIndirectLight(long nativeEngine, long nativeIndirectLight);
     private static native boolean nIsValidMaterial(long nativeEngine, long nativeMaterial);
+    private static native boolean nIsValidMaterialInstance(long nativeEngine, long nativeMaterial, long nativeMaterialInstance);
+    private static native boolean nIsValidExpensiveMaterialInstance(long nativeEngine, long nativeMaterialInstance);
     private static native boolean nIsValidSkybox(long nativeEngine, long nativeSkybox);
     private static native boolean nIsValidColorGrading(long nativeEngine, long nativeColorGrading);
     private static native boolean nIsValidTexture(long nativeEngine, long nativeTexture);
@@ -1222,6 +1330,8 @@ public class Engine {
     private static native void nDestroyEntity(long nativeEngine, int entity);
     private static native void nFlushAndWait(long nativeEngine);
     private static native void nFlush(long nativeEngine);
+    private static native boolean nIsPaused(long nativeEngine);
+    private static native void nSetPaused(long nativeEngine, boolean paused);
     private static native long nGetTransformManager(long nativeEngine);
     private static native long nGetLightManager(long nativeEngine);
     private static native long nGetRenderableManager(long nativeEngine);
@@ -1240,9 +1350,12 @@ public class Engine {
     private static native void nSetBuilderConfig(long nativeBuilder, long commandBufferSizeMB,
             long perRenderPassArenaSizeMB, long driverHandleArenaSizeMB,
             long minCommandBufferSizeMB, long perFrameCommandsSizeMB, long jobSystemThreadCount,
-            long stereoscopicEyeCount,
-            long resourceAllocatorCacheSizeMB, long resourceAllocatorCacheMaxAge);
+            long textureUseAfterFreePoolSize, boolean disableParallelShaderCompile,
+            int stereoscopicType, long stereoscopicEyeCount,
+            long resourceAllocatorCacheSizeMB, long resourceAllocatorCacheMaxAge,
+            boolean disableHandleUseAfterFreeCheck);
     private static native void nSetBuilderFeatureLevel(long nativeBuilder, int ordinal);
     private static native void nSetBuilderSharedContext(long nativeBuilder, long sharedContext);
+    private static native void nSetBuilderPaused(long nativeBuilder, boolean paused);
     private static native long nBuilderBuild(long nativeBuilder);
 }

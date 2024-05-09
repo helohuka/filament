@@ -437,8 +437,10 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
         window->mDebugCamera->lookAt(eye, center, up);
 
         // Update the cube distortion matrix used for frustum visualization.
-        const Camera* lightmapCamera = window->mMainView->getView()->getDirectionalLightCamera();
-        lightmapCube->mapFrustum(*mEngine, lightmapCamera);
+        const Camera* lightmapCamera = window->mMainView->getView()->getDirectionalShadowCamera();
+        if (lightmapCamera) {
+            lightmapCube->mapFrustum(*mEngine, lightmapCamera);
+        }
         cameraCube->mapFrustum(*mEngine, window->mMainCamera);
 
         // Delay rendering for roughly one monitor refresh interval
@@ -460,18 +462,28 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
             mReconfigureCameras = false;
         }
 
+        if (config.splitView) {
+            if(!window->mOrthoView->getView()->hasCamera()) {
+                Camera const* debugDirectionalShadowCamera =
+                        window->mMainView->getView()->getDirectionalShadowCamera();
+                if (debugDirectionalShadowCamera) {
+                    window->mOrthoView->setCamera(
+                            const_cast<Camera*>(debugDirectionalShadowCamera));
+                }
+            }
+        }
+
         if (renderer->beginFrame(window->getSwapChain())) {
-            for (filament::View* offscreenView : mOffscreenViews) {
+            for (filament::View* offscreenView: mOffscreenViews) {
                 renderer->render(offscreenView);
             }
-            for (auto const& view : window->mViews) {
+            for (auto const& view: window->mViews) {
                 renderer->render(view->getView());
             }
             if (postRender) {
                 postRender(mEngine, window->mViews[0]->getView(), mScene, renderer);
             }
             renderer->endFrame();
-
         } else {
             ++mSkippedFrames;
         }
@@ -610,6 +622,11 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
 
         Engine::Config engineConfig = {};
         engineConfig.stereoscopicEyeCount = config.stereoscopicEyeCount;
+#if defined(FILAMENT_SAMPLES_STEREO_TYPE_INSTANCED)
+        engineConfig.stereoscopicType = Engine::StereoscopicType::INSTANCED;
+#elif defined (FILAMENT_SAMPLES_STEREO_TYPE_MULTIVIEW)
+        engineConfig.stereoscopicType = Engine::StereoscopicType::MULTIVIEW;
+#endif
 
         if (backend == Engine::Backend::VULKAN) {
             #if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
@@ -674,6 +691,7 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
         mSwapChain = mFilamentApp->mEngine->createSwapChain(
                 nativeSwapChain, filament::SwapChain::CONFIG_HAS_STENCIL_BUFFER);
     }
+
     mRenderer = mFilamentApp->mEngine->createRenderer();
 
     // create cameras
@@ -720,7 +738,10 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
         mGodView->setCameraManipulator(mDebugCameraMan);
 
         // Ortho view obviously uses an ortho camera
-        mOrthoView->setCamera( (Camera *)mMainView->getView()->getDirectionalLightCamera() );
+        Camera const* debugDirectionalShadowCamera = mMainView->getView()->getDirectionalShadowCamera();
+        if (debugDirectionalShadowCamera) {
+            mOrthoView->setCamera(const_cast<Camera *>(debugDirectionalShadowCamera));
+        }
     }
 
     // configure the cameras

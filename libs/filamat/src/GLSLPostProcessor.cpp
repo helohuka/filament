@@ -169,6 +169,7 @@ void GLSLPostProcessor::spirvToMsl(const SpirvBlob *spirv, std::string *outMsl,
     }
 
     mslOptions.argument_buffers = true;
+    mslOptions.ios_support_base_vertex_instance = true;
 
     // We're using argument buffers for texture resources, however, we cannot rely on spirv-cross to
     // generate the argument buffer definitions.
@@ -536,6 +537,20 @@ bool GLSLPostProcessor::fullOptimization(const TShader& tShader,
             glslOptions.emit_uniform_buffer_as_plain_uniforms = true;
         }
 
+        if (config.variant.hasStereo() && config.shaderType == ShaderStage::VERTEX) {
+            switch (config.materialInfo->stereoscopicType) {
+            case StereoscopicType::INSTANCED:
+                // Nothing to generate
+                break;
+            case StereoscopicType::MULTIVIEW:
+                // For stereo variants using multiview feature, this generates the shader code below.
+                //   #extension GL_OVR_multiview2 : require
+                //   layout(num_views = 2) in;
+                glslOptions.ovr_multiview_view_count = config.materialInfo->stereoscopicEyeCount;
+                break;
+            }
+        }
+
         CompilerGLSL glslCompiler(std::move(spirv));
         glslCompiler.set_common_options(glslOptions);
 
@@ -589,7 +604,13 @@ std::shared_ptr<spvtools::Optimizer> GLSLPostProcessor::createOptimizer(
     });
 
     if (optimization == MaterialBuilder::Optimization::SIZE) {
-        registerSizePasses(*optimizer, config);
+        // When optimizing for size, we don't run the SPIR-V through any size optimization passes
+        // when targeting MSL. This results in better line dictionary compression. We do, however,
+        // still register the passes necessary (below) to support half precision floating point
+        // math.
+        if (config.targetApi != MaterialBuilder::TargetApi::METAL) {
+            registerSizePasses(*optimizer, config);
+        }
     } else if (optimization == MaterialBuilder::Optimization::PERFORMANCE) {
         registerPerformancePasses(*optimizer, config);
     }
@@ -704,7 +725,6 @@ void GLSLPostProcessor::registerSizePasses(Optimizer& optimizer, Config const& c
 
     RegisterPass(CreateWrapOpKillPass());
     RegisterPass(CreateDeadBranchElimPass());
-    RegisterPass(CreateMergeReturnPass(), MaterialBuilder::TargetApi::METAL);
     RegisterPass(CreateInlineExhaustivePass());
     RegisterPass(CreateEliminateDeadFunctionsPass());
     RegisterPass(CreatePrivateToLocalPass());
@@ -713,11 +733,9 @@ void GLSLPostProcessor::registerSizePasses(Optimizer& optimizer, Config const& c
     RegisterPass(CreateCCPPass());
     RegisterPass(CreateLoopUnrollPass(true));
     RegisterPass(CreateDeadBranchElimPass());
-    RegisterPass(CreateSimplificationPass(), MaterialBuilder::TargetApi::METAL);
     RegisterPass(CreateScalarReplacementPass(0));
     RegisterPass(CreateLocalSingleStoreElimPass());
     RegisterPass(CreateIfConversionPass());
-    RegisterPass(CreateSimplificationPass(), MaterialBuilder::TargetApi::METAL);
     RegisterPass(CreateAggressiveDCEPass());
     RegisterPass(CreateDeadBranchElimPass());
     RegisterPass(CreateBlockMergePass());
@@ -733,7 +751,6 @@ void GLSLPostProcessor::registerSizePasses(Optimizer& optimizer, Config const& c
     RegisterPass(CreateBlockMergePass());
     RegisterPass(CreateLocalMultiStoreElimPass());
     RegisterPass(CreateRedundancyEliminationPass());
-    RegisterPass(CreateSimplificationPass(), MaterialBuilder::TargetApi::METAL);
     RegisterPass(CreateAggressiveDCEPass());
     RegisterPass(CreateCFGCleanupPass());
 }

@@ -33,11 +33,12 @@
 #include "eiff/LineDictionary.h"
 #include "eiff/MaterialInterfaceBlockChunk.h"
 #include "eiff/MaterialTextChunk.h"
-#include "eiff/MaterialSpirvChunk.h"
+#include "eiff/MaterialBinaryChunk.h"
 #include "eiff/ChunkContainer.h"
 #include "eiff/SimpleFieldChunk.h"
 #include "eiff/DictionaryTextChunk.h"
 #include "eiff/DictionarySpirvChunk.h"
+#include "eiff/DictionaryMetalLibraryChunk.h"
 
 #include <private/filament/BufferInterfaceBlock.h>
 #include <private/filament/SamplerInterfaceBlock.h>
@@ -388,6 +389,16 @@ MaterialBuilder& MaterialBuilder::blending(BlendingMode blending) noexcept {
     return *this;
 }
 
+MaterialBuilder& MaterialBuilder::customBlendFunctions(
+        BlendFunction srcRGB, BlendFunction srcA,
+        BlendFunction dstRGB, BlendFunction dstA) noexcept {
+    mCustomBlendFunctions[0] = srcRGB;
+    mCustomBlendFunctions[1] = srcA;
+    mCustomBlendFunctions[2] = dstRGB;
+    mCustomBlendFunctions[3] = dstA;
+    return *this;
+}
+
 MaterialBuilder& MaterialBuilder::postLightingBlending(BlendingMode blending) noexcept {
     mPostLightingBlendingMode = blending;
     return *this;
@@ -495,6 +506,16 @@ MaterialBuilder& MaterialBuilder::specularAmbientOcclusion(SpecularAmbientOcclus
 
 MaterialBuilder& MaterialBuilder::transparencyMode(TransparencyMode mode) noexcept {
     mTransparencyMode = mode;
+    return *this;
+}
+
+MaterialBuilder& MaterialBuilder::stereoscopicType(StereoscopicType stereoscopicType) noexcept {
+    mStereoscopicType = stereoscopicType;
+    return *this;
+}
+
+MaterialBuilder& MaterialBuilder::stereoscopicEyeCount(uint8_t eyeCount) noexcept {
+    mStereoscopicEyeCount = eyeCount;
     return *this;
 }
 
@@ -632,6 +653,8 @@ void MaterialBuilder::prepareToBuild(MaterialInfo& info) noexcept {
     info.vertexDomainDeviceJittered = mVertexDomainDeviceJittered;
     info.featureLevel = mFeatureLevel;
     info.groupSize = mGroupSize;
+    info.stereoscopicType = mStereoscopicType;
+    info.stereoscopicEyeCount = mStereoscopicEyeCount;
 
     // This is determined via static analysis of the glsl after prepareToBuild().
     info.userMaterialHasCustomDepth = false;
@@ -799,7 +822,7 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
     Mutex entriesLock;
     std::vector<TextEntry> glslEntries;
     std::vector<TextEntry> essl1Entries;
-    std::vector<SpirvEntry> spirvEntries;
+    std::vector<BinaryEntry> spirvEntries;
     std::vector<TextEntry> metalEntries;
     LineDictionary textDictionary;
     BlobDictionary spirvDictionary;
@@ -850,7 +873,7 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
                 std::string* pMsl = targetApiNeedsMsl ? &msl : nullptr;
 
                 TextEntry glslEntry{};
-                SpirvEntry spirvEntry{};
+                BinaryEntry spirvEntry{};
                 TextEntry metalEntry{};
 
                 glslEntry.shaderModel  = params.shaderModel;
@@ -894,7 +917,7 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
                         .domain = mMaterialDomain,
                         .materialInfo = &info,
                         .hasFramebufferFetch = mEnableFramebufferFetch,
-                        .usesClipDistance = v.variant.hasInstancedStereo(),
+                        .usesClipDistance = v.variant.hasStereo() && info.stereoscopicType == StereoscopicType::INSTANCED,
                         .glsl = {},
                 };
 
@@ -941,12 +964,15 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
                             glslEntries.push_back(glslEntry);
                         }
                         break;
-                    case TargetApi::VULKAN:
+                    case TargetApi::VULKAN: {
                         assert(!spirv.empty());
+                        const std::vector<uint8_t> d(reinterpret_cast<uint8_t*>(spirv.data()),
+                                reinterpret_cast<uint8_t*>(spirv.data() + spirv.size()));
                         spirvEntry.stage = v.stage;
-                        spirvEntry.spirv = std::move(spirv);
+                        spirvEntry.data = std::move(d);
                         spirvEntries.push_back(spirvEntry);
                         break;
+                    }
                     case TargetApi::METAL:
                         assert(!spirv.empty());
                         assert(msl.length() > 0);
@@ -996,7 +1022,7 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
         textDictionary.addText(s.shader);
     }
     for (auto& s : spirvEntries) {
-        std::vector<uint32_t> spirv = std::move(s.spirv);
+        std::vector<uint8_t> spirv = std::move(s.data);
         s.dictionaryIndex = spirvDictionary.addBlob(spirv);
     }
     for (const auto& s : metalEntries) {
@@ -1019,11 +1045,11 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
                 dictionaryChunk.getDictionary(), ChunkType::MaterialEssl1);
     }
 
-    // Emit SPIRV chunks (SpirvDictionaryReader and MaterialSpirvChunk).
+    // Emit SPIRV chunks (SpirvDictionaryReader and MaterialBinaryChunk).
     if (!spirvEntries.empty()) {
         const bool stripInfo = !mGenerateDebugInfo;
         container.push<filamat::DictionarySpirvChunk>(std::move(spirvDictionary), stripInfo);
-        container.push<MaterialSpirvChunk>(std::move(spirvEntries));
+        container.push<MaterialBinaryChunk>(std::move(spirvEntries), ChunkType::MaterialSpirv);
     }
 
     // Emit Metal chunk (MaterialTextChunk).
@@ -1498,6 +1524,16 @@ void MaterialBuilder::writeCommonChunks(ChunkContainer& container, MaterialInfo&
         container.emplace<bool>(ChunkType::MaterialDoubleSided, mDoubleSided);
         container.emplace<uint8_t>(ChunkType::MaterialBlendingMode,
                 static_cast<uint8_t>(mBlendingMode));
+
+        if (mBlendingMode == BlendingMode::CUSTOM) {
+            uint32_t const blendFunctions =
+                    (uint32_t(mCustomBlendFunctions[0]) << 24) |
+                    (uint32_t(mCustomBlendFunctions[1]) << 16) |
+                    (uint32_t(mCustomBlendFunctions[2]) <<  8) |
+                    (uint32_t(mCustomBlendFunctions[3]) <<  0);
+            container.emplace< uint32_t >(ChunkType::MaterialBlendFunction, blendFunctions);
+        }
+
         container.emplace<uint8_t>(ChunkType::MaterialTransparencyMode,
                 static_cast<uint8_t>(mTransparencyMode));
         container.emplace<uint8_t>(ChunkType::MaterialReflectionMode,

@@ -39,6 +39,7 @@ struct HwStream;
 struct HwSwapChain;
 struct HwTexture;
 struct HwTimerQuery;
+struct HwVertexBufferInfo;
 struct HwVertexBuffer;
 
 /*
@@ -62,14 +63,6 @@ public:
     // clear the handle, this doesn't free associated resources
     void clear() noexcept { object = nullid; }
 
-    // compare handles
-    bool operator==(const HandleBase& rhs) const noexcept { return object == rhs.object; }
-    bool operator!=(const HandleBase& rhs) const noexcept { return object != rhs.object; }
-    bool operator<(const HandleBase& rhs) const noexcept { return object < rhs.object; }
-    bool operator<=(const HandleBase& rhs) const noexcept { return object <= rhs.object; }
-    bool operator>(const HandleBase& rhs) const noexcept { return object > rhs.object; }
-    bool operator>=(const HandleBase& rhs) const noexcept { return object >= rhs.object; }
-
     // get this handle's handleId
     HandleId getId() const noexcept { return object; }
 
@@ -81,6 +74,19 @@ public:
 protected:
     HandleBase(HandleBase const& rhs) noexcept = default;
     HandleBase& operator=(HandleBase const& rhs) noexcept = default;
+
+    HandleBase(HandleBase&& rhs) noexcept
+            : object(rhs.object) {
+        rhs.object = nullid;
+    }
+
+    HandleBase& operator=(HandleBase&& rhs) noexcept {
+        if (this != &rhs) {
+            object = rhs.object;
+            rhs.object = nullid;
+        }
+        return *this;
+    }
 
 private:
     HandleId object;
@@ -96,10 +102,20 @@ struct Handle : public HandleBase {
     Handle() noexcept = default;
 
     Handle(Handle const& rhs) noexcept = default;
+    Handle(Handle&& rhs) noexcept = default;
 
     Handle& operator=(Handle const& rhs) noexcept = default;
+    Handle& operator=(Handle&& rhs) noexcept = default;
 
     explicit Handle(HandleId id) noexcept : HandleBase(id) { }
+
+    // compare handles of the same type
+    bool operator==(const Handle& rhs) const noexcept { return getId() == rhs.getId(); }
+    bool operator!=(const Handle& rhs) const noexcept { return getId() != rhs.getId(); }
+    bool operator<(const Handle& rhs) const noexcept { return getId() < rhs.getId(); }
+    bool operator<=(const Handle& rhs) const noexcept { return getId() <= rhs.getId(); }
+    bool operator>(const Handle& rhs) const noexcept { return getId() > rhs.getId(); }
+    bool operator>=(const Handle& rhs) const noexcept { return getId() >= rhs.getId(); }
 
     // type-safe Handle cast
     template<typename B, typename = std::enable_if_t<std::is_base_of<T, B>::value> >
@@ -114,18 +130,19 @@ private:
 
 // Types used by the command stream
 // (we use this renaming because the macro-system doesn't deal well with "<" and ">")
-using BufferObjectHandle    = Handle<HwBufferObject>;
-using FenceHandle           = Handle<HwFence>;
-using IndexBufferHandle     = Handle<HwIndexBuffer>;
-using ProgramHandle         = Handle<HwProgram>;
-using RenderPrimitiveHandle = Handle<HwRenderPrimitive>;
-using RenderTargetHandle    = Handle<HwRenderTarget>;
-using SamplerGroupHandle    = Handle<HwSamplerGroup>;
-using StreamHandle          = Handle<HwStream>;
-using SwapChainHandle       = Handle<HwSwapChain>;
-using TextureHandle         = Handle<HwTexture>;
-using TimerQueryHandle      = Handle<HwTimerQuery>;
-using VertexBufferHandle    = Handle<HwVertexBuffer>;
+using BufferObjectHandle     = Handle<HwBufferObject>;
+using FenceHandle            = Handle<HwFence>;
+using IndexBufferHandle      = Handle<HwIndexBuffer>;
+using ProgramHandle          = Handle<HwProgram>;
+using RenderPrimitiveHandle  = Handle<HwRenderPrimitive>;
+using RenderTargetHandle     = Handle<HwRenderTarget>;
+using SamplerGroupHandle     = Handle<HwSamplerGroup>;
+using StreamHandle           = Handle<HwStream>;
+using SwapChainHandle        = Handle<HwSwapChain>;
+using TextureHandle          = Handle<HwTexture>;
+using TimerQueryHandle       = Handle<HwTimerQuery>;
+using VertexBufferHandle     = Handle<HwVertexBuffer>;
+using VertexBufferInfoHandle = Handle<HwVertexBufferInfo>;
 
 } // namespace filament::backend
 

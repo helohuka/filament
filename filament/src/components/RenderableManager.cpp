@@ -26,15 +26,40 @@
 #include "details/InstanceBuffer.h"
 #include "details/Material.h"
 
-#include "filament/RenderableManager.h"
+#include <private/filament/EngineEnums.h>
+#include <private/filament/UibStructs.h>
 
+#include <filament/Box.h>
+#include <filament/FilamentAPI.h>
+#include <filament/MaterialEnums.h>
+#include <filament/RenderableManager.h>
 
 #include <backend/DriverEnums.h>
+#include <backend/Handle.h>
 
-#include <utils/Log.h>
-#include <utils/Panic.h>
+#include <utils/compiler.h>
 #include <utils/debug.h>
+#include <utils/EntityManager.h>
+#include <utils/FixedCapacityVector.h>
+#include <utils/Log.h>
+#include <utils/ostream.h>
+#include <utils/Panic.h>
+#include <utils/Slice.h>
+
+#include <math/mat4.h>
+#include <math/scalar.h>
+#include <math/vec2.h>
+#include <math/vec4.h>
+
+#include <algorithm>
+#include <memory>
 #include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include <math.h>
+#include <stddef.h>
+#include <stdint.h>
 
 using namespace filament::math;
 using namespace utils;
@@ -58,6 +83,7 @@ struct RenderableManager::BuilderDetails {
     bool mScreenSpaceContactShadows : 1;
     bool mSkinningBufferMode : 1;
     bool mFogEnabled : 1;
+    RenderableManager::Builder::GeometryType mGeometryType : 2;
     size_t mSkinningBoneCount = 0;
     size_t mMorphTargetCount = 0;
     Bone const* mUserBones = nullptr;
@@ -75,7 +101,9 @@ struct RenderableManager::BuilderDetails {
     explicit BuilderDetails(size_t count)
             : mEntries(count), mCulling(true), mCastShadows(false),
               mReceiveShadows(true), mScreenSpaceContactShadows(false),
-              mSkinningBufferMode(false),  mFogEnabled(true), mBonePairs() {
+              mSkinningBufferMode(false), mFogEnabled(true),
+              mGeometryType(RenderableManager::Builder::GeometryType::DYNAMIC),
+              mBonePairs() {
     }
     // this is only needed for the explicit instantiation below
     BuilderDetails() = default;
@@ -109,17 +137,20 @@ RenderableManager::Builder& RenderableManager::Builder::geometry(size_t index,
 
 RenderableManager::Builder& RenderableManager::Builder::geometry(size_t index,
         PrimitiveType type, VertexBuffer* vertices, IndexBuffer* indices,
-        size_t offset, size_t minIndex, size_t maxIndex, size_t count) noexcept {
+        size_t offset, UTILS_UNUSED size_t minIndex, UTILS_UNUSED size_t maxIndex, size_t count) noexcept {
     std::vector<Entry>& entries = mImpl->mEntries;
     if (index < entries.size()) {
         entries[index].vertices = vertices;
         entries[index].indices = indices;
         entries[index].offset = offset;
-        entries[index].minIndex = minIndex;
-        entries[index].maxIndex = maxIndex;
         entries[index].count = count;
         entries[index].type = type;
     }
+    return *this;
+}
+
+RenderableManager::Builder& RenderableManager::Builder::geometryType(GeometryType type) noexcept {
+    mImpl->mGeometryType = type;
     return *this;
 }
 
@@ -390,11 +421,21 @@ RenderableManager::Builder::Result RenderableManager::Builder::build(Engine& eng
 
     ASSERT_PRECONDITION(mImpl->mSkinningBoneCount <= CONFIG_MAX_BONE_COUNT,
             "bone count > %u", CONFIG_MAX_BONE_COUNT);
+
     ASSERT_PRECONDITION(mImpl->mInstanceCount <= CONFIG_MAX_INSTANCES || !mImpl->mInstanceBuffer,
             "instance count is %zu, but instance count is limited to CONFIG_MAX_INSTANCES (%zu) "
             "instances when supplying transforms via an InstanceBuffer.",
             mImpl->mInstanceCount,
             CONFIG_MAX_INSTANCES);
+
+    if (mImpl->mGeometryType == GeometryType::STATIC) {
+        ASSERT_PRECONDITION(mImpl->mSkinningBoneCount > 0,
+                "Skinning can't be used with STATIC geometry");
+
+        ASSERT_PRECONDITION(mImpl->mMorphTargetCount > 0,
+                "Morphing can't be used with STATIC geometry");
+    }
+
     if (mImpl->mInstanceBuffer) {
         size_t const bufferInstanceCount = mImpl->mInstanceBuffer->mInstanceCount;
         ASSERT_PRECONDITION(mImpl->mInstanceCount <= bufferInstanceCount,
@@ -435,11 +476,6 @@ RenderableManager::Builder::Result RenderableManager::Builder::build(Engine& eng
                 "[entity=%u, primitive @ %u] offset (%u) + count (%u) > indexCount (%u)",
                 entity.getId(), i,
                 entry.offset, entry.count, entry.indices->getIndexCount());
-
-        ASSERT_PRECONDITION(entry.minIndex <= entry.maxIndex,
-                "[entity=%u, primitive @ %u] minIndex (%u) > maxIndex (%u)",
-                entity.getId(), i,
-                entry.minIndex, entry.maxIndex);
 
         // this can't be an error because (1) those values are not immutable, so the caller
         // could fix later, and (2) the material's shader will work (i.e. compile), and
@@ -526,6 +562,8 @@ void FRenderableManager::create(
         setSkinning(ci, false);
         setMorphing(ci, builder->mMorphTargetCount);
         setFogEnabled(ci, builder->mFogEnabled);
+        // do this after calling setAxisAlignedBoundingBox
+        static_cast<Visibility&>(mManager[ci].visibility).geometryType = builder->mGeometryType;
         mManager[ci].channels = builder->mLightChannels;
 
         InstancesInfo& instances = manager[ci].instances;
@@ -816,7 +854,7 @@ void FRenderableManager::setGeometryAt(Instance instance, uint8_t level, size_t 
         Slice<FRenderPrimitive>& primitives = getRenderPrimitives(instance, level);
         if (primitiveIndex < primitives.size()) {
             primitives[primitiveIndex].set(mHwRenderPrimitiveFactory, mEngine.getDriverApi(),
-                    type, vertices, indices, offset, 0, vertices->getVertexCount() - 1, count);
+                    type, vertices, indices, offset, count);
         }
     }
 }

@@ -19,6 +19,7 @@
 #include "MetalBlitter.h"
 #include "MetalEnums.h"
 #include "MetalUtils.h"
+#include "MetalBufferPool.h"
 
 #include <filament/SwapChain.h>
 
@@ -220,9 +221,10 @@ void MetalSwapChain::ensureDepthStencilTexture() {
     depthStencilTexture = [context.device newTextureWithDescriptor:descriptor];
 }
 
-void MetalSwapChain::setFrameScheduledCallback(FrameScheduledCallback callback, void* user) {
-    frameScheduledCallback = callback;
-    frameScheduledUserData = user;
+void MetalSwapChain::setFrameScheduledCallback(
+        CallbackHandler* handler, FrameScheduledCallback&& callback) {
+    frameScheduled.handler = handler;
+    frameScheduled.callback = std::move(callback);
 }
 
 void MetalSwapChain::setFrameCompletedCallback(CallbackHandler* handler,
@@ -237,7 +239,7 @@ void MetalSwapChain::present() {
         scheduleFrameCompletedCallback();
     }
     if (drawable) {
-        if (frameScheduledCallback) {
+        if (frameScheduled.callback) {
             scheduleFrameScheduledCallback();
         } else  {
             [getPendingCommandBuffer(&context) presentDrawable:drawable];
@@ -295,21 +297,38 @@ void presentDrawable(bool presentFrame, void* user) {
 }
 
 void MetalSwapChain::scheduleFrameScheduledCallback() {
-    if (!frameScheduledCallback) {
+    if (!frameScheduled.callback) {
         return;
     }
 
     assert_invariant(drawable);
 
-    // Destroy this by calling maybePresentAndDestroyAsync() later.
-    auto* presentData = PresentDrawableData::create(drawable, context.driver);
+    struct Callback {
+        Callback(FrameScheduledCallback&& callback, id<CAMetalDrawable> drawable,
+                MetalDriver* driver)
+            : f(std::move(callback)), data(PresentDrawableData::create(drawable, driver)) {}
+        FrameScheduledCallback f;
+        // PresentDrawableData* is destroyed by maybePresentAndDestroyAsync() later.
+        std::unique_ptr<PresentDrawableData> data;
+        static void func(void* user) {
+            auto* const c = reinterpret_cast<Callback*>(user);
+            PresentDrawableData* presentDrawableData = c->data.release();
+            PresentCallable presentCallable(presentDrawable, presentDrawableData);
+            c->f(presentCallable);
+            delete c;
+        }
+    };
 
-    FrameScheduledCallback userCallback = frameScheduledCallback;
-    void* userData = frameScheduledUserData;
+    // This callback pointer will be captured by the block. Even if the scheduled handler is never
+    // called, the unique_ptr will still ensure we don't leak memory.
+    __block auto callback =
+            std::make_unique<Callback>(std::move(frameScheduled.callback), drawable, context.driver);
 
+    backend::CallbackHandler* handler = frameScheduled.handler;
+    MetalDriver* driver = context.driver;
     [getPendingCommandBuffer(&context) addScheduledHandler:^(id<MTLCommandBuffer> cb) {
-        PresentCallable callable(presentDrawable, static_cast<void*>(presentData));
-        userCallback(callable, userData);
+        Callback* user = callback.release();
+        driver->scheduleCallback(handler, user, &Callback::func);
     }];
 }
 
@@ -340,23 +359,12 @@ void MetalBufferObject::updateBufferUnsynchronized(void* data, size_t size, uint
     buffer.copyIntoBufferUnsynchronized(data, size, byteOffset);
 }
 
-MetalVertexBuffer::MetalVertexBuffer(MetalContext& context, uint8_t bufferCount,
-            uint8_t attributeCount, uint32_t vertexCount, AttributeArray const& attributes)
-    : HwVertexBuffer(bufferCount, attributeCount, vertexCount, attributes), buffers(bufferCount, nullptr) {}
+MetalVertexBufferInfo::MetalVertexBufferInfo(MetalContext& context, uint8_t bufferCount,
+        uint8_t attributeCount, AttributeArray const& attributes)
+        : HwVertexBufferInfo(bufferCount, attributeCount),
+          bufferMapping(utils::FixedCapacityVector<Entry>::with_capacity(MAX_VERTEX_BUFFER_COUNT)) {
 
-MetalIndexBuffer::MetalIndexBuffer(MetalContext& context, BufferUsage usage, uint8_t elementSize,
-        uint32_t indexCount) : HwIndexBuffer(elementSize, indexCount),
-        buffer(context, BufferObjectBinding::VERTEX, usage, elementSize * indexCount, true) { }
-
-MetalRenderPrimitive::MetalRenderPrimitive()
-    : bufferMapping(utils::FixedCapacityVector<Entry>::with_capacity(MAX_VERTEX_BUFFER_COUNT)) {}
-
-void MetalRenderPrimitive::setBuffers(MetalVertexBuffer* vertexBuffer, MetalIndexBuffer*
-        indexBuffer) {
-    this->vertexBuffer = vertexBuffer;
-    this->indexBuffer = indexBuffer;
-
-    const size_t attributeCount = vertexBuffer->attributes.size();
+    const size_t maxAttributeCount = attributes.size();
 
     auto& mapping = bufferMapping;
     mapping.clear();
@@ -396,8 +404,8 @@ void MetalRenderPrimitive::setBuffers(MetalVertexBuffer* vertexBuffer, MetalInde
         }
     };
 
-    for (uint32_t attributeIndex = 0; attributeIndex < attributeCount; attributeIndex++) {
-        const auto& attribute = vertexBuffer->attributes[attributeIndex];
+    for (uint32_t attributeIndex = 0; attributeIndex < maxAttributeCount; attributeIndex++) {
+        const auto& attribute = attributes[attributeIndex];
 
         // If the attribute is unused, bind it to the zero buffer. It's a Metal error for a shader
         // to read from missing vertex attributes.
@@ -422,6 +430,24 @@ void MetalRenderPrimitive::setBuffers(MetalVertexBuffer* vertexBuffer, MetalInde
                 .offset = attribute.offset
         };
     }
+}
+
+MetalVertexBuffer::MetalVertexBuffer(MetalContext& context,
+        uint32_t vertexCount, uint32_t bufferCount, Handle<HwVertexBufferInfo> vbih)
+    : HwVertexBuffer(vertexCount), vbih(vbih), buffers(bufferCount, nullptr) {
+}
+
+MetalIndexBuffer::MetalIndexBuffer(MetalContext& context, BufferUsage usage, uint8_t elementSize,
+        uint32_t indexCount) : HwIndexBuffer(elementSize, indexCount),
+        buffer(context, BufferObjectBinding::VERTEX, usage, elementSize * indexCount, true) { }
+
+MetalRenderPrimitive::MetalRenderPrimitive() {
+}
+
+void MetalRenderPrimitive::setBuffers(MetalVertexBufferInfo const* const vbi,
+        MetalVertexBuffer* vertexBuffer, MetalIndexBuffer* indexBuffer) {
+    this->vertexBuffer = vertexBuffer;
+    this->indexBuffer = indexBuffer;
 }
 
 MetalProgram::MetalProgram(MetalContext& context, Program&& program) noexcept
@@ -763,13 +789,13 @@ void MetalTexture::loadWithCopyBuffer(uint32_t level, uint32_t slice, MTLRegion 
         PixelBufferDescriptor const& data, const PixelBufferShape& shape) {
     const size_t stagingBufferSize = shape.totalBytes;
     auto entry = context.bufferPool->acquireBuffer(stagingBufferSize);
-    memcpy(entry->buffer.contents,
+    memcpy(entry->buffer.get().contents,
             static_cast<uint8_t*>(data.buffer) + shape.sourceOffset,
             stagingBufferSize);
     id<MTLCommandBuffer> blitCommandBuffer = getPendingCommandBuffer(&context);
     id<MTLBlitCommandEncoder> blitCommandEncoder = [blitCommandBuffer blitCommandEncoder];
     blitCommandEncoder.label = @"Texture upload buffer blit";
-    [blitCommandEncoder copyFromBuffer:entry->buffer
+    [blitCommandEncoder copyFromBuffer:entry->buffer.get()
                           sourceOffset:0
                      sourceBytesPerRow:shape.bytesPerRow
                    sourceBytesPerImage:shape.bytesPerSlice

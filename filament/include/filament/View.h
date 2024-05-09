@@ -190,6 +190,13 @@ public:
     void setCamera(Camera* UTILS_NONNULL camera) noexcept;
 
     /**
+     * Returns whether a Camera is set.
+     * @return true if a camera is set.
+     * @see setCamera()
+     */
+    bool hasCamera() const noexcept;
+
+    /**
      * Returns the Camera currently associated with this View.
      * @return A reference to the Camera associated to this View.
      */
@@ -719,7 +726,7 @@ public:
     void setDebugCamera(Camera* UTILS_NULLABLE camera) noexcept;
 
     //! debugging: returns a Camera from the point of view of *the* dominant directional light used for shadowing.
-    Camera const* UTILS_NULLABLE getDirectionalLightCamera() const noexcept;
+    Camera const* UTILS_NULLABLE getDirectionalShadowCamera() const noexcept;
 
 
     /** Result of a picking query */

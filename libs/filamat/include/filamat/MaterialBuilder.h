@@ -227,6 +227,7 @@ public:
 
     using ShaderQuality = filament::ShaderQuality;
     using BlendingMode = filament::BlendingMode;
+    using BlendFunction = filament::backend::BlendFunction;
     using Shading = filament::Shading;
     using Interpolation = filament::Interpolation;
     using VertexDomain = filament::VertexDomain;
@@ -243,6 +244,7 @@ public:
     using Precision = filament::backend::Precision;
     using CullingMode = filament::backend::CullingMode;
     using FeatureLevel = filament::backend::FeatureLevel;
+    using StereoscopicType = filament::backend::StereoscopicType;
 
     enum class VariableQualifier : uint8_t {
         OUT
@@ -407,9 +409,19 @@ public:
     MaterialBuilder& blending(BlendingMode blending) noexcept;
 
     /**
+     * Set the blend function  for this material. blending must be et to CUSTOM.
+     */
+    MaterialBuilder& customBlendFunctions(
+            BlendFunction srcRGB,
+            BlendFunction srcA,
+            BlendFunction dstRGB,
+            BlendFunction dstA) noexcept;
+
+    /**
      * Set the blending mode of the post-lighting color for this material.
      * Only OPAQUE, TRANSPARENT and ADD are supported, the default is TRANSPARENT.
-     * This setting requires the material property "postLightingColor" to be set.
+     * This setting requires the material properties "postLightingColor" and
+     * "postLightingMixFactor" to be set.
      */
     MaterialBuilder& postLightingBlending(BlendingMode blending) noexcept;
 
@@ -520,6 +532,12 @@ public:
 
     //! Specifies how transparent objects should be rendered (default is DEFAULT).
     MaterialBuilder& transparencyMode(TransparencyMode mode) noexcept;
+
+    //! Specify the stereoscopic type (default is INSTANCED)
+    MaterialBuilder& stereoscopicType(StereoscopicType stereoscopicType) noexcept;
+
+    //! Specify the number of eyes for stereoscopic rendering
+    MaterialBuilder& stereoscopicEyeCount(uint8_t eyeCount) noexcept;
 
     /**
      * Enable / disable custom surface shading. Custom surface shading requires the LIT
@@ -820,6 +838,7 @@ private:
     FeatureLevel mFeatureLevel = FeatureLevel::FEATURE_LEVEL_1;
     BlendingMode mBlendingMode = BlendingMode::OPAQUE;
     BlendingMode mPostLightingBlendingMode = BlendingMode::TRANSPARENT;
+    std::array<BlendFunction, 4> mCustomBlendFunctions = {};
     CullingMode mCullingMode = CullingMode::BACK;
     Shading mShading = Shading::LIT;
     MaterialDomain mMaterialDomain = MaterialDomain::SURFACE;
@@ -829,6 +848,8 @@ private:
     Interpolation mInterpolation = Interpolation::SMOOTH;
     VertexDomain mVertexDomain = VertexDomain::OBJECT;
     TransparencyMode mTransparencyMode = TransparencyMode::DEFAULT;
+    StereoscopicType mStereoscopicType = StereoscopicType::INSTANCED;
+    uint8_t mStereoscopicEyeCount = 2;
 
     filament::AttributeBitset mRequiredAttributes;
 

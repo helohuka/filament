@@ -63,14 +63,21 @@ utils::io::sstream& CodeGenerator::generateProlog(utils::io::sstream& out, Shade
                     out << "#extension GL_OES_EGL_image_external : require\n\n";
                 }
             }
-            if (v.hasInstancedStereo() && stage == ShaderStage::VERTEX) {
-                // If we're not processing the shader through glslang (in the case of unoptimized
-                // OpenGL shaders), then we need to add the #extension string ourselves.
-                // If we ARE running the shader through glslang, then we must not include it,
-                // otherwise glslang will complain.
-                out << "#ifndef FILAMENT_GLSLANG\n";
-                out << "#extension GL_EXT_clip_cull_distance : require\n";
-                out << "#endif\n\n";
+            if (v.hasStereo() && stage == ShaderStage::VERTEX) {
+                switch (material.stereoscopicType) {
+                case StereoscopicType::INSTANCED:
+                    // If we're not processing the shader through glslang (in the case of unoptimized
+                    // OpenGL shaders), then we need to add the #extension string ourselves.
+                    // If we ARE running the shader through glslang, then we must not include it,
+                    // otherwise glslang will complain.
+                    out << "#ifndef FILAMENT_GLSLANG\n";
+                    out << "#extension GL_EXT_clip_cull_distance : require\n";
+                    out << "#endif\n\n";
+                    break;
+                case StereoscopicType::MULTIVIEW:
+                    out << "#extension GL_OVR_multiview2 : require\n";
+                    break;
+                }
             }
             break;
         case ShaderModel::DESKTOP:
@@ -83,6 +90,16 @@ utils::io::sstream& CodeGenerator::generateProlog(utils::io::sstream& out, Shade
                 out << "#version 410 core\n\n";
                 out << "#extension GL_ARB_shading_language_packing : enable\n\n";
             }
+            if (v.hasStereo() && stage == ShaderStage::VERTEX) {
+                switch (material.stereoscopicType) {
+                case StereoscopicType::INSTANCED:
+                    // Nothing to generate
+                    break;
+                case StereoscopicType::MULTIVIEW:
+                    out << "#extension GL_OVR_multiview2 : require\n";
+                    break;
+                }
+            }
             break;
     }
 
@@ -93,6 +110,17 @@ utils::io::sstream& CodeGenerator::generateProlog(utils::io::sstream& out, Shade
     // This allows our includer system to use the #line directive to denote the source file for
     // #included code. This way, glslang reports errors more accurately.
     out << "#extension GL_GOOGLE_cpp_style_line_directive : enable\n\n";
+
+    if (v.hasStereo() && stage == ShaderStage::VERTEX) {
+        switch (material.stereoscopicType) {
+        case StereoscopicType::INSTANCED:
+            // Nothing to generate
+            break;
+        case StereoscopicType::MULTIVIEW:
+            out << "layout(num_views = " << material.stereoscopicEyeCount << ") in;\n";
+            break;
+        }
+    }
 
     if (stage == ShaderStage::COMPUTE) {
         out << "layout(local_size_x = " << material.groupSize.x
@@ -180,6 +208,15 @@ utils::io::sstream& CodeGenerator::generateProlog(utils::io::sstream& out, Shade
         }
     }
     generateDefine(out, "FILAMENT_EFFECTIVE_VERSION", effective_version);
+
+    switch (material.stereoscopicType) {
+    case StereoscopicType::INSTANCED:
+        generateDefine(out, "FILAMENT_STEREO_INSTANCED", true);
+        break;
+    case StereoscopicType::MULTIVIEW:
+        generateDefine(out, "FILAMENT_STEREO_MULTIVIEW", true);
+        break;
+    }
 
     if (stage == ShaderStage::VERTEX) {
         CodeGenerator::generateDefine(out, "FLIP_UV_ATTRIBUTE", material.flipUV);
@@ -284,7 +321,7 @@ utils::io::sstream& CodeGenerator::generateProlog(utils::io::sstream& out, Shade
             +ReservedSpecializationConstants::CONFIG_POWER_VR_SHADER_WORKAROUNDS, false);
 
     generateSpecializationConstant(out, "CONFIG_STEREO_EYE_COUNT",
-            +ReservedSpecializationConstants::CONFIG_STEREO_EYE_COUNT, 2);
+            +ReservedSpecializationConstants::CONFIG_STEREO_EYE_COUNT, material.stereoscopicEyeCount);
 
     // CONFIG_MAX_STEREOSCOPIC_EYES is used to size arrays and on Adreno GPUs + vulkan, this has to
     // be explicitly, statically defined (as in #define). Otherwise (using const int for
@@ -1078,32 +1115,33 @@ io::sstream& CodeGenerator::generateShaderReflections(utils::io::sstream& out, S
 char const* CodeGenerator::getConstantName(MaterialBuilder::Property property) noexcept {
     using Property = MaterialBuilder::Property;
     switch (property) {
-        case Property::BASE_COLOR:           return "BASE_COLOR";
-        case Property::ROUGHNESS:            return "ROUGHNESS";
-        case Property::METALLIC:             return "METALLIC";
-        case Property::REFLECTANCE:          return "REFLECTANCE";
-        case Property::AMBIENT_OCCLUSION:    return "AMBIENT_OCCLUSION";
-        case Property::CLEAR_COAT:           return "CLEAR_COAT";
-        case Property::CLEAR_COAT_ROUGHNESS: return "CLEAR_COAT_ROUGHNESS";
-        case Property::CLEAR_COAT_NORMAL:    return "CLEAR_COAT_NORMAL";
-        case Property::ANISOTROPY:           return "ANISOTROPY";
-        case Property::ANISOTROPY_DIRECTION: return "ANISOTROPY_DIRECTION";
-        case Property::THICKNESS:            return "THICKNESS";
-        case Property::SUBSURFACE_POWER:     return "SUBSURFACE_POWER";
-        case Property::SUBSURFACE_COLOR:     return "SUBSURFACE_COLOR";
-        case Property::SHEEN_COLOR:          return "SHEEN_COLOR";
-        case Property::SHEEN_ROUGHNESS:      return "SHEEN_ROUGHNESS";
-        case Property::GLOSSINESS:           return "GLOSSINESS";
-        case Property::SPECULAR_COLOR:       return "SPECULAR_COLOR";
-        case Property::EMISSIVE:             return "EMISSIVE";
-        case Property::NORMAL:               return "NORMAL";
-        case Property::POST_LIGHTING_COLOR:  return "POST_LIGHTING_COLOR";
-        case Property::CLIP_SPACE_TRANSFORM: return "CLIP_SPACE_TRANSFORM";
-        case Property::ABSORPTION:           return "ABSORPTION";
-        case Property::TRANSMISSION:         return "TRANSMISSION";
-        case Property::IOR:                  return "IOR";
-        case Property::MICRO_THICKNESS:      return "MICRO_THICKNESS";
-        case Property::BENT_NORMAL:          return "BENT_NORMAL";
+        case Property::BASE_COLOR:                  return "BASE_COLOR";
+        case Property::ROUGHNESS:                   return "ROUGHNESS";
+        case Property::METALLIC:                    return "METALLIC";
+        case Property::REFLECTANCE:                 return "REFLECTANCE";
+        case Property::AMBIENT_OCCLUSION:           return "AMBIENT_OCCLUSION";
+        case Property::CLEAR_COAT:                  return "CLEAR_COAT";
+        case Property::CLEAR_COAT_ROUGHNESS:        return "CLEAR_COAT_ROUGHNESS";
+        case Property::CLEAR_COAT_NORMAL:           return "CLEAR_COAT_NORMAL";
+        case Property::ANISOTROPY:                  return "ANISOTROPY";
+        case Property::ANISOTROPY_DIRECTION:        return "ANISOTROPY_DIRECTION";
+        case Property::THICKNESS:                   return "THICKNESS";
+        case Property::SUBSURFACE_POWER:            return "SUBSURFACE_POWER";
+        case Property::SUBSURFACE_COLOR:            return "SUBSURFACE_COLOR";
+        case Property::SHEEN_COLOR:                 return "SHEEN_COLOR";
+        case Property::SHEEN_ROUGHNESS:             return "SHEEN_ROUGHNESS";
+        case Property::GLOSSINESS:                  return "GLOSSINESS";
+        case Property::SPECULAR_COLOR:              return "SPECULAR_COLOR";
+        case Property::EMISSIVE:                    return "EMISSIVE";
+        case Property::NORMAL:                      return "NORMAL";
+        case Property::POST_LIGHTING_COLOR:         return "POST_LIGHTING_COLOR";
+        case Property::POST_LIGHTING_MIX_FACTOR:    return "POST_LIGHTING_MIX_FACTOR";
+        case Property::CLIP_SPACE_TRANSFORM:        return "CLIP_SPACE_TRANSFORM";
+        case Property::ABSORPTION:                  return "ABSORPTION";
+        case Property::TRANSMISSION:                return "TRANSMISSION";
+        case Property::IOR:                         return "IOR";
+        case Property::MICRO_THICKNESS:             return "MICRO_THICKNESS";
+        case Property::BENT_NORMAL:                 return "BENT_NORMAL";
     }
 }
 

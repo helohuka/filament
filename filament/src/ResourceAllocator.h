@@ -45,6 +45,7 @@ public:
             uint32_t width,
             uint32_t height,
             uint8_t samples,
+            uint8_t layerCount,
             backend::MRT color,
             backend::TargetBufferInfo depth,
             backend::TargetBufferInfo stencil) noexcept = 0;
@@ -77,6 +78,7 @@ public:
             uint32_t width,
             uint32_t height,
             uint8_t samples,
+            uint8_t layerCount,
             backend::MRT color,
             backend::TargetBufferInfo depth,
             backend::TargetBufferInfo stencil) noexcept override;
@@ -94,7 +96,6 @@ public:
     void gc() noexcept;
 
 private:
-    size_t const mCacheCapacity;
     size_t const mCacheMaxAge;
 
     struct TextureKey {
@@ -194,7 +195,7 @@ private:
     using CacheContainer = AssociativeContainer<TextureKey, TextureCachePayload>;
     using InUseContainer = AssociativeContainer<backend::TextureHandle, TextureKey>;
 
-    CacheContainer::iterator purge(CacheContainer::iterator const& pos);
+    void purge(ResourceAllocator::CacheContainer::iterator const& pos);
 
     backend::DriverApi& mBackend;
     CacheContainer mTextureCache;

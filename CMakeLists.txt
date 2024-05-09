@@ -54,6 +54,8 @@ option(FILAMENT_ENABLE_TSAN "Enable Thread Sanitizer" OFF)
 
 option(FILAMENT_ENABLE_FEATURE_LEVEL_0 "Enable Feature Level 0" ON)
 
+option(FILAMENT_ENABLE_MULTIVIEW "Enable multiview for Filament" OFF)
+
 set(FILAMENT_NDK_VERSION "" CACHE STRING
     "Android NDK version or version prefix to be used when building for Android."
 )
@@ -76,6 +78,10 @@ set(FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB "4" CACHE STRING
 
 set(FILAMENT_METAL_HANDLE_ARENA_SIZE_IN_MB "8" CACHE STRING
     "Size of the Metal handle arena, default 8."
+)
+
+set(FILAMENT_BACKEND_DEBUG_FLAG "" CACHE STRING
+    "A debug flag meant for enabling/disabling backend debugging paths"
 )
 
 # Enable exceptions by default in spirv-cross.
@@ -549,6 +555,27 @@ else()
     option(FILAMENT_DISABLE_MATOPT "Disable material optimizations" ON)
 endif()
 
+# This only affects the prebuilt shader files in gltfio and samples, not filament library.
+# The value can be either "instanced" or "multiview".
+set(FILAMENT_SAMPLES_STEREO_TYPE "instanced" CACHE STRING
+    "Stereoscopic type that shader files in gltfio and samples are built for."
+)
+string(TOLOWER "${FILAMENT_SAMPLES_STEREO_TYPE}" FILAMENT_SAMPLES_STEREO_TYPE)
+if (NOT FILAMENT_SAMPLES_STEREO_TYPE STREQUAL "instanced" AND NOT FILAMENT_SAMPLES_STEREO_TYPE STREQUAL "multiview")
+    message(FATAL_ERROR "Invalid stereo type: \"${FILAMENT_SAMPLES_STEREO_TYPE}\" choose either \"instanced\" or \"multiview\" ")
+endif ()
+
+# Compiling samples for multiview implies enabling multiview feature as well.
+if (FILAMENT_SAMPLES_STEREO_TYPE STREQUAL "multiview")
+    set(FILAMENT_ENABLE_MULTIVIEW ON)
+endif ()
+
+# Define backend flag for debug only
+if (CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT FILAMENT_BACKEND_DEBUG_FLAG STREQUAL "")
+    add_definitions(-DFILAMENT_BACKEND_DEBUG_FLAG=${FILAMENT_BACKEND_DEBUG_FLAG})
+    unset(FILAMENT_BACKEND_DEBUG_FLAG)
+endif()
+
 # ==================================================================================================
 # Material compilation flags
 # ==================================================================================================
@@ -835,6 +862,9 @@ if (IS_HOST_PLATFORM)
     add_subdirectory(${TOOLS}/glslminifier)
     add_subdirectory(${TOOLS}/matc)
     add_subdirectory(${TOOLS}/matinfo)
+    if (NOT WIN32)  # matedit not yet supported on Windows
+        add_subdirectory(${TOOLS}/matedit)
+    endif()
     add_subdirectory(${TOOLS}/mipgen)
     add_subdirectory(${TOOLS}/normal-blending)
     add_subdirectory(${TOOLS}/resgen)

@@ -226,9 +226,9 @@ TEST_F(BackendTest, ColorMagnify) {
     Handle<HwRenderTarget> dstRenderTargets[kNumLevels];
     for (uint8_t level = 0; level < kNumLevels; level++) {
         srcRenderTargets[level] = api.createRenderTarget( TargetBufferFlags::COLOR,
-                kSrcTexWidth >> level, kSrcTexHeight >> level, 1, { srcTexture, level, 0 }, {}, {});
+                kSrcTexWidth >> level, kSrcTexHeight >> level, 1, 0, { srcTexture, level, 0 }, {}, {});
         dstRenderTargets[level] = api.createRenderTarget( TargetBufferFlags::COLOR,
-                kDstTexWidth >> level, kDstTexHeight >> level, 1, { dstTexture, level, 0 }, {}, {});
+                kDstTexWidth >> level, kDstTexHeight >> level, 1, 0, { dstTexture, level, 0 }, {}, {});
     }
 
     // Do a "magnify" blit from level 1 of the source RT to the level 0 of the destination RT.
@@ -238,13 +238,13 @@ TEST_F(BackendTest, ColorMagnify) {
             {0, 0, kSrcTexWidth >> srcLevel, kSrcTexHeight >> srcLevel}, SamplerMagFilter::LINEAR);
 
     // Push through an empty frame to allow the texture to upload and the blit to execute.
-    api.beginFrame(0, 0);
+    api.beginFrame(0, 0, 0);
     api.commit(swapChain);
     api.endFrame(0);
 
     // Grab a screenshot.
     ScreenshotParams params { kDstTexWidth, kDstTexHeight, "ColorMagnify.png" };
-    api.beginFrame(0, 0);
+    api.beginFrame(0, 0, 0);
     dumpScreenshot(api, dstRenderTargets[0], &params);
     api.commit(swapChain);
     api.endFrame(0);
@@ -301,9 +301,9 @@ TEST_F(BackendTest, ColorMinify) {
     Handle<HwRenderTarget> dstRenderTargets[kNumLevels];
     for (uint8_t level = 0; level < kNumLevels; level++) {
         srcRenderTargets[level] = api.createRenderTarget( TargetBufferFlags::COLOR,
-                kSrcTexWidth >> level, kSrcTexHeight >> level, 1, { srcTexture, level, 0 }, {}, {});
+                kSrcTexWidth >> level, kSrcTexHeight >> level, 1, 0, { srcTexture, level, 0 }, {}, {});
         dstRenderTargets[level] = api.createRenderTarget( TargetBufferFlags::COLOR,
-                kDstTexWidth >> level, kDstTexHeight >> level, 1, { dstTexture, level, 0 }, {}, {});
+                kDstTexWidth >> level, kDstTexHeight >> level, 1, 0, { dstTexture, level, 0 }, {}, {});
     }
 
     // Do a "minify" blit from level 1 of the source RT to the level 0 of the destination RT.
@@ -369,12 +369,12 @@ TEST_F(BackendTest, ColorResolve) {
 
     // Create a 4-sample render target with the 4-sample texture.
     Handle<HwRenderTarget> const srcRenderTarget = api.createRenderTarget(
-            TargetBufferFlags::COLOR, kSrcTexWidth, kSrcTexHeight, kSampleCount,
+            TargetBufferFlags::COLOR, kSrcTexWidth, kSrcTexHeight, kSampleCount, 0,
             {{ srcColorTexture }}, {}, {});
 
     // Create a 1-sample render target with the 1-sample texture.
     Handle<HwRenderTarget> const dstRenderTarget = api.createRenderTarget(
-            TargetBufferFlags::COLOR, kDstTexWidth, kDstTexHeight, 1,
+            TargetBufferFlags::COLOR, kDstTexWidth, kDstTexHeight, 1, 0,
             {{ dstColorTexture }}, {}, {});
 
     // Prep for rendering.
@@ -402,10 +402,10 @@ TEST_F(BackendTest, ColorResolve) {
     });
 
     // FIXME: on Metal this triangle is not drawn. Can't understand why.
-    api.beginFrame(0, 0);
+    api.beginFrame(0, 0, 0);
         api.beginRenderPass(srcRenderTarget, params);
             api.bindUniformBuffer(0, ubuffer);
-            api.draw(state, triangle.getRenderPrimitive(), 1);
+            api.draw(state, triangle.getRenderPrimitive(), 0, 3, 1);
         api.endRenderPass();
     api.endFrame(0);
 
@@ -473,9 +473,9 @@ TEST_F(BackendTest, Blit2DTextureArray) {
     // Create two RenderTargets.
     const int level = 0;
     Handle<HwRenderTarget> srcRenderTarget = api.createRenderTarget( TargetBufferFlags::COLOR,
-            kSrcTexWidth >> level, kSrcTexHeight >> level, 1, { srcTexture, level, kSrcTexLayer }, {}, {});
+            kSrcTexWidth >> level, kSrcTexHeight >> level, 1, 0, { srcTexture, level, kSrcTexLayer }, {}, {});
     Handle<HwRenderTarget> dstRenderTarget = api.createRenderTarget( TargetBufferFlags::COLOR,
-            kDstTexWidth >> level, kDstTexHeight >> level, 1, { dstTexture, level, kDstTexLayer }, {}, {});
+            kDstTexWidth >> level, kDstTexHeight >> level, 1, 0, { dstTexture, level, kDstTexLayer }, {}, {});
 
     // Do a blit from kSrcTexLayer of the source RT to kDstTexLayer of the destination RT.
     const int srcLevel = 0;
@@ -484,13 +484,13 @@ TEST_F(BackendTest, Blit2DTextureArray) {
             {0, 0, kSrcTexWidth >> srcLevel, kSrcTexHeight >> srcLevel}, SamplerMagFilter::LINEAR);
 
     // Push through an empty frame to allow the texture to upload and the blit to execute.
-    api.beginFrame(0, 0);
+    api.beginFrame(0, 0, 0);
     api.commit(swapChain);
     api.endFrame(0);
 
     // Grab a screenshot.
     ScreenshotParams params { kDstTexWidth, kDstTexHeight, "Blit2DTextureArray.png" };
-    api.beginFrame(0, 0);
+    api.beginFrame(0, 0, 0);
     dumpScreenshot(api, dstRenderTarget, &params);
     api.commit(swapChain);
     api.endFrame(0);
@@ -565,22 +565,22 @@ TEST_F(BackendTest, BlitRegion) {
     // that this case is handled correctly.
     Handle<HwRenderTarget> srcRenderTarget =
             api.createRenderTarget(TargetBufferFlags::COLOR, srcRect.width,
-                    srcRect.height, 1, {srcTexture, kSrcLevel, 0}, {}, {});
+                    srcRect.height, 1, 0, {srcTexture, kSrcLevel, 0}, {}, {});
     Handle<HwRenderTarget> dstRenderTarget =
             api.createRenderTarget(TargetBufferFlags::COLOR, kDstTexWidth >> kDstLevel,
-                    kDstTexHeight >> kDstLevel, 1, {dstTexture, kDstLevel, 0}, {}, {});
+                    kDstTexHeight >> kDstLevel, 1, 0, {dstTexture, kDstLevel, 0}, {}, {});
 
     api.blitDEPRECATED(TargetBufferFlags::COLOR0, dstRenderTarget, dstRect, srcRenderTarget, srcRect,
             SamplerMagFilter::LINEAR);
 
     // Push through an empty frame to allow the texture to upload and the blit to execute.
-    api.beginFrame(0, 0);
+    api.beginFrame(0, 0, 0);
     api.commit(swapChain);
     api.endFrame(0);
 
     // Grab a screenshot.
     ScreenshotParams params { kDstTexWidth, kDstTexHeight, "BlitRegion.png" };
-    api.beginFrame(0, 0);
+    api.beginFrame(0, 0, 0);
     dumpScreenshot(api, dstRenderTarget, &params);
     api.commit(swapChain);
     api.endFrame(0);
@@ -637,7 +637,7 @@ TEST_F(BackendTest, BlitRegionToSwapChain) {
     Handle<HwRenderTarget> srcRenderTargets[kNumLevels];
     for (uint8_t level = 0; level < kNumLevels; level++) {
         srcRenderTargets[level] = api.createRenderTarget( TargetBufferFlags::COLOR,
-                kSrcTexWidth >> level, kSrcTexHeight >> level, 1, { srcTexture, level, 0 }, {}, {});
+                kSrcTexWidth >> level, kSrcTexHeight >> level, 1, 0, { srcTexture, level, 0 }, {}, {});
     }
 
     // Blit one-quarter of src level 1 to dst level 0.
@@ -655,7 +655,7 @@ TEST_F(BackendTest, BlitRegionToSwapChain) {
         .height = kDstTexHeight - 10,
     };
 
-    api.beginFrame(0, 0);
+    api.beginFrame(0, 0, 0);
 
     api.blitDEPRECATED(TargetBufferFlags::COLOR0, dstRenderTarget,
             dstRect, srcRenderTargets[srcLevel],

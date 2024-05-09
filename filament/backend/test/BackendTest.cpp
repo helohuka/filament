@@ -51,7 +51,7 @@ void BackendTest::init(Backend backend, bool isMobilePlatform) {
 }
 
 BackendTest::BackendTest() : commandBufferQueue(CONFIG_MIN_COMMAND_BUFFERS_SIZE,
-            CONFIG_COMMAND_BUFFERS_SIZE) {
+        CONFIG_COMMAND_BUFFERS_SIZE, /*mPaused=*/false) {
     initializeDriver();
 }
 
@@ -143,7 +143,7 @@ void BackendTest::renderTriangle(Handle<HwRenderTarget> renderTarget,
     state.rasterState.depthFunc = RasterState::DepthFunc::A;
     state.rasterState.culling = CullingMode::NONE;
 
-    api.draw(state, triangle.getRenderPrimitive(), 1);
+    api.draw(state, triangle.getRenderPrimitive(), 0, 3, 1);
 
     api.endRenderPass();
 }

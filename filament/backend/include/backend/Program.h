@@ -84,6 +84,9 @@ public:
     // null terminating character.
     Program& shader(ShaderStage shader, void const* data, size_t size);
 
+    // sets the language of the shader sources provided with shader() (defaults to ESSL3)
+    Program& shaderLanguage(ShaderLanguage shaderLanguage);
+
     // Note: This is only needed for GLES3.0 backends, because the layout(binding=) syntax is
     //       not permitted in glsl. The backend needs a way to associate a uniform block
     //       to a binding point.
@@ -116,6 +119,8 @@ public:
 
     Program& cacheId(uint64_t cacheId) noexcept;
 
+    Program& multiview(bool multiview) noexcept;
+
     ShaderSource const& getShadersSource() const noexcept { return mShadersSource; }
     ShaderSource& getShadersSource() noexcept { return mShadersSource; }
 
@@ -134,6 +139,8 @@ public:
     utils::CString const& getName() const noexcept { return mName; }
     utils::CString& getName() noexcept { return mName; }
 
+    auto const& getShaderLanguage() const { return mShaderLanguage; }
+
     utils::FixedCapacityVector<SpecializationConstant> const& getSpecializationConstants() const noexcept {
         return mSpecializationConstants;
     }
@@ -143,6 +150,8 @@ public:
 
     uint64_t getCacheId() const noexcept { return mCacheId; }
 
+    bool isMultiview() const noexcept { return mMultiview; }
+
     CompilerPriorityQueue getPriorityQueue() const noexcept { return mPriorityQueue; }
 
 private:
@@ -151,6 +160,7 @@ private:
     UniformBlockInfo mUniformBlocks = {};
     SamplerGroupInfo mSamplerGroups = {};
     ShaderSource mShadersSource;
+    ShaderLanguage mShaderLanguage = ShaderLanguage::ESSL3;
     utils::CString mName;
     uint64_t mCacheId{};
     utils::Invocable<utils::io::ostream&(utils::io::ostream& out)> mLogger;
@@ -158,6 +168,11 @@ private:
     utils::FixedCapacityVector<std::pair<utils::CString, uint8_t>> mAttributes;
     std::array<UniformInfo, Program::UNIFORM_BINDING_COUNT> mBindingUniformInfo;
     CompilerPriorityQueue mPriorityQueue = CompilerPriorityQueue::HIGH;
+    // Indicates the current engine was initialized with multiview stereo, and the variant for this
+    // program contains STE flag. This will be referred later for the OpenGL shader compiler to
+    // determine whether shader code replacement for the num_views should be performed.
+    // This variable could be promoted as a more generic variable later if other similar needs occur.
+    bool mMultiview = false;
 };
 
 } // namespace filament::backend

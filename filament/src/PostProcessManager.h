@@ -50,6 +50,7 @@ class FMaterialInstance;
 class FrameGraph;
 class PerViewUniforms;
 class RenderPass;
+class RenderPassBuilder;
 struct CameraInfo;
 
 class PostProcessManager {
@@ -99,12 +100,12 @@ public:
         FrameGraphId<FrameGraphTexture> picking;
     };
     StructurePassOutput structure(FrameGraph& fg,
-            RenderPass const& pass, uint8_t structureRenderFlags,
+            RenderPassBuilder const& passBuilder, uint8_t structureRenderFlags,
             uint32_t width, uint32_t height, StructurePassConfig const& config) noexcept;
 
     // reflections pass
     FrameGraphId<FrameGraphTexture> ssr(FrameGraph& fg,
-            RenderPass const& pass,
+            RenderPassBuilder const& passBuilder,
             FrameHistory const& frameHistory,
             CameraInfo const& cameraInfo,
             PerViewUniforms& uniforms,
@@ -249,12 +250,16 @@ public:
             FrameGraphTexture::Descriptor const& outDesc,
             bool translucent);
 
-    // upscale/downscale blitter using shaders
+    // color blitter using shaders
     FrameGraphId<FrameGraphTexture> blit(FrameGraph& fg, bool translucent,
             FrameGraphId<FrameGraphTexture> input,
             filament::Viewport const& vp, FrameGraphTexture::Descriptor const& outDesc,
             backend::SamplerMagFilter filterMag,
             backend::SamplerMinFilter filterMin) noexcept;
+
+    // depth blitter using shaders
+    FrameGraphId<FrameGraphTexture> blitDepth(FrameGraph& fg,
+            FrameGraphId<FrameGraphTexture> input) noexcept;
 
     // Resolves base level of input and outputs a texture from outDesc.
     // outDesc with, height, format and samples will be overridden.
@@ -287,6 +292,15 @@ public:
             FrameGraphId<FrameGraphTexture> shadowmap, float scale,
             uint8_t layer, uint8_t level, uint8_t channel, float power) noexcept;
 
+    // Combine an array texture pointed to by `input` into a single image, then return it.
+    // This is only useful to check the multiview rendered scene as a debugging purpose, thus this
+    // is not expected to be used in normal cases.
+    FrameGraphId<FrameGraphTexture> debugCombineArrayTexture(FrameGraph& fg, bool translucent,
+        FrameGraphId<FrameGraphTexture> input,
+        filament::Viewport const& vp, FrameGraphTexture::Descriptor const& outDesc,
+        backend::SamplerMagFilter filterMag,
+        backend::SamplerMinFilter filterMin) noexcept;
+
     backend::Handle<backend::HwTexture> getOneTexture() const;
     backend::Handle<backend::HwTexture> getZeroTexture() const;
     backend::Handle<backend::HwTexture> getOneTextureArray() const;
@@ -310,7 +324,7 @@ public:
         FMaterial* getMaterial(FEngine& engine) const noexcept;
         FMaterialInstance* getMaterialInstance(FEngine& engine) const noexcept;
 
-        backend::PipelineState getPipelineState(FEngine& engine,
+        std::pair<backend::PipelineState, backend::Viewport> getPipelineState(FEngine& engine,
                 Variant::type_t variantKey = 0u) const noexcept;
 
     private:
@@ -338,8 +352,14 @@ public:
             backend::DriverApi& driver) const noexcept;
 
     void render(FrameGraphResources::RenderPassInfo const& out,
-            backend::PipelineState const& pipeline,
+            backend::PipelineState const& pipeline, backend::Viewport const& scissor,
             backend::DriverApi& driver) const noexcept;
+
+    void render(FrameGraphResources::RenderPassInfo const& out,
+            std::pair<backend::PipelineState, backend::Viewport> const& combo,
+            backend::DriverApi& driver) const noexcept {
+        render(out, combo.first, combo.second, driver);
+    }
 
 private:
     FEngine& mEngine;

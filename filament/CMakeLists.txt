@@ -66,6 +66,7 @@ set(SRCS
         src/Froxelizer.cpp
         src/Frustum.cpp
         src/HwRenderPrimitiveFactory.cpp
+        src/HwVertexBufferInfoFactory.cpp
         src/IndexBuffer.cpp
         src/IndirectLight.cpp
         src/InstanceBuffer.cpp
@@ -137,6 +138,7 @@ set(SRCS
 
 set(PRIVATE_HDRS
         src/Allocators.h
+        src/Bimap.h
         src/BufferPoolAllocator.h
         src/ColorSpaceUtils.h
         src/Culler.h
@@ -147,6 +149,7 @@ set(PRIVATE_HDRS
         src/FrameSkipper.h
         src/Froxelizer.h
         src/HwRenderPrimitiveFactory.h
+        src/HwVertexBufferInfoFactory.h
         src/Intersections.h
         src/MaterialParser.h
         src/PerViewUniforms.h
@@ -160,6 +163,7 @@ set(PRIVATE_HDRS
         src/ResourceList.h
         src/ShadowMap.h
         src/ShadowMapManager.h
+        src/SharedHandle.h
         src/TypedUniformBuffer.h
         src/UniformBuffer.h
         src/components/CameraManager.h
@@ -211,7 +215,9 @@ set(PRIVATE_HDRS
 set(MATERIAL_SRCS
         src/materials/antiAliasing/fxaa.mat
         src/materials/antiAliasing/taa.mat
+        src/materials/blitDepth.mat
         src/materials/blitLow.mat
+        src/materials/blitArray.mat
         src/materials/bloom/bloomDownsample.mat
         src/materials/bloom/bloomDownsample2x.mat
         src/materials/bloom/bloomDownsample9.mat
@@ -248,8 +254,13 @@ set(MATERIAL_SRCS
 )
 
 set(MATERIAL_FL0_SRCS
-        src/materials/defaultMaterial0.mat
-        src/materials/skybox0.mat
+        src/materials/defaultMaterial.mat
+        src/materials/skybox.mat
+)
+
+set(MATERIAL_MULTIVIEW_SRCS
+        src/materials/defaultMaterial.mat
+        src/materials/skybox.mat
 )
 
 # Embed the binary resource blob for materials.
@@ -279,6 +290,11 @@ message(STATUS "DFG LUT size set to ${DFG_LUT_SIZE}x${DFG_LUT_SIZE}")
 # Whether to include FL0 materials.
 if (FILAMENT_ENABLE_FEATURE_LEVEL_0)
     add_definitions(-DFILAMENT_ENABLE_FEATURE_LEVEL_0)
+endif()
+
+# Whether to include MULTIVIEW materials.
+if (FILAMENT_ENABLE_MULTIVIEW)
+    add_definitions(-DFILAMENT_ENABLE_MULTIVIEW)
 endif()
 
 # ==================================================================================================
@@ -311,33 +327,42 @@ foreach (mat_src ${MATERIAL_SRCS})
     get_filename_component(localname "${mat_src}" NAME_WE)
     get_filename_component(fullname "${mat_src}" ABSOLUTE)
     set(output_path "${MATERIAL_DIR}/${localname}.filamat")
-
     add_custom_command(
             OUTPUT ${output_path}
             COMMAND matc ${MATC_BASE_FLAGS} -o ${output_path} ${fullname}
             MAIN_DEPENDENCY ${fullname}
             DEPENDS matc
-            COMMENT "Compiling material [${MATC_BASE_FLAGS}] ${mat_src} to ${output_path}"
+            COMMENT "Compiling material ${fullname} to ${output_path}"
     )
     list(APPEND MATERIAL_BINS ${output_path})
-endforeach()
 
-if (FILAMENT_ENABLE_FEATURE_LEVEL_0)
-    foreach (mat_src ${MATERIAL_FL0_SRCS})
-        get_filename_component(localname "${mat_src}" NAME_WE)
-        get_filename_component(fullname "${mat_src}" ABSOLUTE)
-        set(output_path "${MATERIAL_DIR}/${localname}.filamat")
-
+    list(FIND MATERIAL_FL0_SRCS ${mat_src} index)
+    if (${index} GREATER -1 AND FILAMENT_ENABLE_FEATURE_LEVEL_0)
+        string(REGEX REPLACE "[.]filamat$" "_fl0.filamat" output_path_fl0 ${output_path})
         add_custom_command(
-                OUTPUT ${output_path}
-                COMMAND matc ${MATC_BASE_FLAGS} -o ${output_path} ${fullname}
+                OUTPUT ${output_path_fl0}
+                COMMAND matc ${MATC_BASE_FLAGS} -PfeatureLevel=0 -o ${output_path_fl0} ${fullname}
                 MAIN_DEPENDENCY ${fullname}
                 DEPENDS matc
-                COMMENT "Compiling material ${mat_src} to ${output_path}"
+                COMMENT "Compiling material ${fullname} to ${output_path_fl0}"
         )
-        list(APPEND MATERIAL_BINS ${output_path})
-    endforeach ()
-endif ()
+        list(APPEND MATERIAL_BINS ${output_path_fl0})
+    endif ()
+
+    list(FIND MATERIAL_MULTIVIEW_SRCS ${mat_src} index)
+    if (${index} GREATER -1 AND FILAMENT_ENABLE_MULTIVIEW)
+        string(REGEX REPLACE "[.]filamat$" "_multiview.filamat" output_path_multiview ${output_path})
+        add_custom_command(
+                OUTPUT ${output_path_multiview}
+                COMMAND matc ${MATC_BASE_FLAGS} -PstereoscopicType=multiview -o ${output_path_multiview} ${fullname}
+                MAIN_DEPENDENCY ${fullname}
+                DEPENDS matc
+                COMMENT "Compiling material ${fullname} to ${output_path_multiview}"
+        )
+        list(APPEND MATERIAL_BINS ${output_path_multiview})
+    endif ()
+
+endforeach()
 
 # Additional dependencies on included files for materials
 
