@@ -485,8 +485,12 @@ void GameDriver::mainLoop()
         mMainView->tick(timeStep);
 
         // Update the cube distortion matrix used for frustum visualization.
-        const filament::Camera* lightmapCamera = mMainView->getView()->getDirectionalLightCamera();
-        mLightmapCube->mapFrustum(*mRenderEngine, lightmapCamera);
+        const filament::Camera* lightmapCamera = mMainView->getView()->getDirectionalShadowCamera();
+        if (lightmapCamera)
+        {
+            mLightmapCube->mapFrustum(*mRenderEngine, lightmapCamera);
+        }
+        
         mCameraCube->mapFrustum(*mRenderEngine, mMainCamera);
 
         // Delay rendering for roughly one monitor refresh interval

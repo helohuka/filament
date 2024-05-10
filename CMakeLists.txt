@@ -54,7 +54,7 @@ option(FILAMENT_ENABLE_TSAN "Enable Thread Sanitizer" OFF)
 
 option(FILAMENT_ENABLE_FEATURE_LEVEL_0 "Enable Feature Level 0" ON)
 
-option(FILAMENT_ENABLE_MULTIVIEW "Enable multiview for Filament" OFF)
+option(FILAMENT_ENABLE_MULTIVIEW "Enable multiview for Filament" ON)
 
 set(FILAMENT_NDK_VERSION "" CACHE STRING
     "Android NDK version or version prefix to be used when building for Android."
